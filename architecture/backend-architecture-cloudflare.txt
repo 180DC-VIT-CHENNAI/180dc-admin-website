@@ -1,0 +1,586 @@
+================================================================================
+        180DC ADMIN PLATFORM — BACKEND ARCHITECTURE (CLOUDFLARE-NATIVE)
+================================================================================
+
+
+OVERVIEW
+--------
+Backend architecture for the 180DC Admin Website — a platform for managing
+blogs on the main public website. Admin users log in, create/edit/delete
+blog posts, upload images, and publish content through a secure admin panel.
+
+The ENTIRE stack runs on Cloudflare's edge platform. No external servers,
+no VPS, no Docker, no traditional Node.js runtime. This means globally
+distributed, zero cold-start (on paid plan), and minimal ops overhead.
+
+
+================================================================================
+                     CLOUDFLARE SERVICES USED
+================================================================================
+
+  Service              │ Replaces               │ Purpose
+  ─────────────────────┼────────────────────────┼───────────────────────────
+  Cloudflare Pages     │ Vercel / Netlify       │ Host Next.js public site
+  Cloudflare Workers   │ Express / Fastify / VPS│ Admin API + Public API
+  Cloudflare D1        │ PostgreSQL             │ SQLite-based database
+  Cloudflare R2        │ S3 / Object Storage    │ Image and media storage
+  Cloudflare KV        │ Redis (cache)          │ API response caching
+  Cloudflare Queues    │ BullMQ + Redis         │ Background job processing
+  Cloudflare Access    │ Custom auth middleware │ Zero Trust admin access
+  Cloudflare WAF       │ Separate WAF           │ Request filtering
+  Cloudflare CDN       │ Separate CDN           │ Static asset delivery
+  ─────────────────────┴────────────────────────┴───────────────────────────
+
+  NOTE ON D1 LIMITATIONS:
+  D1 is SQLite under the hood. It works well for this scale (<10k posts,
+  <50 admin users), but be aware of:
+  • No native full-text search with ranking like PostgreSQL's tsvector.
+    Use D1's FTS5 virtual tables instead (SQLite's built-in FTS).
+  • 10GB max database size (free), 50GB (paid) — more than enough.
+  • No stored procedures or triggers — handle in Worker application code.
+  • Reads are fast (replicated globally), writes go to a single primary.
+
+
+================================================================================
+                          ARCHITECTURE LAYERS
+================================================================================
+
+
+1. CLIENTS
+   ────────
+   • Public Visitors  — Read blogs on the website.
+   • Admin Users      — Manage blog content (create, edit, delete, publish).
+
+   Both connect over HTTPS. Admin access gated by Cloudflare Access.
+
+
+2. EDGE LAYER (Cloudflare — handles ALL of this automatically)
+   ────────────────────────────────────────────────────────────
+   • DNS + SSL/TLS    — Managed by Cloudflare.
+   • WAF              — Blocks SQLi, XSS, and known attack patterns.
+   • DDoS Protection  — Automatic, always-on.
+   • Rate Limiting    — Configured via Cloudflare dashboard or rules:
+                         - Public API:  60 req/min per IP
+                         - Admin API:  120 req/min per authenticated user
+                         - Auth endpoints: 10 req/min per IP
+   • CDN              — Static assets cached at 300+ edge locations.
+   • Cloudflare Access — Identity-aware proxy for admin routes.
+                         Configured to require Google OAuth login.
+                         Only whitelisted 180DC email addresses allowed.
+
+
+3. APPLICATION LAYER
+   ──────────────────
+
+   ┌─────────────────────────────────────────────────────────┐
+   │  PUBLIC SITE — Cloudflare Pages                         │
+   ├─────────────────────────────────────────────────────────┤
+   │                                                         │
+   │  Next.js on Cloudflare Pages (via @cloudflare/next-on-  │
+   │  pages adapter)                                         │
+   │  • Static pages built at deploy time.                   │
+   │  • On-demand ISR: when an admin publishes/edits a post, │
+   │    the Admin Worker calls Pages' cache purge API to     │
+   │    invalidate affected URLs. Next request triggers a    │
+   │    rebuild of that page.                                │
+   │  • Pages Functions can act as lightweight API routes     │
+   │    for public read endpoints if you want to colocate    │
+   │    them with the site (alternative to separate Worker). │
+   │                                                         │
+   │  OR: Keep it simple — use Astro instead of Next.js.     │
+   │  Astro has first-class Cloudflare adapter support and   │
+   │  is simpler for a content-focused site. Either works.   │
+   │                                                         │
+   └─────────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────────┐
+   │  PUBLIC API — Cloudflare Worker                         │
+   ├─────────────────────────────────────────────────────────┤
+   │                                                         │
+   │  Worker: public-api (Hono framework on Workers)         │
+   │  Route: api.180dc-vit.in/*                              │
+   │                                                         │
+   │  GET /api/v1/posts           — List posts (paginated)   │
+   │  GET /api/v1/posts/:slug     — Single post by slug      │
+   │  GET /api/v1/posts/search?q= — Full-text search (FTS5)  │
+   │                                                         │
+   │  Caching strategy:                                      │
+   │  1. Check Cloudflare KV for cached response (TTL: 5min) │
+   │  2. If miss → query D1 → write result to KV → return   │
+   │  3. On admin write → delete relevant KV keys            │
+   │                                                         │
+   │  Why Hono: Lightweight, built for Workers, has built-in │
+   │  middleware for CORS, validation (with Zod), etc.       │
+   │                                                         │
+   └─────────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────────┐
+   │  ADMIN UI — Cloudflare Pages (separate project)         │
+   ├─────────────────────────────────────────────────────────┤
+   │                                                         │
+   │  React + Vite SPA deployed to Pages.                    │
+   │  • Served at admin.180dc-vit.in                         │
+   │  • Entire domain protected by Cloudflare Access —       │
+   │    user must authenticate via Google OAuth before       │
+   │    the page even loads.                                  │
+   │  • CSP headers set via _headers file in Pages:          │
+   │    Content-Security-Policy: default-src 'self';         │
+   │    script-src 'self'; img-src 'self' *.r2.dev           │
+   │                                                         │
+   └─────────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────────┐
+   │  ADMIN API — Cloudflare Worker                          │
+   ├─────────────────────────────────────────────────────────┤
+   │                                                         │
+   │  Worker: admin-api (Hono framework on Workers)          │
+   │  Route: admin-api.180dc-vit.in/*                        │
+   │  Protected by: Cloudflare Access (Zero Trust)           │
+   │                                                         │
+   │  ENDPOINTS:                                             │
+   │  POST   /api/v1/posts              — Create draft       │
+   │  PUT    /api/v1/posts/:id          — Update post        │
+   │  DELETE /api/v1/posts/:id          — Delete post        │
+   │  POST   /api/v1/posts/:id/publish  — Publish post       │
+   │  POST   /api/v1/media/upload-url   — Get presigned URL  │
+   │  POST   /api/v1/media/confirm      — Confirm upload     │
+   │  GET    /api/v1/users              — List admin users    │
+   │  PUT    /api/v1/users/:id/role     — Update user role    │
+   │  GET    /healthz                   — Health check        │
+   │                                                         │
+   │  AUTH FLOW (Cloudflare Access does the heavy lifting):  │
+   │  1. Cloudflare Access intercepts request, forces Google │
+   │     OAuth login if no valid session.                     │
+   │  2. Access sets a signed JWT (CF_Authorization cookie). │
+   │  3. Worker validates JWT using Cloudflare's public keys │
+   │     (via access.authenticated middleware in Hono).       │
+   │  4. Worker extracts user email from JWT claims.          │
+   │  5. Worker looks up user in D1 → gets role (super_admin │
+   │     / editor / viewer).                                  │
+   │  6. RBAC middleware checks role against route.           │
+   │                                                         │
+   │  WHY THIS IS BETTER THAN CUSTOM AUTH:                   │
+   │  • No session management code to write.                 │
+   │  • No Redis needed for sessions.                        │
+   │  • No MFA implementation — Access handles it.           │
+   │  • JWT validation is ~5 lines of code.                  │
+   │  • Access dashboard shows login history / audit.        │
+   │                                                         │
+   │  REQUEST LIFECYCLE:                                     │
+   │  1. Cloudflare Access verifies identity (JWT)           │
+   │  2. Hono middleware validates JWT signature              │
+   │  3. RBAC middleware checks user role from D1            │
+   │  4. Zod schema validates request body/params            │
+   │  5. Sanitize HTML content (sanitize-html — DOMPurify    │
+   │     is browser-only, use sanitize-html for Workers)     │
+   │  6. Business logic executes (D1 queries)                │
+   │  7. Audit log written to D1 (same transaction)          │
+   │  8. KV cache keys deleted (async, waitUntil)            │
+   │  9. Queue message sent for async tasks (waitUntil)      │
+   │  10. JSON response returned                             │
+   │                                                         │
+   │  ERROR HANDLING:                                        │
+   │  • Centralized Hono error handler (app.onError)         │
+   │  • Consistent shape:                                    │
+   │    { "error": { "code": "POST_NOT_FOUND",              │
+   │                  "message": "...", "status": 404 } }    │
+   │  • Never leak internal details in production            │
+   │                                                         │
+   │  WORKERS-SPECIFIC CONSIDERATIONS:                       │
+   │  • 10ms CPU time (free) / 30s (paid) per request.       │
+   │    Blog CRUD operations are well within this.           │
+   │  • No filesystem access — all storage via D1/R2/KV.     │
+   │  • Use ctx.waitUntil() for fire-and-forget tasks        │
+   │    (cache invalidation, audit log, queue sends)         │
+   │    so they don't block the response.                    │
+   │                                                         │
+   └─────────────────────────────────────────────────────────┘
+
+
+4. DATA LAYER
+   ──────────
+
+   D1 (SQLite Database)
+   • Stores: posts, users, roles, audit_log
+   • Schema overview:
+
+     posts:
+       id           TEXT PRIMARY KEY (nanoid)
+       title        TEXT NOT NULL
+       slug         TEXT UNIQUE NOT NULL
+       body_html    TEXT NOT NULL
+       excerpt      TEXT
+       cover_image  TEXT (R2 object key)
+       author_id    TEXT REFERENCES users(id)
+       status       TEXT CHECK(status IN ('draft','published','archived'))
+       published_at TEXT (ISO 8601)
+       created_at   TEXT DEFAULT (datetime('now'))
+       updated_at   TEXT DEFAULT (datetime('now'))
+
+     users:
+       id           TEXT PRIMARY KEY
+       email        TEXT UNIQUE NOT NULL
+       name         TEXT
+       role         TEXT CHECK(role IN ('super_admin','editor','viewer'))
+       created_at   TEXT DEFAULT (datetime('now'))
+
+     audit_log:
+       id           INTEGER PRIMARY KEY AUTOINCREMENT
+       user_email   TEXT NOT NULL
+       action       TEXT NOT NULL
+       resource     TEXT NOT NULL
+       resource_id  TEXT
+       metadata     TEXT (JSON)
+       ip           TEXT
+       created_at   TEXT DEFAULT (datetime('now'))
+
+   • Full-text search via FTS5:
+     CREATE VIRTUAL TABLE posts_fts USING fts5(
+       title, body_text, slug, content=posts, content_rowid=rowid
+     );
+     — Keep in sync manually on INSERT/UPDATE/DELETE in Worker code
+       (D1 has no triggers, so the Worker handles it).
+
+   • Key indexes:
+     CREATE UNIQUE INDEX idx_posts_slug ON posts(slug);
+     CREATE INDEX idx_posts_status_published ON posts(status, published_at);
+     CREATE INDEX idx_audit_created ON audit_log(created_at);
+
+   KV (Key-Value Cache)
+   • Namespace: PUBLIC_CACHE
+   • Keys follow pattern: posts:list:page:{n}, posts:slug:{slug},
+     posts:search:{query_hash}
+   • TTL: 300 seconds (5 minutes)
+   • On any admin write → bulk-delete matching KV keys via prefix listing,
+     or use a simple cache generation counter:
+       KV key "cache_version" incremented on every write.
+       All cache keys include version: "v:{ver}:posts:list:page:1"
+       Old keys expire naturally via TTL. Zero deletion needed.
+
+   R2 (Object Storage)
+   • Bucket: 180dc-media
+   • Stores uploaded images and media files.
+   • Images served via R2 custom domain or public bucket URL with
+     Cache-Control: public, max-age=31536000, immutable
+   • Upload flow:
+     1. Admin UI calls POST /api/v1/media/upload-url
+     2. Admin Worker generates presigned R2 URL (using R2's
+        createMultipartUpload or simple PUT presign).
+     3. Admin UI uploads file directly to R2.
+     4. Admin UI calls POST /api/v1/media/confirm with the object key.
+     5. Worker verifies object exists in R2, stores key in D1.
+
+
+5. BACKGROUND JOBS — Cloudflare Queues
+   ─────────────────────────────────────
+
+   Queue: 180dc-jobs
+   Consumer Worker: job-processor
+
+   Message types:
+
+   • image.resize
+     - Triggered after image upload confirmation.
+     - Consumer Worker fetches original from R2, uses Workers-compatible
+       image processing (Cloudflare Image Resizing via fetch transform,
+       or a wasm-based library like @cf-wasm/photon).
+     - Generates: thumbnail (150w), medium (600w), large (1200w).
+     - Stores variants back in R2 with predictable keys:
+       media/{id}/original.jpg, media/{id}/thumb.jpg, etc.
+     - Updates D1 with variant URLs.
+
+   • cache.purge (optional)
+     - Batch invalidation of Cloudflare cache and KV after bulk operations.
+
+   Queue configuration:
+   • Max retries: 3
+   • Max batch size: 10 messages
+   • Max wait time: 5 seconds
+   • Dead letter queue: 180dc-jobs-dlq
+
+   NOTE ON IMAGE RESIZING:
+   The simplest approach on Cloudflare is to use Image Resizing (paid add-on)
+   which transforms images on-the-fly via URL parameters:
+     https://180dc-vit.in/cdn-cgi/image/width=600,quality=80/media/abc.jpg
+   This eliminates the need for a resize queue entirely. The queue is only
+   needed if you want to pre-generate variants or if you're on the free plan.
+
+
+6. OPS, MONITORING & DEPLOYMENT
+   ─────────────────────────────
+
+   PROJECT STRUCTURE:
+   180dc-platform/
+   ├── apps/
+   │   ├── public-site/       # Next.js or Astro (Cloudflare Pages)
+   │   ├── admin-ui/          # React + Vite (Cloudflare Pages)
+   │   ├── public-api/        # Hono Worker
+   │   ├── admin-api/         # Hono Worker
+   │   └── job-processor/     # Queue consumer Worker
+   ├── packages/
+   │   ├── db/                # D1 schema, migrations, shared queries
+   │   ├── shared/            # Zod schemas, types, constants
+   │   └── config/            # Shared wrangler config, env types
+   ├── turbo.json             # Monorepo task runner
+   └── package.json
+
+   ENVIRONMENTS:
+   • Development    — wrangler dev (local Workers + D1 local + R2 local)
+                      Local D1 is a real SQLite file, very fast.
+   • Staging        — Separate Cloudflare project/environment
+                      (wrangler.toml supports [env.staging])
+   • Production     — Deployed on merge to main.
+
+   CI/CD (GitHub Actions):
+   On PR:
+     1. Lint (ESLint + Biome)
+     2. Type-check (TypeScript)
+     3. Unit tests (Vitest)
+     4. Integration tests (Miniflare for Worker testing)
+
+   On merge to main:
+     1. Run full test suite
+     2. Run D1 migrations (wrangler d1 migrations apply)
+     3. Deploy Workers (wrangler deploy for each Worker)
+     4. Deploy Pages (auto-deploy from git, or wrangler pages deploy)
+     5. Smoke test: hit /healthz on each Worker
+     6. Notify team (Discord/Slack webhook)
+
+   WRANGLER CONFIG (admin-api example):
+     name = "admin-api"
+     main = "src/index.ts"
+     compatibility_date = "2025-01-01"
+
+     [[d1_databases]]
+     binding = "DB"
+     database_name = "180dc-prod"
+     database_id = "xxx"
+
+     [[r2_buckets]]
+     binding = "MEDIA"
+     bucket_name = "180dc-media"
+
+     [[kv_namespaces]]
+     binding = "CACHE"
+     id = "xxx"
+
+     [[queues.producers]]
+     binding = "JOBS"
+     queue = "180dc-jobs"
+
+   D1 MIGRATIONS:
+   • Stored in packages/db/migrations/ as numbered SQL files.
+   • Applied via: wrangler d1 migrations apply 180dc-prod
+   • Always test migrations on staging first.
+   • D1 has no native rollback — write compensating migrations.
+
+   LOGGING:
+   • Workers have console.log which appears in:
+     - wrangler tail (real-time log streaming)
+     - Cloudflare dashboard → Workers → Logs
+   • For structured logging, use a lightweight logger that outputs JSON.
+   • For persistent logs: use Workers Analytics Engine (free, built-in)
+     or Logpush to an external service (Axiom, Datadog, etc.).
+   • Tail Workers can process logs asynchronously without affecting
+     request latency.
+
+   MONITORING:
+   • Cloudflare Dashboard → Workers analytics (requests, errors,
+     CPU time, duration percentiles) — built-in, free.
+   • Set up Cloudflare Notifications for:
+     - Worker error rate spike
+     - D1 database approaching size limit
+     - Queue DLQ messages appearing
+
+   AUDIT TRAIL:
+   • Stored in D1 audit_log table.
+   • Written in the same D1 batch as the main operation
+     (D1 supports batch queries in a single round-trip).
+   • No UPDATE or DELETE on audit_log — append-only.
+   • Queryable from the Admin UI for accountability.
+
+   BACKUPS:
+   • D1: Use Time Travel (built-in, restores to any point in last 30 days
+     on paid plan). Also schedule weekly wrangler d1 export for
+     offline backup.
+   • R2: Built-in redundancy (11 nines durability). No separate backup
+     needed. Enable object versioning if paranoid.
+   • KV: Ephemeral cache — no backup needed.
+
+
+7. SECURITY
+   ────────
+
+   AUTHENTICATION & AUTHORIZATION:
+   ✓ Cloudflare Access enforces Google OAuth before any admin request
+   ✓ Access JWT validated in Worker (signature + expiry + email claim)
+   ✓ User roles stored in D1, checked on every request
+   ✓ MFA delegated to Cloudflare Access (supports TOTP, WebAuthn)
+   ✓ No custom session management — Access handles it entirely
+   ✓ Only whitelisted 180DC emails can authenticate
+
+   APPLICATION SECURITY:
+   ✓ HTTPS everywhere (automatic with Cloudflare)
+   ✓ CORS: Public API allows GET from public site domain only;
+     Admin API allows requests from admin UI domain only
+   ✓ CSP headers on both Pages sites (_headers file)
+   ✓ Input validation (Zod) on every endpoint
+   ✓ HTML sanitization (sanitize-html) for blog content
+   ✓ Parameterized D1 queries (prepared statements, no interpolation)
+   ✓ Presigned R2 URLs for uploads (no direct write access)
+
+   INFRASTRUCTURE SECURITY:
+   ✓ WAF rules active (managed + custom)
+   ✓ Rate limiting per-route
+   ✓ DDoS protection (automatic)
+   ✓ Secrets stored in wrangler secrets (encrypted at rest)
+   ✓ No SSH, no servers, no ports to expose
+   ✓ Dependency scanning (npm audit / Dependabot)
+
+   WHAT CLOUDFLARE ACCESS GIVES YOU FOR FREE:
+   • Login audit log (who logged in, when, from where)
+   • Session revocation from dashboard
+   • Device posture checks (optional)
+   • Short-lived certificates (no long-lived API keys)
+
+
+================================================================================
+                           DATA FLOW SUMMARY
+================================================================================
+
+  PUBLIC VISITOR FLOW:
+  ┌──────────┐    ┌──────────────┐    ┌──────────────────────┐
+  │  Browser  │───>│  Cloudflare  │───>│  Pages (static/ISR)  │
+  └──────────┘    │  CDN + WAF   │    │  or Public API Worker│
+                  └──────────────┘    └─────────┬────────────┘
+                                                │
+                                     ┌──────────▼──────────┐
+                                     │  KV (cache hit?)     │
+                                     │  → D1 (cache miss)   │
+                                     └─────────────────────┘
+
+  ADMIN USER FLOW:
+  ┌──────────┐    ┌────────────┐    ┌──────────┐    ┌──────────────┐
+  │  Admin   │───>│ Cloudflare │───>│ Admin UI │───>│ Admin API    │
+  │  Browser │    │  Access    │    │ (Pages)  │    │  (Worker)    │
+  └──────────┘    │(Google SSO)│    └──────────┘    └──────┬───────┘
+                  └────────────┘                           │
+                      ┌──────────────┬─────────────────────┼──────────┐
+                      │              │                     │          │
+                 ┌────▼────┐  ┌──────▼─────┐   ┌──────────▼┐  ┌─────▼─────┐
+                 │   D1    │  │     KV     │   │    R2     │  │  Queue   │
+                 │ (CRUD + │  │  (bust     │   │ (presigned│  │ (image   │
+                 │  search +│  │   cache)   │   │  upload)  │  │  resize) │
+                 │  audit)  │  └────────────┘   └───────────┘  └─────┬────┘
+                 └──────────┘                                        │
+                                                              ┌──────▼──────┐
+                                                              │ Consumer    │
+                                                              │  Worker     │
+                                                              │ (resize →   │
+                                                              │  R2 + D1)   │
+                                                              └─────────────┘
+
+  PUBLISH FLOW (cache invalidation):
+  ┌──────────────┐    ┌──────┐    ┌──────┐    ┌───────────────┐
+  │ Admin Worker │───>│  D1  │───>│  KV  │───>│ Pages cache   │
+  │   (write)    │    │(save)│    │(bust)│    │ (purge URL)   │
+  └──────────────┘    └──────┘    └──────┘    └───────────────┘
+  (KV bust + cache purge happen via ctx.waitUntil, non-blocking)
+
+  DEPLOYMENT FLOW:
+  ┌──────────┐    ┌──────────────┐    ┌───────────────────────────────┐
+  │  GitHub  │───>│  GitHub      │───>│ Lint → Test → Migrate D1     │
+  │  Push    │    │  Actions     │    │ → Deploy Workers → Deploy     │
+  └──────────┘    └──────────────┘    │   Pages → Smoke Test          │
+                                      └───────────────────────────────┘
+
+
+================================================================================
+                          TECH STACK SUMMARY
+================================================================================
+
+  Layer              │ Cloudflare Service       │ Notes
+  ───────────────────┼──────────────────────────┼────────────────────────────
+  Public Site        │ Pages (Next.js or Astro) │ Static + ISR at the edge
+  Admin UI           │ Pages (React + Vite)     │ SPA, Access-protected
+  Public API         │ Worker (Hono)            │ Read-only, KV-cached
+  Admin API          │ Worker (Hono)            │ CRUD, auth, audit
+  Job Processor      │ Worker (Queue consumer)  │ Image resize
+  Database           │ D1 (SQLite)              │ Posts, users, audit log
+  Search             │ D1 FTS5                  │ Built-in SQLite FTS
+  Cache              │ KV                       │ API response cache
+  File Storage       │ R2                       │ Images, presigned uploads
+  Job Queue          │ Queues                   │ Async image processing
+  Auth + MFA         │ Access (Zero Trust)      │ Google OAuth + MFA
+  CDN + WAF + DDoS   │ Cloudflare (automatic)   │ Always-on
+  Secrets            │ Worker Secrets           │ Encrypted at rest
+  Logging            │ Tail Workers / Logpush   │ Structured, real-time
+  CI/CD              │ GitHub Actions           │ + wrangler CLI
+  ───────────────────┴──────────────────────────┴────────────────────────────
+
+
+================================================================================
+                         TESTING STRATEGY
+================================================================================
+
+  Unit Tests (Vitest):
+  • Zod schema validation
+  • Business logic (publish rules, slug generation, RBAC checks)
+  • FTS5 sync logic
+  • Utility functions
+
+  Integration Tests (Vitest + Miniflare):
+  • Miniflare simulates Workers, D1, KV, R2 locally.
+  • Test full request lifecycle: auth → validate → D1 query → response
+  • Test queue message production and consumption
+  • Test presigned upload flow
+
+  Coverage target: 80%+ on business logic.
+
+
+================================================================================
+               CLOUDFLARE FREE vs PAID PLAN CONSIDERATIONS
+================================================================================
+
+  Feature              │ Free Plan           │ Paid (Workers Paid $5/mo)
+  ─────────────────────┼─────────────────────┼──────────────────────────
+  Worker requests      │ 100k/day            │ 10M/mo included
+  Worker CPU time      │ 10ms per request    │ 30s per request
+  D1 reads             │ 5M/day              │ 25B/mo included
+  D1 writes            │ 100k/day            │ 50M/mo included
+  D1 storage           │ 5GB                 │ 50GB
+  R2 storage           │ 10GB                │ 10GB + $0.015/GB
+  R2 operations        │ 1M Class A, 10M B   │ Same + overage pricing
+  KV reads             │ 100k/day            │ 10M/mo included
+  KV writes            │ 1k/day              │ 1M/mo included
+  Queues               │ 1M operations/mo    │ Included
+  Pages builds         │ 500/mo              │ 5000/mo
+  Access (Zero Trust)  │ 50 users free       │ 50 users free
+  ─────────────────────┴─────────────────────┴──────────────────────────
+
+  RECOMMENDATION: Start on Free Plan. Move to Workers Paid ($5/month)
+  when you hit KV write limits or need longer CPU time for image
+  processing. The 50-user Access free tier is plenty for 180DC.
+
+
+================================================================================
+                WHAT THIS ARCHITECTURE DOES NOT NEED
+================================================================================
+
+  • VPS / Docker / Kubernetes — Everything runs on Cloudflare's edge.
+  • PostgreSQL — D1 is sufficient for this scale and zero-maintenance.
+  • Redis — KV replaces cache, Access replaces sessions.
+  • Express / Fastify — Workers use Hono (built for edge runtimes).
+  • BullMQ — Cloudflare Queues is native and needs no Redis.
+  • Custom session management — Access handles auth end-to-end.
+  • Custom MFA implementation — Access provides this.
+  • Separate search engine — D1 FTS5 handles full-text search.
+  • Nginx / reverse proxy — Cloudflare IS the proxy.
+  • SSL certificate management — Automatic.
+  • Log infrastructure — Tail Workers + dashboard built-in.
+
+
+================================================================================
+  Revised: February 2026 | 180DC VIT Chennai — Admin Website Project
+  Stack: 100% Cloudflare (Pages + Workers + D1 + R2 + KV + Queues + Access)
+================================================================================
