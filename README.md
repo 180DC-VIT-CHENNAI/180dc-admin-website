@@ -4,23 +4,25 @@ This monorepo uses Turborepo for managing builds and Cloudflare Workers for depl
 
 ## Prerequisites
 - Node.js (v18+ recommended)
-- npm or yarn
+- pnpm (preferred)
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)
 
+npm install
 ## Install dependencies
 ```
-npm install
+pnpm install
 ```
 
+npx turbo run build
 ## Build all packages and apps
 ```
-npx turbo run build
+pnpm turbo run build
 ```
 
 ## Develop individual workers
 ```
 cd apps/public-api
-wrangler dev
+pnpm wrangler dev
 ```
 
 Repeat for `admin-api` and `job-processor`.
@@ -28,7 +30,7 @@ Repeat for `admin-api` and `job-processor`.
 ## Deploy
 Configure your Cloudflare credentials and run:
 ```
-wrangler deploy
+pnpm wrangler deploy
 ```
 
-See each app's README for more details.
+See each app's BUILD_AND_DEPLOY.md for more details.
