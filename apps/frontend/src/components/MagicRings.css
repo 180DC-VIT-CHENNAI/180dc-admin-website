@@ -1,0 +1,11 @@
+/* MagicRings container styles */
+.magic-rings-container {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+.magic-rings-container canvas {
+  background: transparent !important;
+  display: block;
+}
