@@ -167,6 +167,10 @@
   animation: campusFadeIn 0.3s ease;
 }
 
+.campus-panel {
+  background: var(--bg-card);
+}
+
 @keyframes campusFadeIn {
   from { opacity: 0; }
   to { opacity: 1; }

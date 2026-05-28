@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTheme } from '../context/ThemeContext';
 import './PillNav.css';
 
 interface PillNavItem {
@@ -25,6 +26,7 @@ const PillNav = ({
   onMobileMenuClick,
 }: PillNavProps) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { isDark, toggle } = useTheme();
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(prev => !prev);
@@ -74,15 +76,26 @@ const PillNav = ({
           </ul>
         </div>
 
-        <button
-          className={`mobile-menu-button mobile-only${isMobileMenuOpen ? ' open' : ''}`}
-          onClick={toggleMobileMenu}
-          aria-label="Toggle menu"
-          aria-expanded={isMobileMenuOpen}
-        >
-          <span className="hamburger-line" />
-          <span className="hamburger-line" />
-        </button>
+        <div className="pill-nav-actions">
+          <button
+            className="theme-toggle"
+            onClick={toggle}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={isDark ? 'Light mode' : 'Dark mode'}
+          >
+            {isDark ? '\u2600' : '\u263E'}
+          </button>
+
+          <button
+            className={`mobile-menu-button mobile-only${isMobileMenuOpen ? ' open' : ''}`}
+            onClick={toggleMobileMenu}
+            aria-label="Toggle menu"
+            aria-expanded={isMobileMenuOpen}
+          >
+            <span className="hamburger-line" />
+            <span className="hamburger-line" />
+          </button>
+        </div>
       </nav>
 
       {isMobileMenuOpen && (

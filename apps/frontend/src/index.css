@@ -1,7 +1,6 @@
 /* 180DC VIT Chennai Refined Styles */
 :root {
   --primary-green: #8dc63f;
-  /* Official 180DC Lime Green */
   --primary-dark-green: #75a633;
   --primary-white: #ffffff;
   --text-black: #111111;
@@ -11,6 +10,28 @@
   --transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   --shadow-sm: 0 4px 6px rgba(141, 198, 63, 0.05);
   --shadow-md: 0 10px 20px rgba(141, 198, 63, 0.15);
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9f9f9;
+  --bg-card: #ffffff;
+  --border-light: rgba(0, 0, 0, 0.06);
+  --text-primary: #111111;
+  --text-secondary: #444444;
+  --splash-bg: #ffffff;
+}
+
+[data-theme="dark"] {
+  --primary-white: #1a1a2e;
+  --text-black: #e8e8e8;
+  --text-gray: #a0a0b0;
+  --shadow-sm: 0 4px 6px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 10px 20px rgba(0, 0, 0, 0.4);
+  --bg-primary: #0f0f1a;
+  --bg-secondary: #161625;
+  --bg-card: #1e1e32;
+  --border-light: rgba(255, 255, 255, 0.06);
+  --text-primary: #e8e8e8;
+  --text-secondary: #a0a0b0;
+  --splash-bg: #0f0f1a;
 }
 
 * {
@@ -22,10 +43,11 @@
 html,
 body {
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
-  color: var(--text-black);
+  color: var(--text-primary);
   scroll-behavior: smooth;
-  background-color: var(--primary-white);
+  background-color: var(--bg-primary);
   line-height: 1.7;
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
 /* Utilities */
@@ -50,12 +72,12 @@ body {
 }
 
 .card-white {
-  background-color: var(--primary-white);
+  background-color: var(--bg-card);
   box-shadow: var(--shadow-sm);
 }
 
 .card-outline-green {
-  background-color: var(--primary-white);
+  background-color: var(--bg-card);
   border: 3px solid var(--primary-green);
   box-shadow: var(--shadow-sm);
 }
@@ -98,11 +120,11 @@ h4 {
 p {
   margin-bottom: 1rem;
   font-size: 1.1rem;
-  color: var(--text-gray);
+  color: var(--text-secondary);
 }
 
 .bg-green p {
-  color: var(--text-black);
+  color: var(--text-primary);
 }
 
 a {
@@ -248,7 +270,7 @@ a {
 
 .hero-content h1 {
   font-size: 4.5rem;
-  color: var(--text-black);
+  color: var(--text-primary);
 }
 
 @media (max-width: 768px) {
@@ -526,9 +548,9 @@ a {
 }
 
 .copyright {
-  border-top: 1px solid #eaeaea;
+  border-top: 1px solid var(--border-light);
   padding: 2rem 0;
-  color: var(--text-gray);
+  color: var(--text-secondary);
   font-size: 0.9rem;
 }
 
@@ -619,7 +641,7 @@ a {
   width: 100%;
   height: 100%;
   z-index: 0;
-  background: #ffffff;
+  background: var(--splash-bg);
 }
 
 .splash-content {
@@ -662,7 +684,7 @@ a {
 .splash-title-variable {
   font-size: 4.5rem;
   font-weight: 400;
-  color: #111111;
+  color: var(--text-primary);
   line-height: 1.1;
   letter-spacing: -0.03em;
   display: inline-block;
@@ -683,7 +705,7 @@ a {
   font-weight: 500;
   max-width: 800px;
   margin: 0 auto;
-  color: #444444;
+  color: var(--text-secondary);
   line-height: 1.6;
 }
 
@@ -717,7 +739,8 @@ a {
 .scroll-mouse {
   width: 26px;
   height: 40px;
-  border: 2px solid rgba(0, 0, 0, 0.35);
+  border: 2px solid var(--text-secondary);
+  opacity: 0.6;
   border-radius: 13px;
   position: relative;
   display: flex;
@@ -755,7 +778,8 @@ a {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: rgba(0, 0, 0, 0.55);
+  color: var(--text-secondary);
+  opacity: 0.6;
 }
 
 /* ============================
@@ -801,7 +825,7 @@ section.bg-green > .container {
 /* Card hover enhancements */
 .card.card-white {
   transition: var(--transition);
-  border: 1px solid rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border-light);
 }
 
 .card.card-white:hover {
@@ -1055,7 +1079,7 @@ section.bg-green > .container {
   left: 0;
   width: 100%;
   height: 100px;
-  background: linear-gradient(to top, #ffffff, transparent);
+  background: linear-gradient(to top, var(--bg-primary), transparent);
   pointer-events: none;
   z-index: 2;
 }

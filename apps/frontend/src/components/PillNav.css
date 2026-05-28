@@ -5,11 +5,15 @@
   right: 0;
   z-index: 99;
   padding: 0 40px;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(16px) saturate(1.3);
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--border-light);
   transition: background 0.3s ease;
+}
+
+[data-theme="dark"] .pill-nav-container {
+  background: rgba(20, 20, 35, 0.85);
 }
 
 .pill-nav {
@@ -53,7 +57,7 @@
 .pill-brand-text {
   font-size: 20px;
   font-weight: 700;
-  color: #111;
+  color: var(--text-primary);
   letter-spacing: -0.02em;
   white-space: nowrap;
   display: flex;
@@ -89,7 +93,7 @@
   justify-content: center;
   height: 38px;
   padding: 0 18px;
-  color: #555;
+  color: var(--text-secondary);
   text-decoration: none;
   border-radius: 8px;
   font-weight: 500;
@@ -101,7 +105,7 @@
 
 .pill:hover {
   background: rgba(141, 198, 63, 0.1);
-  color: #111;
+  color: var(--text-primary);
 }
 
 .pill.is-active {
@@ -130,6 +134,35 @@
   .mobile-only {
     display: flex;
   }
+}
+
+.pill-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.theme-toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.2s ease, transform 0.2s ease;
+  color: var(--text-secondary);
+}
+
+.theme-toggle:hover {
+  background: rgba(141, 198, 63, 0.1);
+  transform: scale(1.1);
+  color: var(--text-primary);
 }
 
 .mobile-menu-button {
@@ -161,7 +194,7 @@
 .hamburger-line {
   width: 20px;
   height: 2px;
-  background: #444;
+  background: var(--text-secondary);
   border-radius: 2px;
   transform-origin: center;
   transition: transform 0.3s ease;
@@ -186,7 +219,11 @@
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
   z-index: 98;
   padding: 8px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--border-light);
+}
+
+[data-theme="dark"] .mobile-menu-popover {
+  background: rgba(20, 20, 35, 0.97);
 }
 
 .mobile-menu-list {
@@ -201,7 +238,7 @@
 .mobile-menu-link {
   display: block;
   padding: 14px 20px;
-  color: #444;
+  color: var(--text-secondary);
   text-decoration: none;
   font-size: 16px;
   font-weight: 500;
@@ -211,7 +248,7 @@
 
 .mobile-menu-link:hover {
   background: rgba(141, 198, 63, 0.1);
-  color: #111;
+  color: var(--text-primary);
 }
 
 .mobile-menu-link.is-active {

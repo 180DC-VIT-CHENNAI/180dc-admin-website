@@ -1,15 +1,12 @@
 name = "public-api"
 type = "javascript"
 main = "./index.ts"
-d1_databases = [
-  { binding = "DB", database_name = "main", database_id = "<your-d1-id>" }
-]
-r2_buckets = [
-  { binding = "R2", bucket_name = "public-api-bucket" }
-]
-kv_namespaces = [
-  { binding = "KV", id = "<your-kv-id>" }
-]
-queues.producers = [
-  { binding = "QUEUE", queue_name = "jobs-queue" }
-]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "180dc-db"
+database_id = "ee99b36c-b013-4cde-b136-eba5b044bd4b"
+
+[[kv_namespaces]]
+binding = "AUTH_SESSIONS"
+id = "83ebac816f4b44b7bc4419c2e898cd59"

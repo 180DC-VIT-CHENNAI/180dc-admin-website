@@ -79,6 +79,7 @@ function App() {
     { label: "Leadership", href: "#leadership" },
     { label: "Blog", href: "#blog" },
     { label: "Partners", href: "#partners" },
+    { label: "Recruitments", href: "/recruitments" },
   ];
 
   return (
