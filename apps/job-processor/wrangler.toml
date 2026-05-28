@@ -1,0 +1,15 @@
+name = "job-processor"
+type = "javascript"
+main = "./index.ts"
+d1_databases = [
+  { binding = "DB", database_name = "main", database_id = "<your-d1-id>" }
+]
+r2_buckets = [
+  { binding = "R2", bucket_name = "job-processor-bucket" }
+]
+kv_namespaces = [
+  { binding = "KV", id = "<your-kv-id>" }
+]
+queues.consumers = [
+  { queue = "jobs-queue" }
+]
