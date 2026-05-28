@@ -104,7 +104,7 @@ const Globe = () => {
   useEffect(() => {
     if (!globeRef.current) return;
 
-    globeRef.current.pointOfView({ lat: 22, lng: 82, altitude: 2.2 }, 0);
+    globeRef.current.pointOfView({ lat: 20, lng: 78, altitude: 1.6 }, 0);
     globeRef.current.controls().autoRotate = true;
     globeRef.current.controls().autoRotateSpeed = 0.5;
 
@@ -116,7 +116,7 @@ const Globe = () => {
         scrub: 1,
         onUpdate: (self) => {
           if (globeRef.current) {
-            const altitude = 2.2 - (self.progress * 0.7);
+            const altitude = 1.6 - (self.progress * 0.5);
             globeRef.current.pointOfView({ altitude }, 0);
           }
         }
