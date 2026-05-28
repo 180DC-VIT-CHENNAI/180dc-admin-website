@@ -49,21 +49,38 @@ const Globe = () => {
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
 
   useEffect(() => {
-    // Load GeoJSON for country borders
-    // Using a reliable source for world boundaries
-    fetch('https://raw.githubusercontent.com/vasturiano/three-globe/master/example/country-polygons/ne_110m_admin_0_countries.geojson')
-      .then(res => res.json())
-      .then(data => {
-        // Find India and simplify properties for easier styling if needed
-        setCountries(data);
-      });
+    // Load World GeoJSON and Official India GeoJSON (including PoK and Aksai Chin)
+    const worldUrl = 'https://raw.githubusercontent.com/vasturiano/three-globe/master/example/country-polygons/ne_110m_admin_0_countries.geojson';
+    const indiaUrl = 'https://gist.githubusercontent.com/jbrobst/56c13bbbf9d97d187fea01ca62ea5112/raw/india_states.geojson';
+
+    Promise.all([
+      fetch(worldUrl).then(res => res.json()),
+      fetch(indiaUrl).then(res => res.json())
+    ]).then(([worldData, indiaData]) => {
+      // Filter out original India from world map to avoid overlap issues
+      const otherCountries = worldData.features.filter((f: any) => f.properties.ISO_A3 !== 'IND');
+      
+      // Tag India state features as part of India for consistent styling
+      const indiaFeatures = indiaData.features.map((f: any) => ({
+        ...f,
+        properties: {
+          ...f.properties,
+          ISO_A3: 'IND',
+          ADMIN: 'India'
+        }
+      }));
+
+      setCountries({ features: [...otherCountries, ...indiaFeatures] });
+    }).catch(err => {
+      console.error("Error loading GeoJSON data:", err);
+    });
   }, []);
 
   useEffect(() => {
     if (!globeRef.current) return;
 
-    // Set initial camera position
-    globeRef.current.pointOfView({ lat: 20, lng: 80, altitude: 2.5 }, 0);
+    // Set initial camera position - focused on India
+    globeRef.current.pointOfView({ lat: 22, lng: 82, altitude: 2.2 }, 0);
 
     // Auto-rotation
     globeRef.current.controls().autoRotate = true;
@@ -79,7 +96,7 @@ const Globe = () => {
         onUpdate: (self) => {
           if (globeRef.current) {
             // Zoom in as we scroll towards the section
-            const altitude = 2.5 - (self.progress * 0.8);
+            const altitude = 2.2 - (self.progress * 0.7);
             globeRef.current.pointOfView({ altitude }, 0);
           }
         }
@@ -147,12 +164,12 @@ const Globe = () => {
         
         // Polygons (Country Borders)
         polygonsData={countries.features}
-        polygonCapColor={(d: any) => d.properties.ISO_A3 === 'IND' ? 'rgba(141, 198, 63, 0.3)' : 'rgba(255, 255, 255, 0.05)'}
+        polygonCapColor={(d: any) => d.properties.ISO_A3 === 'IND' ? 'rgba(141, 198, 63, 0.4)' : 'rgba(255, 255, 255, 0.05)'}
         polygonSideColor={() => 'rgba(0, 0, 0, 0.05)'}
         polygonStrokeColor={(d: any) => d.properties.ISO_A3 === 'IND' ? '#8dc63f' : '#444'}
         polygonLabel={({ properties: d }: any) => `
           <div class="globe-label">
-            <b>${d.ADMIN} (${d.ISO_A3})</b>
+            <b>${d.ADMIN || d.ST_NM}</b>
           </div>
         `}
         onPolygonHover={(d: any) => setHoveredCountry(d ? d.properties.ISO_A3 : null)}
@@ -162,31 +179,37 @@ const Globe = () => {
         pointLat="lat"
         pointLng="lng"
         pointColor="color"
-        pointAltitude={0.1}
-        pointRadius={0.5}
+        pointAltitude={0.12}
+        pointRadius={1.2} // Increased for better clickability
         pointsMerge={false}
         pointLabel="name"
-        onPointClick={(point: any) => setSelectedLocation(point)}
+        onPointClick={(point: any) => {
+          console.log("Point clicked:", point);
+          setSelectedLocation(point);
+        }}
 
         // Labels
         labelsData={mainLocations}
         labelLat="lat"
         labelLng="lng"
         labelText="name"
-        labelSize={1.5}
-        labelDotRadius={0.5}
+        labelSize={2.0} // Increased size
+        labelDotRadius={0.7}
         labelColor={() => '#8dc63f'}
         labelResolution={2}
-        onLabelClick={(label: any) => setSelectedLocation(label)}
+        onLabelClick={(label: any) => {
+          console.log("Label clicked:", label);
+          setSelectedLocation(label);
+        }}
 
         // Rings (Secondary Branches)
         ringsData={secondaryBranches}
         ringLat="lat"
         ringLng="lng"
         ringColor={() => 'rgba(141, 198, 63, 0.6)'}
-        ringMaxRadius={2}
-        ringPropagationSpeed={2}
-        ringRepeatPeriod={1000}
+        ringMaxRadius={2.5}
+        ringPropagationSpeed={3}
+        ringRepeatPeriod={800}
       />
       <div className="globe-overlay-info">
         <h3>180DC Global Impact</h3>
