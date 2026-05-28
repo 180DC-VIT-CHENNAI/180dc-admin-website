@@ -177,7 +177,6 @@
 }
 
 .campus-panel {
-  background: #fff;
   border-radius: 24px 24px 0 0;
   width: 100%;
   max-width: 1000px;
@@ -203,7 +202,7 @@
   border-radius: 50%;
   border: none;
   background: rgba(0, 0, 0, 0.06);
-  color: #555;
+  color: var(--text-secondary);
   font-size: 18px;
   cursor: pointer;
   display: flex;
@@ -246,7 +245,7 @@
 .campus-panel-info h2 {
   font-size: 26px;
   font-weight: 700;
-  color: #111;
+  color: var(--text-primary);
   margin: 0 0 4px 0;
 }
 
@@ -260,7 +259,7 @@
 .campus-panel-desc {
   font-size: 14px;
   line-height: 1.7;
-  color: #555;
+  color: var(--text-secondary);
   margin: 0 0 18px 0;
 }
 
@@ -271,7 +270,7 @@
 .campus-panel-buildings h3 {
   font-size: 18px;
   font-weight: 600;
-  color: #111;
+  color: var(--text-primary);
   margin: 0 0 16px 0;
 }
 
@@ -302,6 +301,10 @@
   justify-content: center;
 }
 
+[data-theme="dark"] .campus-building-image {
+  background: linear-gradient(135deg, #2a2a2a, #333);
+}
+
 .campus-building-image span {
   font-size: 14px;
   font-weight: 600;
@@ -316,7 +319,7 @@
   padding: 10px 12px;
   font-size: 13px;
   font-weight: 500;
-  color: #444;
+  color: var(--text-secondary);
   text-align: center;
 }
 

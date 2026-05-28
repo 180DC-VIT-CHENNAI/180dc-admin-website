@@ -1,0 +1,443 @@
+.recruitments-page {
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+.recruitments-hero {
+  position: relative;
+  padding: 140px 40px 80px;
+  text-align: center;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f9fbf5 0%, #f0f5e8 50%, #e8f0dc 100%);
+}
+
+[data-theme="dark"] .recruitments-hero {
+  background: linear-gradient(135deg, #1a1a2e 0%, #161625 50%, #1e1e32 100%);
+}
+
+.recruitments-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 20% 50%, rgba(141, 198, 63, 0.08) 0%, transparent 50%),
+              radial-gradient(circle at 80% 30%, rgba(141, 198, 63, 0.06) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.recruitments-hero h1 {
+  font-size: 3rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0 0 12px;
+  letter-spacing: -0.03em;
+  position: relative;
+}
+
+.recruitments-hero h1 span {
+  color: var(--primary-green);
+}
+
+.recruitments-hero p {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  max-width: 600px;
+  margin: 0 auto;
+  line-height: 1.7;
+  position: relative;
+}
+
+.recruitments-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--primary-green);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 20px;
+  position: relative;
+}
+
+.recruitments-content {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 60px 40px 100px;
+}
+
+.roadmap-header {
+  text-align: center;
+  margin-bottom: 60px;
+}
+
+.roadmap-header h2 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.roadmap-header p {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  margin: 0;
+}
+
+.roadmap-timeline {
+  position: relative;
+  padding-left: 40px;
+}
+
+.roadmap-timeline::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(to bottom, var(--primary-green), rgba(141, 198, 63, 0.2));
+  border-radius: 3px;
+}
+
+.roadmap-step {
+  position: relative;
+  margin-bottom: 40px;
+  padding-left: 40px;
+}
+
+.roadmap-step:last-child {
+  margin-bottom: 0;
+}
+
+.roadmap-step-dot {
+  position: absolute;
+  left: -33px;
+  top: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary-green);
+  border: 4px solid var(--bg-primary);
+  box-shadow: 0 0 0 3px var(--primary-green);
+  z-index: 1;
+}
+
+.roadmap-step.upcoming .roadmap-step-dot {
+  background: var(--text-secondary);
+  opacity: 0.3;
+  box-shadow: 0 0 0 3px var(--text-secondary);
+}
+
+.roadmap-step-number {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--primary-green);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.roadmap-step.upcoming .roadmap-step-number {
+  color: var(--text-secondary);
+}
+
+.roadmap-step-card {
+  background: var(--bg-card);
+  border-radius: 16px;
+  padding: 28px 32px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--border-light);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.roadmap-step-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.1);
+}
+
+.roadmap-step-card h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 6px;
+}
+
+.roadmap-step-card .step-subtitle {
+  font-size: 0.85rem;
+  color: var(--primary-green);
+  font-weight: 500;
+  margin-bottom: 14px;
+}
+
+.roadmap-step-card .step-desc {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin: 0 0 16px;
+}
+
+.roadmap-step-card .step-details {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+
+.roadmap-step-card .step-details h4 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 12px;
+}
+
+.roadmap-step-card .step-details ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 24px;
+}
+
+.roadmap-step-card .step-details ul li {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  padding: 4px 0;
+  position: relative;
+  padding-left: 18px;
+}
+
+.roadmap-step-card .step-details ul li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 11px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary-green);
+  opacity: 0.4;
+}
+
+.roadmap-step-card .step-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary-green);
+  margin-top: 4px;
+}
+
+.roadmap-step.upcoming .roadmap-step-card {
+  opacity: 0.6;
+}
+
+.roadmap-step.upcoming .step-status {
+  color: var(--text-secondary);
+}
+
+.recruitments-cta {
+  text-align: center;
+  margin-top: 60px;
+  padding: 40px;
+  background: linear-gradient(135deg, var(--primary-green), var(--primary-dark-green));
+  border-radius: 20px;
+  color: #fff;
+}
+
+.recruitments-cta h3 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: #fff;
+}
+
+.recruitments-cta p {
+  font-size: 0.95rem;
+  opacity: 0.9;
+  margin: 0 0 20px;
+  color: #fff;
+}
+
+.recruitments-cta .btn-white {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  color: var(--primary-green);
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 12px 28px;
+  border-radius: 9999px;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.recruitments-cta .btn-white:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.application-form-section {
+  margin-top: 60px;
+  animation: formSlideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes formSlideIn {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.form-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.form-header h2 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 6px;
+}
+
+.form-header p {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.application-form {
+  background: var(--bg-card);
+  border-radius: 20px;
+  padding: 40px;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--border-light);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group-full {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  padding: 12px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: var(--primary-green);
+  box-shadow: 0 0 0 3px rgba(141, 198, 63, 0.12);
+  background: var(--bg-card);
+}
+
+[data-theme="dark"] .form-group input,
+[data-theme="dark"] .form-group select,
+[data-theme="dark"] .form-group textarea {
+  color-scheme: dark;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.form-actions .btn {
+  padding: 12px 32px;
+  font-size: 0.95rem;
+  border-radius: 10px;
+}
+
+@media (max-width: 768px) {
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .application-form {
+    padding: 24px;
+  }
+
+  .form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .form-actions .btn {
+    text-align: center;
+  }
+  .recruitments-hero {
+    padding: 120px 20px 60px;
+  }
+
+  .recruitments-hero h1 {
+    font-size: 2rem;
+  }
+
+  .recruitments-content {
+    padding: 40px 20px 80px;
+  }
+
+  .roadmap-timeline {
+    padding-left: 32px;
+  }
+
+  .roadmap-step {
+    padding-left: 32px;
+  }
+
+  .roadmap-step-dot {
+    left: -27px;
+    width: 16px;
+    height: 16px;
+  }
+
+  .roadmap-step-card {
+    padding: 20px;
+  }
+
+  .roadmap-step-card .step-details ul {
+    grid-template-columns: 1fr;
+  }
+}
