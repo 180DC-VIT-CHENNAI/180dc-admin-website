@@ -1,14 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import './index.css';
 import Globe from './components/Globe';
+import MagicRings from './components/MagicRings';
+import VariableProximity from './components/VariableProximity';
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 gsap.registerPlugin(ScrollTrigger);
 
 function App() {
+  const splashRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    // Smooth scrolling for navigation links
     const anchors = document.querySelectorAll('a[href^="#"]');
     const handleClick = function (this: HTMLAnchorElement, e: Event) {
       e.preventDefault();
@@ -27,10 +30,23 @@ function App() {
       anchor.addEventListener("click", handleClick as EventListener);
     });
 
+    const navbar = document.querySelector('.navbar');
+    const handleScroll = () => {
+      if (navbar) {
+        if (window.scrollY > 50) {
+          navbar.classList.add('scrolled');
+        } else {
+          navbar.classList.remove('scrolled');
+        }
+      }
+    };
+    window.addEventListener('scroll', handleScroll);
+
     return () => {
       anchors.forEach((anchor) => {
         anchor.removeEventListener("click", handleClick as EventListener);
       });
+      window.removeEventListener('scroll', handleScroll);
     };
   }, []);
 
@@ -43,28 +59,80 @@ function App() {
           <span className="logo-text">VIT Chennai</span>
         </a>
         <ul className="nav-links">
-          <li>
-            <a href="#about">About</a>
-          </li>
-          <li>
-            <a href="#case-studies">Case Studies</a>
-          </li>
-          <li>
-            <a href="#leadership">Leadership</a>
-          </li>
-          <li>
-            <a href="#blog">Blog</a>
-          </li>
-          <li>
-            <a href="#partners">Partners</a>
-          </li>
+          <li><a href="#about">About</a></li>
+          <li><a href="#case-studies">Case Studies</a></li>
+          <li><a href="#leadership">Leadership</a></li>
+          <li><a href="#blog">Blog</a></li>
+          <li><a href="#partners">Partners</a></li>
         </ul>
       </nav>
 
+      {/* Splash Landing Page */}
+      <section className="splash-landing">
+        <div className="splash-bg" ref={splashRef}>
+          <MagicRings
+            color="#8dc63f"
+            colorTwo="#a8d96a"
+            ringCount={10}
+            speed={0.8}
+            attenuation={8}
+            lineThickness={4}
+            baseRadius={0.25}
+            radiusStep={0.15}
+            scaleRate={0.12}
+            opacity={1}
+            blur={0}
+            noiseAmount={0.05}
+            rotation={0}
+            ringGap={1.4}
+            fadeIn={0.7}
+            fadeOut={0.5}
+            followMouse={true}
+            mouseInfluence={0.3}
+            hoverScale={1.3}
+            parallax={0.08}
+            clickBurst={true}
+          />
+        </div>
+        <div className="splash-content splash-white">
+          <div className="splash-logo-white"></div>
+          <div className="splash-title-wrapper">
+            <VariableProximity
+              label="180 Degrees Consulting"
+              className="splash-title-variable"
+              containerRef={splashRef}
+              fromFontVariationSettings="'wght' 400, 'opsz' 9"
+              toFontVariationSettings="'wght' 1000, 'opsz' 40"
+              radius={120}
+              falloff="linear"
+            />
+            <br />
+            <VariableProximity
+              label="VIT Chennai"
+              className="splash-subtitle-variable"
+              containerRef={splashRef}
+              fromFontVariationSettings="'wght' 300, 'opsz' 9"
+              toFontVariationSettings="'wght' 900, 'opsz' 40"
+              radius={100}
+              falloff="linear"
+            />
+          </div>
+          <p className="splash-tagline">
+            "Empowering organizations to reach their full potential and maximize their social impact."
+          </p>
+        </div>
+        <div className="scroll-indicator">
+          <div className="scroll-mouse">
+            <div className="scroll-wheel"></div>
+          </div>
+          <span className="scroll-text">Scroll to explore</span>
+        </div>
+      </section>
+
       {/* Hero Section */}
-      <header className="hero bg-white animated-bg">
+      <header id="hero" className="hero bg-white animated-bg">
         <div className="container hero-split">
-          <div className="hero-content">
+          <div className="hero-content reveal">
             <h1>
               Transforming Non-Profits.
               <br />
@@ -84,7 +152,7 @@ function App() {
               </a>
             </div>
           </div>
-          <div className="hero-image-wrapper">
+          <div className="hero-image-wrapper reveal reveal-delay-2">
             <div className="hero-image-backdrop"></div>
             <img
               src="/images/VIT-chennai.png"
@@ -93,7 +161,7 @@ function App() {
             />
           </div>
         </div>
-            </header>
+      </header>
 
       {/* Global Network Section */}
       <section id="global-network" className="bg-white">
@@ -106,11 +174,10 @@ function App() {
         </div>
       </section>
 
-
       {/* About Section */}
       <section id="about" className="bg-green">
         <div className="container">
-          <div className="card card-white">
+          <div className="card card-white reveal">
             <h2>About Our Branch</h2>
             <p>
               Founded at VIT Chennai, our branch consists of high-achieving,
@@ -125,9 +192,9 @@ function App() {
       {/* Case Studies Section */}
       <section id="case-studies" className="bg-white">
         <div className="container">
-          <h2>Latest Case Studies</h2>
+          <h2 className="reveal">Latest Case Studies</h2>
           <div className="grid">
-            <div className="card card-outline-green hover-lift">
+            <div className="card card-outline-green hover-lift reveal reveal-delay-1">
               <h3>EdTech Startup Growth</h3>
               <p>
                 Developed a comprehensive Go-To-Market strategy and user
@@ -137,7 +204,7 @@ function App() {
                 Find out more &gt;
               </a>
             </div>
-            <div className="card card-outline-green hover-lift">
+            <div className="card card-outline-green hover-lift reveal reveal-delay-2">
               <h3>NGO Operational Overhaul</h3>
               <p>
                 Streamlined logistics and supply chain inefficiencies for a
@@ -154,21 +221,21 @@ function App() {
       {/* Leadership Section */}
       <section id="leadership" className="bg-green">
         <div className="container">
-          <h2 className="card card-white title-card">Leadership Team</h2>
+          <h2 className="card card-white title-card reveal">Leadership Team</h2>
           <div className="grid cols-4">
-            <div className="card card-white team-card">
+            <div className="card card-white team-card reveal reveal-delay-1">
               <h4>John Doe</h4>
               <p>President</p>
             </div>
-            <div className="card card-white team-card">
+            <div className="card card-white team-card reveal reveal-delay-2">
               <h4>Jane Smith</h4>
               <p>Director of External Relations</p>
             </div>
-            <div className="card card-white team-card">
+            <div className="card card-white team-card reveal reveal-delay-3">
               <h4>Alex Turner</h4>
               <p>Director of Internal Relations</p>
             </div>
-            <div className="card card-white team-card">
+            <div className="card card-white team-card reveal">
               <h4>Emily Chen</h4>
               <p>Director of L&D</p>
             </div>
@@ -179,7 +246,7 @@ function App() {
       {/* Blog Section */}
       <section id="blog" className="bg-white">
         <div className="container">
-          <div className="section-header">
+          <div className="section-header reveal">
             <div>
               <h2>Consulting Insights & Blogs</h2>
               <p>Insights from our consultants and network.</p>
@@ -189,7 +256,7 @@ function App() {
             </a>
           </div>
           <div className="grid">
-            <div className="card bg-green inner-card-wrapper">
+            <div className="card bg-green inner-card-wrapper reveal reveal-delay-1">
               <div className="card-white inner-card">
                 <h3>The Future of Social Impact</h3>
                 <p>
@@ -200,7 +267,7 @@ function App() {
                 </a>
               </div>
             </div>
-            <div className="card bg-green inner-card-wrapper">
+            <div className="card bg-green inner-card-wrapper reveal reveal-delay-2">
               <div className="card-white inner-card">
                 <h3>Strategy Frameworks 101</h3>
                 <p>
@@ -219,7 +286,7 @@ function App() {
       {/* Partners Section */}
       <section id="partners" className="bg-green">
         <div className="container container-partners">
-          <div className="card card-white">
+          <div className="card card-white reveal">
             <h2>Our Partners</h2>
             <div className="marquee">
               <div className="marquee-content">
@@ -244,7 +311,6 @@ function App() {
             <a href="mailto:vit.chennai@180dc.org" className="footer-link">
               vit.chennai@180dc.org
             </a>
-
             <div className="social-links">
               <h4>Connect With Us</h4>
               <ul>
@@ -288,5 +354,3 @@ function App() {
 }
 
 export default App;
-
-
