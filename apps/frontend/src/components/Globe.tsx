@@ -14,36 +14,47 @@ const Globe = () => {
   const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
 
   // Locations data
-  const mainLocations = useMemo(() => [
+  const allBranches = useMemo(() => [
     {
       id: "vit-chennai",
       name: "VIT Chennai",
       lat: 12.8406,
       lng: 80.1533,
-      size: 0.5,
+      size: 0.8,
       color: '#8dc63f',
+      isPrimary: true,
       mapSrc: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3890.3159938833917!2d80.1533094!3d12.8406259!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3a5259af8e491f67%3A0x944b42131b757d2d!2sVellore%20Institute%20of%20Technology%20-%20VIT%20Chennai!5e0!3m2!1sen!2sin!4v1716911684347!5m2!1sen!2sin",
       googleMapsUrl: "https://www.google.com/maps/search/VIT+Chennai,+Chennai,+Tamil+Nadu,+India/@12.8406259,80.1533094,17z",
-    }
-  ], []);
-
-  const secondaryBranches = useMemo(() => [
-    { id: "vlr", lat: 12.9717, lng: 79.1594, name: "Vellore" },
-    { id: "trc", lat: 10.7905, lng: 78.7047, name: "Trichy" },
-    { id: "khp", lat: 22.3460, lng: 87.2320, name: "Kharagpur" },
-    { id: "hyd", lat: 17.3850, lng: 78.4867, name: "Hyderabad" },
-    { id: "delhi", lat: 28.6139, lng: 77.2090, name: "Delhi" },
-    { id: "lon", lat: 51.5074, lng: -0.1278, name: "London" },
-    { id: "cam", lat: 52.2053, lng: 0.1218, name: "Cambridge" },
-    { id: "edi", lat: 55.9533, lng: -3.1883, name: "Edinburgh" },
-    { id: "pri", lat: 40.3431, lng: -74.6551, name: "Princeton" },
-    { id: "tor", lat: 43.6532, lng: -79.3832, name: "Toronto" },
-    { id: "mel", lat: -37.8136, lng: 144.9631, name: "Melbourne" },
-    { id: "sgp", lat: 1.3521, lng: 103.8198, name: "Singapore" },
-    { id: "hkg", lat: 22.3193, lng: 114.1694, name: "Hong Kong" },
-    { id: "jpn", lat: 35.6762, lng: 139.6503, name: "Tokyo" },
-    { id: "ber", lat: 52.5200, lng: 13.4050, name: "Berlin" },
-    { id: "par", lat: 48.8566, lng: 2.3522, name: "Paris" },
+    },
+    // India
+    { id: "vlr", lat: 12.9717, lng: 79.1594, name: "Vellore", color: '#ffffff' },
+    { id: "trc", lat: 10.7905, lng: 78.7047, name: "Trichy", color: '#ffffff' },
+    { id: "khp", lat: 22.3460, lng: 87.2320, name: "Kharagpur", color: '#ffffff' },
+    { id: "hyd", lat: 17.3850, lng: 78.4867, name: "Hyderabad", color: '#ffffff' },
+    { id: "delhi", lat: 28.6139, lng: 77.2090, name: "Delhi", color: '#ffffff' },
+    { id: "pune", lat: 18.5204, lng: 73.8567, name: "Pune", color: '#ffffff' },
+    { id: "bom", lat: 19.0760, lng: 72.8777, name: "Mumbai", color: '#ffffff' },
+    // UK
+    { id: "lon", lat: 51.5074, lng: -0.1278, name: "London", color: '#ffffff' },
+    { id: "cam", lat: 52.2053, lng: 0.1218, name: "Cambridge", color: '#ffffff' },
+    { id: "edi", lat: 55.9533, lng: -3.1883, name: "Edinburgh", color: '#ffffff' },
+    { id: "war", lat: 52.3793, lng: -1.5615, name: "Warwick", color: '#ffffff' },
+    // US
+    { id: "pri", lat: 40.3431, lng: -74.6551, name: "Princeton", color: '#ffffff' },
+    { id: "bos", lat: 42.3601, lng: -71.0589, name: "Boston", color: '#ffffff' },
+    { id: "nyc", lat: 40.7128, lng: -74.0060, name: "New York", color: '#ffffff' },
+    { id: "la", lat: 34.0522, lng: -118.2437, name: "Los Angeles", color: '#ffffff' },
+    // Global
+    { id: "tor", lat: 43.6532, lng: -79.3832, name: "Toronto", color: '#ffffff' },
+    { id: "mel", lat: -37.8136, lng: 144.9631, name: "Melbourne", color: '#ffffff' },
+    { id: "sgp", lat: 1.3521, lng: 103.8198, name: "Singapore", color: '#ffffff' },
+    { id: "hkg", lat: 22.3193, lng: 114.1694, name: "Hong Kong", color: '#ffffff' },
+    { id: "jpn", lat: 35.6762, lng: 139.6503, name: "Tokyo", color: '#ffffff' },
+    { id: "ber", lat: 52.5200, lng: 13.4050, name: "Berlin", color: '#ffffff' },
+    { id: "par", lat: 48.8566, lng: 2.3522, name: "Paris", color: '#ffffff' },
+    { id: "ams", lat: 52.3676, lng: 4.9041, name: "Amsterdam", color: '#ffffff' },
+    { id: "dxb", lat: 25.2048, lng: 55.2708, name: "Dubai", color: '#ffffff' },
+    { id: "syd", lat: -33.8688, lng: 151.2093, name: "Sydney", color: '#ffffff' },
   ], []);
 
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
@@ -111,7 +122,7 @@ const Globe = () => {
   return (
     <div className="globe-3d-wrapper" ref={containerRef}>
       {/* Modal Popup */}
-      {selectedLocation && (
+      {selectedLocation && selectedLocation.mapSrc && (
         <div
           className="globe-modal-backdrop"
           onClick={() => setSelectedLocation(null)}
@@ -175,41 +186,39 @@ const Globe = () => {
         onPolygonHover={(d: any) => setHoveredCountry(d ? d.properties.ISO_A3 : null)}
 
         // Points (Main Locations)
-        pointsData={mainLocations}
+        pointsData={allBranches}
         pointLat="lat"
         pointLng="lng"
         pointColor="color"
         pointAltitude={0.12}
-        pointRadius={1.2} // Increased for better clickability
+        pointRadius={(d: any) => d.isPrimary ? 1.5 : 0.6}
         pointsMerge={false}
         pointLabel="name"
         onPointClick={(point: any) => {
-          console.log("Point clicked:", point);
-          setSelectedLocation(point);
+          if (point.mapSrc) setSelectedLocation(point);
         }}
 
         // Labels
-        labelsData={mainLocations}
+        labelsData={allBranches}
         labelLat="lat"
         labelLng="lng"
         labelText="name"
-        labelSize={2.0} // Increased size
-        labelDotRadius={0.7}
-        labelColor={() => '#8dc63f'}
+        labelSize={(d: any) => d.isPrimary ? 2.5 : 1.2}
+        labelDotRadius={(d: any) => d.isPrimary ? 0.8 : 0.4}
+        labelColor={(d: any) => d.isPrimary ? '#8dc63f' : '#ffffff'}
         labelResolution={2}
         onLabelClick={(label: any) => {
-          console.log("Label clicked:", label);
-          setSelectedLocation(label);
+          if (label.mapSrc) setSelectedLocation(label);
         }}
 
         // Rings (Secondary Branches)
-        ringsData={secondaryBranches}
+        ringsData={allBranches}
         ringLat="lat"
         ringLng="lng"
-        ringColor={() => 'rgba(141, 198, 63, 0.6)'}
-        ringMaxRadius={2.5}
+        ringColor={(d: any) => d.isPrimary ? 'rgba(141, 198, 63, 0.8)' : 'rgba(255, 255, 255, 0.4)'}
+        ringMaxRadius={(d: any) => d.isPrimary ? 3.5 : 1.8}
         ringPropagationSpeed={3}
-        ringRepeatPeriod={800}
+        ringRepeatPeriod={1000}
       />
       <div className="globe-overlay-info">
         <h3>180DC Global Impact</h3>
