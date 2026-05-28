@@ -1107,6 +1107,26 @@ section.bg-green > .container {
 }
 
 /* ============================
+   DARK MODE BUTTON FIX
+   ============================ */
+
+[data-theme="dark"] .btn {
+  color: #fff;
+}
+
+[data-theme="dark"] .btn:hover {
+  color: #fff;
+}
+
+[data-theme="dark"] .btn.outline {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .btn.outline:hover {
+  color: #fff;
+}
+
+/* ============================
    RESPONSIVE
    ============================ */
 
