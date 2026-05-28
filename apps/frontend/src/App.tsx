@@ -1,8 +1,10 @@
-import { useEffect, useRef } from "react";
-import './index.css';
-import Globe from './components/Globe';
-import MagicRings from './components/MagicRings';
-import VariableProximity from './components/VariableProximity';
+import { useEffect, useRef, useState } from "react";
+import "./index.css";
+import Globe from "./components/Globe";
+import MagicRings from "./components/MagicRings";
+import VariableProximity from "./components/VariableProximity";
+import PillNav from "./components/PillNav";
+import ColorBends from "./components/ColorBends";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
@@ -10,62 +12,82 @@ gsap.registerPlugin(ScrollTrigger);
 
 function App() {
   const splashRef = useRef<HTMLDivElement>(null);
+  const [activeNav, setActiveNav] = useState("#");
 
   useEffect(() => {
-    const anchors = document.querySelectorAll('a[href^="#"]');
-    const handleClick = function (this: HTMLAnchorElement, e: Event) {
-      e.preventDefault();
-      const targetId = this.getAttribute("href");
-      if (targetId && targetId !== "#") {
-        const targetElement = document.querySelector(targetId);
-        if (targetElement) {
-          targetElement.scrollIntoView({
-            behavior: "smooth",
-          });
-        }
-      }
-    };
-
-    anchors.forEach((anchor) => {
-      anchor.addEventListener("click", handleClick as EventListener);
+    // Reveal animations on scroll
+    const reveals = document.querySelectorAll(".reveal");
+    reveals.forEach((el) => {
+      gsap.fromTo(
+        el,
+        { opacity: 0, y: 30 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 1,
+          ease: "power3.out",
+          scrollTrigger: {
+            trigger: el,
+            start: "top 85%",
+            toggleActions: "play none none none",
+          },
+        },
+      );
     });
 
-    const navbar = document.querySelector('.navbar');
+    // Parallax effect for hero images
+    gsap.to(".hero-image", {
+      y: -50,
+      ease: "none",
+      scrollTrigger: {
+        trigger: ".hero",
+        start: "top top",
+        end: "bottom top",
+        scrub: true,
+      },
+    });
+
     const handleScroll = () => {
-      if (navbar) {
-        if (window.scrollY > 50) {
-          navbar.classList.add('scrolled');
-        } else {
-          navbar.classList.remove('scrolled');
+      const sections = [
+        "about",
+        "case-studies",
+        "leadership",
+        "blog",
+        "partners",
+      ];
+      let current = "#";
+      for (const section of sections) {
+        const element = document.getElementById(section);
+        if (element) {
+          const rect = element.getBoundingClientRect();
+          if (rect.top <= 100) {
+            current = `#${section}`;
+          }
         }
       }
+      setActiveNav(current);
     };
-    window.addEventListener('scroll', handleScroll);
 
-    return () => {
-      anchors.forEach((anchor) => {
-        anchor.removeEventListener("click", handleClick as EventListener);
-      });
-      window.removeEventListener('scroll', handleScroll);
-    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  const navItems = [
+    { label: "Home", href: "#" },
+    { label: "About", href: "#about" },
+    { label: "Case Studies", href: "#case-studies" },
+    { label: "Leadership", href: "#leadership" },
+    { label: "Blog", href: "#blog" },
+    { label: "Partners", href: "#partners" },
+  ];
 
   return (
     <>
-      {/* Navbar */}
-      <nav className="navbar bg-white">
-        <a href="#" className="logo-link" aria-label="180DC VIT Chennai">
-          <div className="navbar-logo-bg"></div>
-          <span className="logo-text">VIT Chennai</span>
-        </a>
-        <ul className="nav-links">
-          <li><a href="#about">About</a></li>
-          <li><a href="#case-studies">Case Studies</a></li>
-          <li><a href="#leadership">Leadership</a></li>
-          <li><a href="#blog">Blog</a></li>
-          <li><a href="#partners">Partners</a></li>
-        </ul>
-      </nav>
+      <PillNav
+        items={navItems}
+        activeHref={activeNav}
+        logo="/images/180DC.png"
+      />
 
       {/* Splash Landing Page */}
       <section className="splash-landing">
@@ -118,7 +140,8 @@ function App() {
             />
           </div>
           <p className="splash-tagline">
-            "Empowering organizations to reach their full potential and maximize their social impact."
+            "Empowering organizations to reach their full potential and maximize
+            their social impact."
           </p>
         </div>
         <div className="scroll-indicator">
@@ -130,7 +153,17 @@ function App() {
       </section>
 
       {/* Hero Section */}
-      <header id="hero" className="hero bg-white animated-bg">
+      <header id="hero" className="hero bg-white">
+        <div className="hero-bg-overlay">
+          <ColorBends
+            colors={["#ffffff", "#8dc63f", "#ffffff", "#a8d96a"]}
+            speed={0.15}
+            warpStrength={1.2}
+            intensity={0.8}
+            opacity={0.4}
+            iterations={2}
+          />
+        </div>
         <div className="container hero-split">
           <div className="hero-content reveal">
             <h1>
@@ -165,12 +198,26 @@ function App() {
 
       {/* Global Network Section */}
       <section id="global-network" className="bg-white">
-        <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-          <h2>Our Global Network</h2>
-          <p style={{ maxWidth: '600px', margin: '0 auto 3rem auto' }}>
-            180 Degrees Consulting spans the globe. Here is where the VIT Chennai branch anchors our impact in India.
+        <div
+          className="container"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            textAlign: "center",
+          }}
+        >
+          <h2 className="reveal">Our Global Network</h2>
+          <p
+            className="reveal reveal-delay-1"
+            style={{ maxWidth: "600px", margin: "0 auto 3rem auto" }}
+          >
+            180 Degrees Consulting spans the globe. Here is where the VIT
+            Chennai branch anchors our impact in India.
           </p>
-          <Globe />
+          <div className="reveal reveal-delay-2">
+            <Globe />
+          </div>
         </div>
       </section>
 
@@ -185,6 +232,20 @@ function App() {
               socially conscious organizations with very high quality and free
               consulting services.
             </p>
+            <div className="grid cols-3" style={{ marginTop: "3rem" }}>
+              <div className="about-stat">
+                <h3>50+</h3>
+                <p>Consultants</p>
+              </div>
+              <div className="about-stat">
+                <h3>20+</h3>
+                <p>Projects Completed</p>
+              </div>
+              <div className="about-stat">
+                <h3>100%</h3>
+                <p>Client Satisfaction</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -221,21 +282,27 @@ function App() {
       {/* Leadership Section */}
       <section id="leadership" className="bg-green">
         <div className="container">
-          <h2 className="card card-white title-card reveal">Leadership Team</h2>
-          <div className="grid cols-4">
+          <div className="reveal text-center">
+            <h2 className="card card-white title-card">Leadership Team</h2>
+          </div>
+          <div className="grid cols-4" style={{ marginTop: "2rem" }}>
             <div className="card card-white team-card reveal reveal-delay-1">
+              <div className="team-image-placeholder">JD</div>
               <h4>John Doe</h4>
               <p>President</p>
             </div>
             <div className="card card-white team-card reveal reveal-delay-2">
+              <div className="team-image-placeholder">JS</div>
               <h4>Jane Smith</h4>
               <p>Director of External Relations</p>
             </div>
             <div className="card card-white team-card reveal reveal-delay-3">
+              <div className="team-image-placeholder">AT</div>
               <h4>Alex Turner</h4>
               <p>Director of Internal Relations</p>
             </div>
             <div className="card card-white team-card reveal">
+              <div className="team-image-placeholder">EC</div>
               <h4>Emily Chen</h4>
               <p>Director of L&D</p>
             </div>

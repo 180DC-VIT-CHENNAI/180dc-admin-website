@@ -13,6 +13,7 @@ uniform vec2 uRot;
 uniform int uColorCount;
 uniform vec3 uColors[MAX_COLORS];
 uniform int uTransparent;
+uniform float uOpacity;
 uniform float uScale;
 uniform float uFrequency;
 uniform float uWarpStrength;
@@ -95,7 +96,7 @@ void main() {
     }
 
     vec3 rgb = (uTransparent > 0) ? col * a : col;
-    gl_FragColor = vec4(rgb, a);
+    gl_FragColor = vec4(rgb, a * uOpacity);
 }
 `;
 
@@ -114,6 +115,7 @@ interface ColorBendsProps {
   speed?: number;
   colors?: string[];
   transparent?: boolean;
+  opacity?: number;
   autoRotate?: number;
   scale?: number;
   frequency?: number;
@@ -133,6 +135,7 @@ export default function ColorBends({
   speed = 0.2,
   colors = [],
   transparent = true,
+  opacity = 1.0,
   autoRotate = 0,
   scale = 1,
   frequency = 1,
@@ -174,6 +177,7 @@ export default function ColorBends({
         uColorCount: { value: 0 },
         uColors: { value: uColorsArray },
         uTransparent: { value: transparent ? 1 : 0 },
+        uOpacity: { value: opacity },
         uScale: { value: scale },
         uFrequency: { value: frequency },
         uWarpStrength: { value: warpStrength },
@@ -209,22 +213,22 @@ export default function ColorBends({
 
     const clock = new THREE.Clock();
 
-    const handleResize = () => {
+    const handleResize: () => void = () => {
       const w = container.clientWidth || 1;
       const h = container.clientHeight || 1;
       renderer.setSize(w, h, false);
-      material.uniforms.uCanvas.value.set(w, h);
+      const mat = materialRef.current;
+      if (mat) mat.uniforms.uCanvas.value.set(w, h);
     };
 
     handleResize();
 
-    if ('ResizeObserver' in window) {
+    if (typeof ResizeObserver !== 'undefined' && 'ResizeObserver' in self) {
       const ro = new ResizeObserver(handleResize);
       ro.observe(container);
       resizeObserverRef.current = ro;
-    } else {
-      window.addEventListener('resize', handleResize);
     }
+    self.addEventListener('resize', handleResize);
 
     const loop = () => {
       const dt = clock.getDelta();
@@ -259,7 +263,7 @@ export default function ColorBends({
         container.removeChild(renderer.domElement);
       }
     };
-  }, [bandWidth, frequency, intensity, iterations, mouseInfluence, noise, parallax, scale, speed, transparent, warpStrength]);
+  }, [bandWidth, frequency, intensity, iterations, mouseInfluence, noise, parallax, scale, speed, transparent, warpStrength, opacity]);
 
   useEffect(() => {
     const material = materialRef.current;
@@ -278,6 +282,7 @@ export default function ColorBends({
     material.uniforms.uIterations.value = iterations;
     material.uniforms.uIntensity.value = intensity;
     material.uniforms.uBandWidth.value = bandWidth;
+    material.uniforms.uOpacity.value = opacity;
 
     const toVec3 = (hex: string) => {
       const h = hex.replace('#', '').trim();
@@ -312,7 +317,8 @@ export default function ColorBends({
     intensity,
     bandWidth,
     colors,
-    transparent
+    transparent,
+    opacity
   ]);
 
   useEffect(() => {

@@ -14,7 +14,7 @@ function useAnimationFrame(callback: () => void) {
   }, [callback]);
 }
 
-function useMousePositionRef(containerRef: React.RefObject<HTMLDivElement | null>) {
+function useMousePositionRef(containerRef: React.RefObject<HTMLDivElement | null> | undefined) {
   const positionRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {

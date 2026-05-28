@@ -1,19 +1,21 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import GlobeGL from 'react-globe.gl';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { generateDoodleGlobeTexture } from '../utils/doodleGlobe';
 import './Globe.css';
 
-// Register ScrollTrigger if not already registered (handled in App.tsx usually but safe here)
 gsap.registerPlugin(ScrollTrigger);
 
 const Globe = () => {
   const globeRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [countries, setCountries] = useState({ features: [] });
-  const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
+  const [countries, setCountries] = useState<{ features: any[] }>({ features: [] });
+  const [doodleTextureUrl, setDoodleTextureUrl] = useState<string | null>(null);
 
-  // Locations data
+  const [globeReady, setGlobeReady] = useState(false);
+  const [inkSplash, setInkSplash] = useState<{ lat: number; lng: number } | null>(null);
+
   const allBranches = useMemo(() => [
     {
       id: "vit-chennai",
@@ -26,7 +28,6 @@ const Globe = () => {
       mapSrc: "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3890.3159938833917!2d80.1533094!3d12.8406259!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3a5259af8e491f67%3A0x944b42131b757d2d!2sVellore%20Institute%20of%20Technology%20-%20VIT%20Chennai!5e0!3m2!1sen!2sin!4v1716911684347!5m2!1sen!2sin",
       googleMapsUrl: "https://www.google.com/maps/search/VIT+Chennai,+Chennai,+Tamil+Nadu,+India/@12.8406259,80.1533094,17z",
     },
-    // India
     { id: "vlr", lat: 12.9717, lng: 79.1594, name: "Vellore", color: '#ffffff' },
     { id: "trc", lat: 10.7905, lng: 78.7047, name: "Trichy", color: '#ffffff' },
     { id: "khp", lat: 22.3460, lng: 87.2320, name: "Kharagpur", color: '#ffffff' },
@@ -34,17 +35,14 @@ const Globe = () => {
     { id: "delhi", lat: 28.6139, lng: 77.2090, name: "Delhi", color: '#ffffff' },
     { id: "pune", lat: 18.5204, lng: 73.8567, name: "Pune", color: '#ffffff' },
     { id: "bom", lat: 19.0760, lng: 72.8777, name: "Mumbai", color: '#ffffff' },
-    // UK
     { id: "lon", lat: 51.5074, lng: -0.1278, name: "London", color: '#ffffff' },
     { id: "cam", lat: 52.2053, lng: 0.1218, name: "Cambridge", color: '#ffffff' },
     { id: "edi", lat: 55.9533, lng: -3.1883, name: "Edinburgh", color: '#ffffff' },
     { id: "war", lat: 52.3793, lng: -1.5615, name: "Warwick", color: '#ffffff' },
-    // US
     { id: "pri", lat: 40.3431, lng: -74.6551, name: "Princeton", color: '#ffffff' },
     { id: "bos", lat: 42.3601, lng: -71.0589, name: "Boston", color: '#ffffff' },
     { id: "nyc", lat: 40.7128, lng: -74.0060, name: "New York", color: '#ffffff' },
     { id: "la", lat: 34.0522, lng: -118.2437, name: "Los Angeles", color: '#ffffff' },
-    // Global
     { id: "tor", lat: 43.6532, lng: -79.3832, name: "Toronto", color: '#ffffff' },
     { id: "mel", lat: -37.8136, lng: 144.9631, name: "Melbourne", color: '#ffffff' },
     { id: "sgp", lat: 1.3521, lng: 103.8198, name: "Singapore", color: '#ffffff' },
@@ -60,7 +58,6 @@ const Globe = () => {
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
 
   useEffect(() => {
-    // Load World GeoJSON and Official India GeoJSON (including PoK and Aksai Chin)
     const worldUrl = 'https://raw.githubusercontent.com/vasturiano/three-globe/master/example/country-polygons/ne_110m_admin_0_countries.geojson';
     const indiaUrl = 'https://gist.githubusercontent.com/jbrobst/56c13bbbf9d97d187fea01ca62ea5112/raw/india_states.geojson';
 
@@ -68,10 +65,7 @@ const Globe = () => {
       fetch(worldUrl).then(res => res.json()),
       fetch(indiaUrl).then(res => res.json())
     ]).then(([worldData, indiaData]) => {
-      // Filter out original India from world map to avoid overlap issues
       const otherCountries = worldData.features.filter((f: any) => f.properties.ISO_A3 !== 'IND');
-      
-      // Tag India state features as part of India for consistent styling
       const indiaFeatures = indiaData.features.map((f: any) => ({
         ...f,
         properties: {
@@ -80,7 +74,6 @@ const Globe = () => {
           ADMIN: 'India'
         }
       }));
-
       setCountries({ features: [...otherCountries, ...indiaFeatures] });
     }).catch(err => {
       console.error("Error loading GeoJSON data:", err);
@@ -88,16 +81,33 @@ const Globe = () => {
   }, []);
 
   useEffect(() => {
+    if (countries.features.length === 0) return;
+
+    const timer = setTimeout(() => {
+      const worldFeatures = countries.features.filter((f: any) => f.properties.ISO_A3 !== 'IND');
+      const indiaFeatures = countries.features.filter((f: any) => f.properties.ISO_A3 === 'IND');
+
+      const texUrl = generateDoodleGlobeTexture(
+        { features: worldFeatures },
+        { features: indiaFeatures },
+        1024,
+        512
+      );
+      setDoodleTextureUrl(texUrl);
+
+      setGlobeReady(true);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [countries, allBranches]);
+
+  useEffect(() => {
     if (!globeRef.current) return;
 
-    // Set initial camera position - focused on India
     globeRef.current.pointOfView({ lat: 22, lng: 82, altitude: 2.2 }, 0);
-
-    // Auto-rotation
     globeRef.current.controls().autoRotate = true;
     globeRef.current.controls().autoRotateSpeed = 0.5;
 
-    // GSAP Scroll Animation
     const scrollAnim = gsap.to({}, {
       scrollTrigger: {
         trigger: containerRef.current,
@@ -106,7 +116,6 @@ const Globe = () => {
         scrub: 1,
         onUpdate: (self) => {
           if (globeRef.current) {
-            // Zoom in as we scroll towards the section
             const altitude = 2.2 - (self.progress * 0.7);
             globeRef.current.pointOfView({ altitude }, 0);
           }
@@ -119,124 +128,194 @@ const Globe = () => {
     };
   }, []);
 
+  const handleGlobeClick = useCallback(() => {
+    if (globeRef.current) {
+      const chennai = allBranches.find(b => b.id === 'vit-chennai');
+      if (chennai) {
+        globeRef.current.pointOfView({
+          lat: chennai.lat,
+          lng: chennai.lng,
+          altitude: 1.8
+        }, 1000);
+        setSelectedLocation(chennai);
+        setInkSplash({ lat: chennai.lat, lng: chennai.lng });
+        setTimeout(() => setInkSplash(null), 600);
+      }
+    }
+  }, [allBranches]);
+
+  const handlePointClick = useCallback((point: any) => {
+    if (point.mapSrc) {
+      setSelectedLocation(point);
+      setInkSplash({ lat: point.lat, lng: point.lng });
+      setTimeout(() => setInkSplash(null), 600);
+    }
+  }, []);
+
+  const handleLabelClick = useCallback((label: any) => {
+    if (label.mapSrc) {
+      setSelectedLocation(label);
+      setInkSplash({ lat: label.lat, lng: label.lng });
+      setTimeout(() => setInkSplash(null), 600);
+    }
+  }, []);
+
   return (
     <div className="globe-3d-wrapper" ref={containerRef}>
-      {/* Modal Popup */}
-      {selectedLocation && selectedLocation.mapSrc && (
+      {selectedLocation && selectedLocation.id === 'vit-chennai' && (
         <div
-          className="globe-modal-backdrop"
+          className="campus-panel-overlay"
           onClick={() => setSelectedLocation(null)}
-          style={{ zIndex: 10000 }}
         >
           <div
-            className="globe-modal-content"
+            className="campus-panel"
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              className="globe-modal-close"
+              className="campus-panel-close"
               onClick={() => setSelectedLocation(null)}
             >
               ✕
             </button>
-            <h3 style={{ margin: "0 0 1rem 0", color: "var(--primary-green)" }}>
-              {selectedLocation.name}
-            </h3>
-            <iframe
-              src={selectedLocation.mapSrc}
-              width="100%"
-              height="250"
-              style={{ border: 0, borderRadius: "8px", marginBottom: "1.5rem" }}
-              allowFullScreen={true}
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-            ></iframe>
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <a
-                href={selectedLocation.googleMapsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn"
-                style={{ fontSize: "0.9rem", padding: "0.6rem 1.2rem" }}
-              >
-                View on Google Maps
-              </a>
+
+            <div className="campus-panel-header">
+              <div className="campus-panel-image">
+                <img src="/images/VIT-chennai.png" alt="VIT Chennai Campus" />
+              </div>
+              <div className="campus-panel-info">
+                <h2>VIT Chennai</h2>
+                <p className="campus-panel-location">
+                  Vellore Institute of Technology, Chennai Campus
+                </p>
+                <p className="campus-panel-desc">
+                  Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.
+                </p>
+                <a
+                  href={selectedLocation.googleMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn"
+                >
+                  View on Google Maps
+                </a>
+              </div>
+            </div>
+
+            <div className="campus-panel-buildings">
+              <h3>Campus Buildings & Auditoriums</h3>
+              <div className="campus-building-grid">
+                {[
+                  "img1", "img2", "img3", "img4",
+                  "img5", "img6", "img7", "img8",
+                  "img9", "img10", "img11", "img12",
+                ].map((name) => (
+                  <div key={name} className="campus-building-card">
+                    <div className="campus-building-image">
+                      <span>{name}</span>
+                    </div>
+                    <p className="campus-building-name">{name}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      <GlobeGL
-        ref={globeRef}
-        width={700}
-        height={700}
-        backgroundColor="rgba(0,0,0,0)"
-        globeImageUrl="//unpkg.com/three-globe/example/img/earth-dark.jpg"
-        bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
-        
-        // Polygons (Country Borders)
-        polygonsData={countries.features}
-        polygonCapColor={(d: any) => d.properties.ISO_A3 === 'IND' ? 'rgba(141, 198, 63, 0.4)' : 'rgba(255, 255, 255, 0.05)'}
-        polygonSideColor={() => 'rgba(0, 0, 0, 0.05)'}
-        polygonStrokeColor={(d: any) => d.properties.ISO_A3 === 'IND' ? '#8dc63f' : '#444'}
-        polygonLabel={({ properties: d }: any) => `
-          <div class="globe-label">
-            <b>${d.ADMIN || d.ST_NM}</b>
-          </div>
-        `}
-        onPolygonHover={(d: any) => setHoveredCountry(d ? d.properties.ISO_A3 : null)}
+      {globeReady && doodleTextureUrl && (
+        <GlobeGL
+          ref={globeRef}
+          width={700}
+          height={700}
+          backgroundColor="rgba(0,0,0,0)"
+          globeImageUrl={doodleTextureUrl}
 
-        // Globe Click Interaction
-        onGlobeClick={() => {
-          if (globeRef.current) {
-            const chennai = allBranches.find(b => b.id === 'vit-chennai');
-            if (chennai) {
-              // Animate camera to focus on Chennai
-              globeRef.current.pointOfView({ 
-                lat: chennai.lat, 
-                lng: chennai.lng, 
-                altitude: 1.8 
-              }, 1000);
-              // Show the info modal
-              setSelectedLocation(chennai);
-            }
+          polygonsData={countries.features}
+          polygonCapColor={(d: any) =>
+            d.properties.ISO_A3 === 'IND'
+              ? 'rgba(141, 198, 63, 0.25)'
+              : 'rgba(200, 190, 175, 0.12)'
           }
-        }}
+          polygonSideColor={() => 'rgba(0, 0, 0, 0.03)'}
+          polygonStrokeColor={(d: any) =>
+            d.properties.ISO_A3 === 'IND' ? '#8dc63f' : 'rgba(100, 100, 100, 0.3)'
+          }
+          polygonLabel={({ properties: d }: any) => `
+            <div class="globe-label">
+              <b>${d.ADMIN || d.ST_NM}</b>
+            </div>
+          `}
+          onPolygonHover={() => {}}
 
-        // Points (Main Locations)
-        pointsData={allBranches}
-        pointLat="lat"
-        pointLng="lng"
-        pointColor="color"
-        pointAltitude={0.12}
-        pointRadius={(d: any) => d.isPrimary ? 1.5 : 0.6}
-        pointsMerge={false}
-        pointLabel="name"
-        onPointClick={(point: any) => {
-          if (point.mapSrc) setSelectedLocation(point);
-        }}
+          onGlobeClick={handleGlobeClick}
 
-        // Labels
-        labelsData={allBranches}
-        labelLat="lat"
-        labelLng="lng"
-        labelText="name"
-        labelSize={(d: any) => d.isPrimary ? 2.5 : 1.2}
-        labelDotRadius={(d: any) => d.isPrimary ? 0.8 : 0.4}
-        labelColor={(d: any) => d.isPrimary ? '#8dc63f' : '#ffffff'}
-        labelResolution={2}
-        onLabelClick={(label: any) => {
-          if (label.mapSrc) setSelectedLocation(label);
-        }}
+          pointsData={allBranches}
+          pointLat="lat"
+          pointLng="lng"
+          pointColor="color"
+          pointAltitude={0.12}
+          pointRadius={(d: any) => d.isPrimary ? 1.5 : 0.6}
+          pointsMerge={false}
+          pointLabel="name"
+          onPointClick={handlePointClick}
 
-        // Rings (Secondary Branches)
-        ringsData={allBranches}
-        ringLat="lat"
-        ringLng="lng"
-        ringColor={(d: any) => d.isPrimary ? 'rgba(141, 198, 63, 0.8)' : 'rgba(255, 255, 255, 0.4)'}
-        ringMaxRadius={(d: any) => d.isPrimary ? 3.5 : 1.8}
-        ringPropagationSpeed={3}
-        ringRepeatPeriod={1000}
-      />
+          labelsData={allBranches}
+          labelLat="lat"
+          labelLng="lng"
+          labelText="name"
+          labelSize={(d: any) => d.isPrimary ? 2.5 : 1.2}
+          labelDotRadius={(d: any) => d.isPrimary ? 0.8 : 0.4}
+          labelColor={(d: any) => d.isPrimary ? '#8dc63f' : '#ffffff'}
+          labelResolution={2}
+          onLabelClick={handleLabelClick}
+
+          ringsData={allBranches}
+          ringLat="lat"
+          ringLng="lng"
+          ringColor={(d: any) =>
+            d.isPrimary ? 'rgba(141, 198, 63, 0.8)' : 'rgba(255, 255, 255, 0.4)'
+          }
+          ringMaxRadius={(d: any) => d.isPrimary ? 3.5 : 1.8}
+          ringPropagationSpeed={3}
+          ringRepeatPeriod={1000}
+
+        />
+      )}
+
+      {!globeReady && (
+        <div className="globe-doodle-loading">
+          <svg width="60" height="60" viewBox="0 0 60 60">
+            <path
+              d="M30 5 Q35 10 30 15 Q25 10 30 5Z"
+              fill="none"
+              stroke="#8dc63f"
+              strokeWidth="1.5"
+              className="doodle-loading-pen"
+            />
+            <circle
+              cx="30" cy="30" r="20"
+              fill="none"
+              stroke="#8dc63f"
+              strokeWidth="1.5"
+              strokeDasharray="3 4"
+              className="doodle-loading-circle"
+            />
+          </svg>
+          <span className="doodle-loading-text">Sketching the world...</span>
+        </div>
+      )}
+
+      {inkSplash && (
+        <div
+          className="ink-splash-container"
+          style={{ pointerEvents: 'none', zIndex: 100 }}
+        >
+          <div className="ink-drop ink-drop-1" />
+          <div className="ink-drop ink-drop-2" />
+          <div className="ink-drop ink-drop-3" />
+        </div>
+      )}
+
       <div className="globe-overlay-info">
         <h3>180DC Global Impact</h3>
         <p>Interactive 3D Network Visualization</p>
