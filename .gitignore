@@ -3,7 +3,6 @@ node_modules/
 vendor/
 __pycache__/
 *.pyc
-package.json
 
 # Environment files
 .env
@@ -31,3 +30,5 @@ coverage/
 # Miscellaneous
 *.bak
 *.tmp
+.pnpm-debug.log
+.turbo
