@@ -46,11 +46,17 @@ const Globe = () => {
     { id: "par", lat: 48.8566, lng: 2.3522, name: "Paris" },
   ], []);
 
+  const [selectedLocation, setSelectedLocation] = useState<any>(null);
+
   useEffect(() => {
     // Load GeoJSON for country borders
+    // Using a reliable source for world boundaries
     fetch('https://raw.githubusercontent.com/vasturiano/three-globe/master/example/country-polygons/ne_110m_admin_0_countries.geojson')
       .then(res => res.json())
-      .then(setCountries);
+      .then(data => {
+        // Find India and simplify properties for easier styling if needed
+        setCountries(data);
+      });
   }, []);
 
   useEffect(() => {
@@ -87,6 +93,50 @@ const Globe = () => {
 
   return (
     <div className="globe-3d-wrapper" ref={containerRef}>
+      {/* Modal Popup */}
+      {selectedLocation && (
+        <div
+          className="globe-modal-backdrop"
+          onClick={() => setSelectedLocation(null)}
+          style={{ zIndex: 10000 }}
+        >
+          <div
+            className="globe-modal-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="globe-modal-close"
+              onClick={() => setSelectedLocation(null)}
+            >
+              ✕
+            </button>
+            <h3 style={{ margin: "0 0 1rem 0", color: "var(--primary-green)" }}>
+              {selectedLocation.name}
+            </h3>
+            <iframe
+              src={selectedLocation.mapSrc}
+              width="100%"
+              height="250"
+              style={{ border: 0, borderRadius: "8px", marginBottom: "1.5rem" }}
+              allowFullScreen={true}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            ></iframe>
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <a
+                href={selectedLocation.googleMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn"
+                style={{ fontSize: "0.9rem", padding: "0.6rem 1.2rem" }}
+              >
+                View on Google Maps
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       <GlobeGL
         ref={globeRef}
         width={700}
@@ -114,8 +164,9 @@ const Globe = () => {
         pointColor="color"
         pointAltitude={0.1}
         pointRadius={0.5}
-        pointsMerge={true}
+        pointsMerge={false}
         pointLabel="name"
+        onPointClick={(point: any) => setSelectedLocation(point)}
 
         // Labels
         labelsData={mainLocations}
@@ -126,6 +177,7 @@ const Globe = () => {
         labelDotRadius={0.5}
         labelColor={() => '#8dc63f'}
         labelResolution={2}
+        onLabelClick={(label: any) => setSelectedLocation(label)}
 
         // Rings (Secondary Branches)
         ringsData={secondaryBranches}
