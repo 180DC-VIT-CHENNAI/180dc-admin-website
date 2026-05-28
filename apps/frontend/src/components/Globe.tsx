@@ -185,6 +185,23 @@ const Globe = () => {
         `}
         onPolygonHover={(d: any) => setHoveredCountry(d ? d.properties.ISO_A3 : null)}
 
+        // Globe Click Interaction
+        onGlobeClick={() => {
+          if (globeRef.current) {
+            const chennai = allBranches.find(b => b.id === 'vit-chennai');
+            if (chennai) {
+              // Animate camera to focus on Chennai
+              globeRef.current.pointOfView({ 
+                lat: chennai.lat, 
+                lng: chennai.lng, 
+                altitude: 1.8 
+              }, 1000);
+              // Show the info modal
+              setSelectedLocation(chennai);
+            }
+          }
+        }}
+
         // Points (Main Locations)
         pointsData={allBranches}
         pointLat="lat"
