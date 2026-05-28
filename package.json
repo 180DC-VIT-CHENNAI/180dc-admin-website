@@ -1,0 +1,8 @@
+{
+  "name": "adminwebsite-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "devDependencies": {
+    "turbo": "latest"
+  }
+}
