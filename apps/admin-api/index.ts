@@ -146,6 +146,7 @@ async function ensureAuxTables(db: any) {
       .first();
     if (tc && tc.cnt === 0) {
       const randomToken = crypto.randomUUID().replace(/-/g, "");
+      console.log("DEV TOKEN (first-time seed):", randomToken);
       await db
         .prepare(
           "INSERT OR IGNORE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
@@ -448,6 +449,11 @@ app.post("/api/admin-tokens", async (c) => {
       return c.json({ error: "Missing email" }, 400);
     }
 
+    // Delete any existing token for this email to avoid UNIQUE constraint conflict
+    await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?")
+      .bind(email)
+      .run();
+
     const token = crypto.randomUUID().replace(/-/g, "");
     const user: any = c.get("user");
 
@@ -534,10 +540,8 @@ app.post("/api/board-users", async (c) => {
         .run();
     }
 
-    // Revoke any prior token for the same email so the latest one is authoritative.
-    await c.env.DB.prepare(
-      "UPDATE admin_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE email = ? AND revoked_at IS NULL",
-    )
+    // Delete any prior tokens for the same email so the latest one is authoritative.
+    await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?")
       .bind(email)
       .run();
 
