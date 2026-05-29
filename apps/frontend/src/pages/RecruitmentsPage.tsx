@@ -24,8 +24,6 @@ const RecruitmentsPage = () => {
   const [showForm, setShowForm] = useState(false);
   const [preferredDomain, setPreferredDomain] = useState("");
 
-  const showGithub = preferredDomain === "Technical" || preferredDomain === "R&D";
-
   return (
     <div className="recruitments-page">
       <PillNav
@@ -77,7 +75,7 @@ const RecruitmentsPage = () => {
                   <li>Preferred &amp; Secondary Domain</li>
                   <li>Why you chose that domain</li>
                   <li>Prior experience in the field</li>
-                  <li>GitHub Link (if Tech / R&amp;D)</li>
+                  <li>GitHub Profile Link</li>
                 </ul>
               </div>
             </div>
@@ -177,12 +175,10 @@ const RecruitmentsPage = () => {
                 </div>
               </div>
 
-              {showGithub && (
-                <div className="form-group form-group-full">
-                  <label htmlFor="github">GitHub Profile Link</label>
-                  <input id="github" type="url" placeholder="https://github.com/your-username" />
-                </div>
-              )}
+              <div className="form-group form-group-full">
+                <label htmlFor="github">GitHub Profile Link</label>
+                <input id="github" type="url" placeholder="https://github.com/your-username" />
+              </div>
 
               {preferredDomain && (
                 <>

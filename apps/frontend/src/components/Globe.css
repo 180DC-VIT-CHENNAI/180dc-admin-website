@@ -13,31 +13,149 @@
   cursor: grabbing;
 }
 
+/* Doodle hand-drawn frame around globe */
+.globe-3d-wrapper::before {
+  content: '';
+  position: absolute;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 680px;
+  height: 680px;
+  border: 3px solid var(--text-black);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.15;
+  animation: wiggleGlobeFrame 4s ease-in-out infinite;
+}
+
+.globe-3d-wrapper::after {
+  content: '';
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 700px;
+  height: 700px;
+  border: 2px dashed var(--primary-green);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.25;
+  animation: wiggleGlobeFrame 5s ease-in-out infinite reverse;
+}
+
+@keyframes wiggleGlobeFrame {
+  0%, 100% { transform: translateX(-50%) rotate(0deg) scale(1); }
+  25% { transform: translateX(-50%) rotate(0.5deg) scale(1.005); }
+  50% { transform: translateX(-50%) rotate(-0.5deg) scale(0.995); }
+  75% { transform: translateX(-50%) rotate(0.3deg) scale(1.002); }
+}
+
+/* Floating doodle annotations around globe */
+.globe-doodle-annotation {
+  position: absolute;
+  font-family: 'Caveat', cursive;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--primary-green);
+  pointer-events: none;
+  z-index: 5;
+  transform: rotate(-5deg);
+}
+
+.globe-doodle-annotation.arrow::before {
+  content: '\2192';
+  margin-right: 4px;
+  font-size: 1.2rem;
+}
+
+.globe-doodle-annotation.top-left {
+  top: 80px;
+  left: 10%;
+  transform: rotate(-8deg);
+}
+
+.globe-doodle-annotation.top-right {
+  top: 100px;
+  right: 12%;
+  transform: rotate(5deg);
+}
+
+.globe-doodle-annotation.bottom-left {
+  bottom: 120px;
+  left: 8%;
+  transform: rotate(-3deg);
+}
+
+.globe-doodle-annotation.bottom-right {
+  bottom: 100px;
+  right: 10%;
+  transform: rotate(6deg);
+}
+
+/* Doodle corner decorations */
+.globe-corner-doodle {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0.4;
+}
+
+.globe-corner-doodle.top-left {
+  top: 60px;
+  left: 5%;
+}
+
+.globe-corner-doodle.top-right {
+  top: 60px;
+  right: 5%;
+  transform: scaleX(-1);
+}
+
+.globe-corner-doodle.bottom-left {
+  bottom: 80px;
+  left: 5%;
+  transform: scaleY(-1);
+}
+
+.globe-corner-doodle.bottom-right {
+  bottom: 80px;
+  right: 5%;
+  transform: scale(-1, -1);
+}
+
 .globe-overlay-info {
   position: absolute;
-  bottom: 20px;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(12px);
+  bottom: 30px;
+  background: var(--cream);
   padding: 1rem 2rem;
-  border-radius: 50px;
-  border: 1px solid rgba(141, 198, 63, 0.25);
+  border-radius: 16px;
+  border: 3px solid var(--text-black);
+  box-shadow: 4px 4px 0 var(--text-black);
   pointer-events: none;
   text-align: center;
   z-index: 10;
+  transform: rotate(-1deg);
 }
 
 .globe-overlay-info h3 {
   margin: 0;
   color: var(--primary-green);
   font-size: 1.2rem;
-  text-transform: uppercase;
-  letter-spacing: 2px;
+  font-family: 'Caveat', cursive;
+  font-weight: 700;
+  letter-spacing: 1px;
 }
 
 .globe-overlay-info p {
   margin: 5px 0 0 0;
   color: var(--text-gray);
   font-size: 0.9rem;
+  font-family: 'Patrick Hand', cursive;
 }
 
 .globe-label {
@@ -48,6 +166,7 @@
   font-size: 12px;
   pointer-events: none;
   border: 1px solid var(--primary-green);
+  font-family: 'Patrick Hand', cursive;
 }
 
 .globe-3d-wrapper canvas {

@@ -13,6 +13,7 @@ __pycache__/
 dist/
 build/
 *.log
+.wrangler/
 
 # IDE/Editor
 .vscode/

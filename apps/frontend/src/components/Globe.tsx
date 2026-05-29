@@ -316,6 +316,30 @@ const Globe = () => {
         </div>
       )}
 
+      {/* Floating doodle annotations */}
+      <div className="globe-doodle-annotation top-left arrow">VIT Chennai HQ</div>
+      <div className="globe-doodle-annotation top-right">25+ Branches</div>
+      <div className="globe-doodle-annotation bottom-left arrow">Click to explore</div>
+      <div className="globe-doodle-annotation bottom-right">Global Network</div>
+
+      {/* Corner doodle decorations */}
+      <svg className="globe-corner-doodle top-left" viewBox="0 0 40 40" fill="none">
+        <path d="M5 35 Q10 20, 20 15 T35 5" stroke="#8dc63f" strokeWidth="2" strokeLinecap="round" fill="none" />
+        <circle cx="35" cy="5" r="3" fill="#8dc63f" />
+      </svg>
+      <svg className="globe-corner-doodle top-right" viewBox="0 0 40 40" fill="none">
+        <path d="M5 35 Q10 20, 20 15 T35 5" stroke="#8dc63f" strokeWidth="2" strokeLinecap="round" fill="none" />
+        <circle cx="35" cy="5" r="3" fill="#8dc63f" />
+      </svg>
+      <svg className="globe-corner-doodle bottom-left" viewBox="0 0 40 40" fill="none">
+        <path d="M5 35 Q10 20, 20 15 T35 5" stroke="#8dc63f" strokeWidth="2" strokeLinecap="round" fill="none" />
+        <circle cx="35" cy="5" r="3" fill="#8dc63f" />
+      </svg>
+      <svg className="globe-corner-doodle bottom-right" viewBox="0 0 40 40" fill="none">
+        <path d="M5 35 Q10 20, 20 15 T35 5" stroke="#8dc63f" strokeWidth="2" strokeLinecap="round" fill="none" />
+        <circle cx="35" cy="5" r="3" fill="#8dc63f" />
+      </svg>
+
       <div className="globe-overlay-info">
         <h3>180DC Global Impact</h3>
         <p>Interactive 3D Network Visualization</p>

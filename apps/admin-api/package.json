@@ -1,0 +1,17 @@
+{
+  "name": "admin-api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev index.ts",
+    "deploy": "wrangler deploy index.ts"
+  },
+  "dependencies": {
+    "hono": "^4.6.1"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0",
+    "typescript": "^5.0.0",
+    "@cloudflare/workers-types": "^4.20230419.0"
+  }
+}
