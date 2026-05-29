@@ -381,7 +381,7 @@ function App() {
       <section id="global-network" className="global-network-section">
         <div className="container" style={{ textAlign: "center" }}>
           <span className="section-label">Our Reach</span>
-          <h2 className="reveal" style={{ fontFamily: "'Caveat', cursive", fontSize: "3rem" }}>
+          <h2 className="reveal section-heading">
             Our Global Network
           </h2>
           <p
@@ -437,7 +437,7 @@ function App() {
       <section id="case-studies" className="cases-section">
         <div className="container">
           <span className="section-label">02 — Case Studies</span>
-          <h2 className="reveal" style={{ fontFamily: "'Caveat', cursive", fontSize: "3rem", marginBottom: "3rem" }}>
+          <h2 className="reveal section-heading" style={{ marginBottom: "3rem" }}>
             Latest Case Studies
           </h2>
           <div className="cases-grid">
@@ -481,8 +481,8 @@ function App() {
         <div className="container">
           <span className="section-label">03 — Leadership</span>
           <h2
-            className="reveal text-center"
-            style={{ fontFamily: "'Caveat', cursive", fontSize: "3rem", marginBottom: "3rem", textAlign: "center" }}
+            className="reveal text-center section-heading"
+            style={{ marginBottom: "3rem", textAlign: "center" }}
           >
             Leadership Team
           </h2>
@@ -507,7 +507,7 @@ function App() {
           <div className="section-header reveal">
             <div>
               <span className="section-label">04 — Blog</span>
-              <h2 style={{ fontFamily: "'Caveat', cursive", fontSize: "3rem", margin: 0 }}>
+              <h2 className="section-heading" style={{ margin: 0 }}>
                 Consulting Insights
               </h2>
               <p style={{ fontFamily: "'Patrick Hand', cursive", fontSize: "1.2rem", margin: 0 }}>
@@ -541,8 +541,8 @@ function App() {
         <div className="container">
           <span className="section-label">05 — Partners</span>
           <h2
-            className="reveal"
-            style={{ fontFamily: "'Caveat', cursive", fontSize: "3rem", marginBottom: "2rem", textAlign: "center" }}
+            className="reveal section-heading"
+            style={{ marginBottom: "2rem", textAlign: "center" }}
           >
             Our Partners
           </h2>

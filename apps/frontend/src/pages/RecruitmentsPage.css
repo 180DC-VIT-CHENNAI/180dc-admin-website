@@ -389,6 +389,13 @@
   border-radius: 10px;
 }
 
+@media (max-width: 1024px) {
+  .recruitments-content {
+    max-width: 100%;
+    padding: 40px 24px 80px;
+  }
+}
+
 @media (max-width: 768px) {
   .form-row {
     grid-template-columns: 1fr;
@@ -408,15 +415,27 @@
     text-align: center;
   }
   .recruitments-hero {
-    padding: 120px 20px 60px;
+    padding: 110px 20px 50px;
   }
 
   .recruitments-hero h1 {
     font-size: 2rem;
   }
 
+  .recruitments-hero p {
+    font-size: 1rem;
+  }
+
   .recruitments-content {
-    padding: 40px 20px 80px;
+    padding: 30px 16px 60px;
+  }
+
+  .roadmap-header {
+    margin-bottom: 40px;
+  }
+
+  .roadmap-header h2 {
+    font-size: 1.6rem;
   }
 
   .roadmap-timeline {
@@ -425,6 +444,7 @@
 
   .roadmap-step {
     padding-left: 32px;
+    margin-bottom: 28px;
   }
 
   .roadmap-step-dot {
@@ -439,5 +459,53 @@
 
   .roadmap-step-card .step-details ul {
     grid-template-columns: 1fr;
+  }
+
+  .recruitments-cta {
+    padding: 28px 20px;
+    margin-top: 40px;
+  }
+
+  .recruitments-cta h3 {
+    font-size: 1.2rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .recruitments-hero {
+    padding: 100px 16px 40px;
+  }
+
+  .recruitments-hero h1 {
+    font-size: 1.6rem;
+  }
+
+  .recruitments-content {
+    padding: 24px 12px 40px;
+  }
+
+  .application-form {
+    padding: 16px;
+    border-radius: 16px;
+  }
+
+  .form-header h2 {
+    font-size: 1.3rem;
+  }
+
+  .roadmap-header h2 {
+    font-size: 1.3rem;
+  }
+
+  .roadmap-step-card {
+    padding: 16px;
+  }
+
+  .roadmap-step-card .step-desc {
+    font-size: 0.9rem;
+  }
+
+  .recruitments-cta {
+    padding: 24px 16px;
   }
 }

@@ -117,10 +117,10 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
               </div>
             ))}
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input className="input" style={{ flex: 1, minWidth: 140 }} placeholder="Meet title" value={newMeetTitle} onChange={(e) => setNewMeetTitle(e.target.value)} />
-            <input className="input" style={{ flex: 1, minWidth: 140 }} placeholder="Google Meet link" value={newMeetLink} onChange={(e) => setNewMeetLink(e.target.value)} />
-            <input className="input" style={{ flex: 1, minWidth: 140 }} type="datetime-local" value={newMeetWhen} onChange={(e) => setNewMeetWhen(e.target.value)} />
+          <div className="admin-grid-4" style={{ marginTop: 0 }}>
+            <input className="input" placeholder="Meet title" value={newMeetTitle} onChange={(e) => setNewMeetTitle(e.target.value)} />
+            <input className="input" placeholder="Google Meet link" value={newMeetLink} onChange={(e) => setNewMeetLink(e.target.value)} />
+            <input className="input" type="datetime-local" value={newMeetWhen} onChange={(e) => setNewMeetWhen(e.target.value)} />
             <button className="btn" onClick={async () => {
               if (!newMeetTitle || !newMeetWhen) return alert("Title and date required");
               const res = await fetch(apiUrl(`/api/departments/${departmentId}/meets`), {
@@ -153,10 +153,10 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
               </div>
             ))}
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Document title" value={newDocTitle} onChange={(e) => setNewDocTitle(e.target.value)} />
-            <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Description" value={newDocDesc} onChange={(e) => setNewDocDesc(e.target.value)} />
-            <input className="input" style={{ flex: 1, minWidth: 140 }} placeholder="File URL (Google Drive, etc.)" value={newDocUrl} onChange={(e) => setNewDocUrl(e.target.value)} />
+          <div className="admin-grid-4" style={{ marginTop: 0 }}>
+            <input className="input" placeholder="Document title" value={newDocTitle} onChange={(e) => setNewDocTitle(e.target.value)} />
+            <input className="input" placeholder="Description" value={newDocDesc} onChange={(e) => setNewDocDesc(e.target.value)} />
+            <input className="input" placeholder="File URL (Google Drive, etc.)" value={newDocUrl} onChange={(e) => setNewDocUrl(e.target.value)} />
             <button className="btn" onClick={async () => {
               if (!newDocTitle) return alert("Title required");
               const res = await fetch(apiUrl(`/api/departments/${departmentId}/documents`), {
@@ -191,9 +191,9 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
             ))}
           </div>
           <div style={{ display: "flex", gap: 8, flexDirection: "column" }}>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input className="input" style={{ flex: 1 }} placeholder="Instruction title" value={newInstTitle} onChange={(e) => setNewInstTitle(e.target.value)} />
-              <select className="input" style={{ width: 140 }} value={newInstPriority} onChange={(e) => setNewInstPriority(e.target.value)}>
+            <div className="admin-grid-4" style={{ marginTop: 0 }}>
+              <input className="input" placeholder="Instruction title" value={newInstTitle} onChange={(e) => setNewInstTitle(e.target.value)} />
+              <select className="input" value={newInstPriority} onChange={(e) => setNewInstPriority(e.target.value)}>
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
                 <option value="high">High</option>

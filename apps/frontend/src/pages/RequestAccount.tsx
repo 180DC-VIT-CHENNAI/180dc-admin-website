@@ -53,14 +53,7 @@ export default function RequestAccount() {
   return (
     <div className="container" style={{ padding: "3rem 0" }}>
       <div className="card-doodle" style={{ maxWidth: 760, margin: "0 auto" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: "1rem",
-          }}
-        >
+        <div className="request-account-header">
           <div>
             <div className="section-label">Request Account</div>
             <h2 style={{ marginTop: 8 }}>Request a Member Account</h2>
@@ -69,7 +62,7 @@ export default function RequestAccount() {
             </p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <img src="/images/180DC.png" alt="logo" style={{ width: 80 }} />
+            <img src="/images/180DC.png" alt="logo" className="request-logo" />
           </div>
         </div>
 

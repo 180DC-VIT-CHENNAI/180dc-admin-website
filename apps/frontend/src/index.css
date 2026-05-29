@@ -243,6 +243,33 @@ p {
   display: inline-block;
 }
 
+.section-heading {
+  font-family: "Caveat", cursive;
+  font-size: 3rem;
+  font-weight: 700;
+  color: var(--text-black);
+  line-height: 1.2;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 1024px) {
+  .section-heading {
+    font-size: 2.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .section-heading {
+    font-size: 2.2rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .section-heading {
+    font-size: 1.8rem;
+  }
+}
+
 .doodle-subtitle {
   font-family: "Patrick Hand", cursive;
   font-size: 1.4rem;
@@ -262,6 +289,30 @@ p {
   margin-bottom: 0.5rem;
   display: inline-block;
   transform: rotate(-2deg);
+}
+
+/* Request Account page */
+.request-account-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.request-logo {
+  width: 80px;
+}
+
+@media (max-width: 600px) {
+  .request-account-header {
+    flex-direction: column-reverse;
+    align-items: flex-start;
+  }
+
+  .request-logo {
+    width: 60px;
+  }
 }
 
 /* Form inputs used across the site */
@@ -1168,24 +1219,81 @@ html.lenis body {
 }
 
 /* Responsive */
-@media (max-width: 768px) {
+@media (max-width: 1200px) {
+  .container {
+    padding: 0 1.5rem;
+  }
+}
+
+@media (max-width: 1024px) {
   h1 {
-    font-size: 2.5rem;
+    font-size: 3rem;
   }
   h2 {
-    font-size: 2rem;
+    font-size: 2.2rem;
+  }
+  .hero-content h1 {
+    font-size: 3rem;
+  }
+  .about-card h2 {
+    font-size: 2.5rem;
+  }
+  .section-header h2 {
+    font-size: 2.5rem;
+  }
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .team-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  html {
+    font-size: 15px;
+  }
+  h1 {
+    font-size: 2.2rem;
+  }
+  h2 {
+    font-size: 1.8rem;
+  }
+  h3 {
+    font-size: 1.3rem;
+  }
+  p {
+    font-size: 1rem;
   }
   .doodle-title {
     font-size: 2.5rem;
   }
+  .doodle-subtitle {
+    font-size: 1.2rem;
+  }
   .splash-title-variable {
-    font-size: 2.5rem;
+    font-size: 2.2rem !important;
   }
   .splash-subtitle-variable {
-    font-size: 1.5rem;
+    font-size: 1.3rem !important;
+  }
+  .splash-logo-white {
+    width: 120px;
+    height: 120px;
+  }
+  .splash-tagline {
+    font-size: 1.1rem;
+    padding: 0 1rem;
   }
   .hero-split {
     flex-direction: column;
+    gap: 2rem;
+  }
+  .hero-content h1 {
+    font-size: 2.5rem;
+  }
+  .hero-subtitle {
+    font-size: 1rem;
   }
   .stats-grid {
     grid-template-columns: 1fr;
@@ -1204,5 +1312,120 @@ html.lenis body {
   }
   .footer-links {
     align-items: flex-start;
+  }
+  .hero,
+  .about-section,
+  .cases-section,
+  .leadership-section,
+  .blog-section,
+  .partners-section,
+  .global-network-section {
+    padding: 4rem 0;
+    min-height: 60vh;
+  }
+  .about-card {
+    padding: 2rem;
+  }
+  .about-card h2 {
+    font-size: 2.2rem;
+  }
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .section-header h2 {
+    font-size: 2rem;
+  }
+  .section-header p {
+    font-size: 1rem;
+  }
+  .stat-item h3 {
+    font-size: 2rem;
+  }
+  .card-doodle {
+    padding: 1.5rem;
+  }
+  .container {
+    padding: 0 1rem;
+  }
+  .site-footer {
+    padding: 3rem 0 1.5rem;
+  }
+  .social-links ul {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  html {
+    font-size: 14px;
+  }
+  h1 {
+    font-size: 1.8rem;
+  }
+  h2 {
+    font-size: 1.5rem;
+  }
+  .doodle-title {
+    font-size: 2rem;
+  }
+  .splash-title-variable {
+    font-size: 1.8rem !important;
+  }
+  .splash-subtitle-variable {
+    font-size: 1.1rem !important;
+  }
+  .splash-logo-white {
+    width: 100px;
+    height: 100px;
+  }
+  .hero-content h1 {
+    font-size: 2rem;
+  }
+  .team-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  .team-card .card-doodle {
+    padding: 1rem;
+  }
+  .stats-grid {
+    gap: 1rem;
+  }
+  .hero,
+  .about-section,
+  .cases-section,
+  .leadership-section,
+  .blog-section,
+  .partners-section,
+  .global-network-section {
+    padding: 3rem 0;
+    min-height: 50vh;
+  }
+  .about-card {
+    padding: 1.5rem;
+  }
+  .container {
+    padding: 0 0.75rem;
+  }
+  .cta-buttons {
+    flex-direction: column;
+    width: 100%;
+  }
+  .cta-buttons .btn {
+    width: 100%;
+    text-align: center;
+  }
+  .navbar {
+    padding: 0.75rem 4%;
+  }
+  .navbar-logo-bg {
+    width: 100px;
+  }
+  .card-doodle {
+    padding: 1.25rem;
+  }
+  .site-footer {
+    padding: 2rem 0 1rem;
   }
 }

@@ -444,14 +444,43 @@
   text-align: center;
 }
 
+@media (max-width: 1024px) {
+  .globe-3d-wrapper {
+    height: 550px;
+  }
+
+  .globe-3d-wrapper::before {
+    width: 500px;
+    height: 500px;
+  }
+
+  .globe-3d-wrapper::after {
+    width: 520px;
+    height: 520px;
+  }
+
+  .globe-doodle-annotation {
+    display: none;
+  }
+
+  .globe-corner-doodle {
+    display: none;
+  }
+}
+
 @media (max-width: 768px) {
   .globe-3d-wrapper {
-    height: 400px;
+    height: 380px;
+  }
+
+  .globe-3d-wrapper::before,
+  .globe-3d-wrapper::after {
+    display: none;
   }
 
   .globe-3d-wrapper canvas {
-    width: 400px !important;
-    height: 400px !important;
+    width: 380px !important;
+    height: 380px !important;
   }
 
   .campus-panel {
@@ -472,5 +501,42 @@
 
   .campus-building-grid {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  }
+
+  .campus-panel-overlay {
+    padding: 12px;
+  }
+
+  .campus-panel-info h2 {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 480px) {
+  .globe-3d-wrapper {
+    height: 300px;
+  }
+
+  .globe-3d-wrapper canvas {
+    width: 300px !important;
+    height: 300px !important;
+  }
+
+  .campus-panel {
+    padding: 16px;
+  }
+
+  .campus-panel-image {
+    height: 140px;
+  }
+
+  .campus-building-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 8px;
+  }
+
+  .campus-building-name {
+    font-size: 11px;
+    padding: 6px 8px;
   }
 }

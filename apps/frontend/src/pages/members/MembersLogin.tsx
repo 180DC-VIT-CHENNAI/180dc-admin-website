@@ -63,14 +63,7 @@ export default function MembersLogin({ onLogin }: MembersLoginProps) {
               placeholder="Enter admin token"
             />
 
-            <div
-              style={{
-                marginTop: 18,
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-              }}
-            >
+            <div className="login-actions">
               <button
                 onClick={async () => {
                   if (!token) return alert("Enter token");

@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import MembersLogin from "./MembersLogin";
 import DepartmentPanel from "./DepartmentPanel";
 import { apiUrl } from "../../lib/api";
+import "./MembersLayout.css";
 
 const DEPT_NAMES: Record<string, string> = {
   tech: "Technical",
@@ -15,6 +16,7 @@ const DEPT_NAMES: Record<string, string> = {
 };
 
 export default function MembersLayout() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(() => sessionStorage.getItem("authToken"));
   const [email, setEmail] = useState<string | null>(sessionStorage.getItem("authEmail"));
   const [powerLevel, setPowerLevel] = useState<number>(() => {
@@ -145,12 +147,13 @@ export default function MembersLayout() {
   }
 
   return (
-    <div style={{ backgroundColor: "var(--bg-primary)", minHeight: "100vh", width: "100%", display: "flex" }}>
+    <div className="members-layout">
+      {/* SIDEBAR OVERLAY */}
+      {sidebarOpen && <div className="members-sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+
       {/* SIDEBAR */}
-      <div style={{
-        width: 220, minWidth: 220, backgroundColor: "var(--bg-card)", borderRight: "1px solid var(--border-light)",
-        display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, height: "100vh", zIndex: 10,
-      }}>
+      <div className={`members-sidebar ${sidebarOpen ? "open" : ""}`}>
+        <button className="mobile-sidebar-close" onClick={() => setSidebarOpen(false)}>✕</button>
         <div style={{ padding: "1.5rem 1rem", borderBottom: "1px solid var(--border-light)" }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>180DC Portal</h2>
           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>{email}</div>
@@ -193,7 +196,8 @@ export default function MembersLayout() {
       </div>
 
       {/* MAIN CONTENT */}
-      <div style={{ marginLeft: 220, flex: 1, padding: "2rem", maxWidth: "calc(100vw - 220px)" }}>
+      <div className="members-main">
+        <button className="mobile-sidebar-toggle" onClick={() => setSidebarOpen(true)}>☰</button>
         {activePanel === "dashboard" && (
           <>
             <h2 style={{ marginTop: 0 }}>Dashboard</h2>
@@ -390,7 +394,7 @@ export default function MembersLayout() {
                 <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
                   Generate tokens for members, leads, or board accounts. The token is what the user types in the login screen.
                 </p>
-                <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(4, minmax(0, 1fr))", marginTop: 16 }}>
+                <div className="admin-grid-4" style={{ marginTop: 16 }}>
                   <input className="input" placeholder="Email" value={tokenEmail} onChange={(e) => setTokenEmail(e.target.value)} />
                   <input className="input" placeholder="Name" value={tokenName} onChange={(e) => setTokenName(e.target.value)} />
                   <select className="input" value={tokenRoleId} onChange={(e) => setTokenRoleId(e.target.value)}>
@@ -453,7 +457,7 @@ export default function MembersLayout() {
                 <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
                   Create or update a club member account, assign their role, and issue a login token.
                 </p>
-                <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(4, minmax(0, 1fr))", marginTop: 16 }}>
+                <div className="admin-grid-4" style={{ marginTop: 16 }}>
                   <input className="input" placeholder="Email" value={boardEmail} onChange={(e) => setBoardEmail(e.target.value)} />
                   <input className="input" placeholder="Name" value={boardName} onChange={(e) => setBoardName(e.target.value)} />
                   <select className="input" value={boardRoleId} onChange={(e) => setBoardRoleId(e.target.value)}>
@@ -492,7 +496,7 @@ export default function MembersLayout() {
                 <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
                   Create a regular member directly with the `member` role.
                 </p>
-                <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(4, minmax(0, 1fr))", marginTop: 16 }}>
+                <div className="admin-grid-4" style={{ marginTop: 16 }}>
                   <input className="input" placeholder="Email" value={memberEmail} onChange={(e) => setMemberEmail(e.target.value)} />
                   <input className="input" placeholder="Name" value={memberName} onChange={(e) => setMemberName(e.target.value)} />
                   <select className="input" value={memberDepartmentId} onChange={(e) => setMemberDepartmentId(e.target.value)}>
@@ -560,7 +564,7 @@ export default function MembersLayout() {
                 <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
                   Change user roles or remove users permanently. These actions cannot be undone.
                 </p>
-                <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr 1fr", marginTop: 16 }}>
+                <div className="admin-grid-2" style={{ marginTop: 16 }}>
                   <div className="card-doodle" style={{ padding: 14, border: "1px solid var(--border-light)" }}>
                     <h4 style={{ margin: 0, fontSize: 15 }}>Change Role</h4>
                     <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
@@ -620,7 +624,7 @@ export default function MembersLayout() {
                 <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
                   Initiate a role transfer from one user to another. President/VP cannot be transferred.
                 </p>
-                <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(4, minmax(0, 1fr))", marginTop: 16 }}>
+                <div className="admin-grid-4" style={{ marginTop: 16 }}>
                   <select className="input" value={transferFromUserId} onChange={(e) => setTransferFromUserId(e.target.value)}>
                     <option value="">From user</option>
                     {allUsers.filter((u: any) => u.power_level < 100).map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.role_name})</option>)}
@@ -1047,7 +1051,7 @@ function CreateProjectSection({ authToken, departments, onCreated }: { authToken
 
   return (
     <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
-      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+      <div className="admin-grid-3">
         <input className="input" placeholder="Project name" value={name} onChange={(e) => setName(e.target.value)} />
         <input className="input" placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
         <input className="input" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />

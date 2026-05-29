@@ -127,12 +127,52 @@
     padding: 0 16px;
   }
 
+  .pill-nav {
+    height: 56px;
+  }
+
+  .pill-logo {
+    width: 40px;
+    height: 40px;
+  }
+
+  .pill-brand-text {
+    font-size: 16px;
+  }
+
+  .pill-brand-sub {
+    font-size: 11px;
+  }
+
   .desktop-only {
     display: none;
   }
 
   .mobile-only {
     display: flex;
+  }
+}
+
+@media (max-width: 480px) {
+  .pill-nav-container {
+    padding: 0 12px;
+  }
+
+  .pill-nav {
+    height: 50px;
+  }
+
+  .pill-brand-text {
+    font-size: 14px;
+  }
+
+  .mobile-menu-popover {
+    top: 51px;
+  }
+
+  .mobile-menu-link {
+    padding: 12px 16px;
+    font-size: 15px;
   }
 }
 
