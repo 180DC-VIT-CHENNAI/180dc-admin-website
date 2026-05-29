@@ -1,11 +1,21 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { apiUrl } from "../lib/api";
 
 export default function RequestAccount() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [departments, setDepartments] = useState<any[]>([]);
   const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(apiUrl("/api/departments"))
+      .then((r) => r.json())
+      .then((data) => { if (data.success) setDepartments(data.data || []); })
+      .catch(() => {});
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -14,15 +24,15 @@ export default function RequestAccount() {
       const res = await fetch(apiUrl("/api/signup-requests"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, message }),
+        body: JSON.stringify({ name, email, message, departmentId }),
       });
 
       const text = await res.text();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let data: any = {};
       try {
         data = text ? JSON.parse(text) : { success: res.ok };
-      } catch (err) {
-        // Server returned non-JSON; fall back to status code
+      } catch {
         data = { success: res.ok, raw: text };
       }
 
@@ -31,11 +41,12 @@ export default function RequestAccount() {
         setName("");
         setEmail("");
         setMessage("");
+        setDepartmentId("");
       } else {
         setStatus("error: " + (data.error || JSON.stringify(data)));
       }
-    } catch (e: any) {
-      setStatus("error: " + e.message);
+    } catch (e) {
+      setStatus("error: " + (e instanceof Error ? e.message : String(e)));
     }
   }
 
@@ -79,6 +90,19 @@ export default function RequestAccount() {
             required
             style={{ border: "2px solid var(--border-light)" }}
           />
+          <select
+            className="input"
+            value={departmentId}
+            onChange={(e) => setDepartmentId(e.target.value)}
+            required
+            style={{ border: "2px solid var(--border-light)" }}
+          >
+            <option value="">Select a department (required)</option>
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+            {departments.map((d: any) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
           <textarea
             className="input"
             placeholder="Message (optional)"

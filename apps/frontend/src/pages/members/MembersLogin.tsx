@@ -3,7 +3,12 @@ import { Link } from "react-router-dom";
 import { apiUrl } from "../../lib/api";
 
 interface MembersLoginProps {
-  onLogin: (token: string, email: string, powerLevel?: number, departmentId?: string) => void;
+  onLogin: (
+    token: string,
+    email: string,
+    powerLevel?: number,
+    departmentId?: string,
+  ) => void;
 }
 
 export default function MembersLogin({ onLogin }: MembersLoginProps) {
@@ -44,7 +49,7 @@ export default function MembersLogin({ onLogin }: MembersLoginProps) {
             <div>
               <h2 style={{ margin: 0 }}>Members Portal</h2>
               <div style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-                Board & officers only
+                club members only
               </div>
             </div>
           </div>
@@ -78,12 +83,20 @@ export default function MembersLogin({ onLogin }: MembersLoginProps) {
                     });
                     const data = await res.json();
                     if (data.success) {
-                      onLogin(token, data.email, data.powerLevel, data.departmentId);
+                      onLogin(
+                        token,
+                        data.email,
+                        data.powerLevel,
+                        data.departmentId,
+                      );
                     } else {
                       alert("Login failed: " + (data.error || "unknown"));
                     }
-                  } catch (e: any) {
-                    alert("Login error: " + e.message);
+                  } catch (e) {
+                    alert(
+                      "Login error: " +
+                        (e instanceof Error ? e.message : String(e)),
+                    );
                   } finally {
                     setLoading(false);
                   }

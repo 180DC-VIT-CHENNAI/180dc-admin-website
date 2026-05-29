@@ -6,6 +6,7 @@ import VariableProximity from "./components/VariableProximity";
 import SmoothScroll from "./components/SmoothScroll";
 import PillNav from "./components/PillNav";
 import ColorBends from "./components/ColorBends";
+import { apiUrl } from "./lib/api";
 import {
   ScribbleArrow,
   ScribbleCircle,
@@ -23,6 +24,34 @@ function App() {
   const splashRef = useRef<HTMLDivElement>(null);
   const [activeNav, setActiveNav] = useState("#");
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [caseStudies, setCaseStudies] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [blogPosts, setBlogPosts] = useState<any[]>([]);
+  const [partners, setPartners] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function loadContent() {
+      try {
+        const [csRes, tmRes, bpRes, pRes] = await Promise.all([
+          fetch(apiUrl("/api/content/case-studies")).then(r => r.json()),
+          fetch(apiUrl("/api/content/team-members")).then(r => r.json()),
+          fetch(apiUrl("/api/content/blog-posts")).then(r => r.json()),
+          fetch(apiUrl("/api/content/partners")).then(r => r.json()),
+        ]);
+        if (csRes.success) setCaseStudies(csRes.data);
+        if (tmRes.success) setTeamMembers(tmRes.data);
+        if (bpRes.success) setBlogPosts(bpRes.data);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (pRes.success) setPartners(pRes.data.map((p: any) => p.name));
+      } catch (e) {
+        console.error("Failed to load content", e);
+      }
+    }
+    loadContent();
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -214,82 +243,6 @@ function App() {
     { label: "Blog", href: "#blog" },
     { label: "Partners", href: "#partners" },
     { label: "Recruitments", href: "/recruitments" },
-  ];
-
-  const caseStudies = [
-    {
-      tag: "Strategy",
-      title: "EdTech Startup Growth",
-      desc: "Developed a comprehensive Go-To-Market strategy and user acquisition model for a rising EdTech platform serving 50K+ students.",
-    },
-    {
-      tag: "Operations",
-      title: "NGO Operational Overhaul",
-      desc: "Streamlined logistics and supply chain inefficiencies for a local food distribution non-profit, reducing costs by 30%.",
-    },
-    {
-      tag: "Marketing",
-      title: "Social Media Campaign",
-      desc: "Designed a viral social media campaign for a mental health awareness organization, reaching 2M+ impressions.",
-    },
-    {
-      tag: "Finance",
-      title: "Fundraising Strategy",
-      desc: "Created a diversified fundraising strategy for an educational NGO, increasing donations by 45% in 6 months.",
-    },
-    {
-      tag: "Impact",
-      title: "Rural Education Program",
-      desc: "Developed a scalable rural education program model for an NGO, impacting 10,000+ students across 50 villages.",
-    },
-    {
-      tag: "Technology",
-      title: "Digital Transformation",
-      desc: "Led digital transformation for a legacy non-profit, modernizing their tech stack and improving efficiency by 60%.",
-    },
-  ];
-
-  const teamMembers = [
-    { initials: "JD", name: "John Doe", role: "President" },
-    { initials: "JS", name: "Jane Smith", role: "Director of External Relations" },
-    { initials: "AT", name: "Alex Turner", role: "Director of Internal Relations" },
-    { initials: "EC", name: "Emily Chen", role: "Director of L&D" },
-    { initials: "MR", name: "Michael Ross", role: "VP of Projects" },
-    { initials: "SL", name: "Sarah Lee", role: "Head of Marketing" },
-  ];
-
-  const blogPosts = [
-    {
-      date: "Jan 15, 2026",
-      title: "The Future of Social Impact",
-      desc: "How Gen-Z consultants are changing the non-profit landscape with innovative strategies and digital-first approaches.",
-    },
-    {
-      date: "Jan 10, 2026",
-      title: "Strategy Frameworks 101",
-      desc: "A deep dive into MECE and creating effective structures for problem-solving in consulting engagements.",
-    },
-    {
-      date: "Jan 5, 2026",
-      title: "Building Sustainable NGOs",
-      desc: "Key insights from our 20+ projects on what makes non-profits thrive in the long term.",
-    },
-    {
-      date: "Dec 28, 2025",
-      title: "Student Leadership Guide",
-      desc: "How to lead high-performing student teams and deliver real impact for social organizations.",
-    },
-  ];
-
-  const partners = [
-    "Partner Org 1",
-    "Partner Org 2",
-    "Partner Org 3",
-    "Partner Org 4",
-    "Partner Org 5",
-    "Partner Org 6",
-    "Partner Org 7",
-    "Partner Org 8",
   ];
 
   return (
@@ -500,7 +453,7 @@ function App() {
                 />
                 <span className="case-tag">{cs.tag}</span>
                 <h3>{cs.title}</h3>
-                <p>{cs.desc}</p>
+                <p>{cs.description}</p>
                 {expandedCard === i && (
                   <div className="card-expanded" style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "2px dashed var(--text-black)" }}>
                     <p style={{ fontSize: "0.9rem", color: "var(--text-gray)" }}>
@@ -570,7 +523,7 @@ function App() {
               <div key={i} className="blog-card card-doodle">
                 <span className="blog-date">{post.date}</span>
                 <h3>{post.title}</h3>
-                <p>{post.desc}</p>
+                <p>{post.description}</p>
                 <a href="#" className="read-more-btn">
                   Read Post
                 </a>

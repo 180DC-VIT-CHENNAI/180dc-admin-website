@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import GlobeGL from 'react-globe.gl';
 import gsap from 'gsap';

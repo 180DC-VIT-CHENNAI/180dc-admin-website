@@ -13,8 +13,6 @@ type Variables = {
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-let auxTablesReady = false;
-
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_STR_LEN = 255;
 const MAX_MSG_LEN = 2000;
@@ -44,126 +42,113 @@ function logError(context: string, err: any, c?: any) {
   }
 }
 
-async function ensureAuxTables(db: any) {
-  if (auxTablesReady) return;
+let tablesEnsured = false;
+let seedDone = false;
+
+async function ensureTables(db: any) {
+  if (tablesEnsured) return;
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS departments (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT);
+    CREATE TABLE IF NOT EXISTS roles (id TEXT PRIMARY KEY, name TEXT NOT NULL, power_level INTEGER NOT NULL, created_by TEXT);
+    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, role_id TEXT NOT NULL, department_id TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (role_id) REFERENCES roles(id), FOREIGN KEY (department_id) REFERENCES departments(id));
+    CREATE TABLE IF NOT EXISTS signup_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, message TEXT, department_id TEXT, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS admin_tokens (token TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, name TEXT, role_id TEXT NOT NULL DEFAULT 'member', created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, revoked_at DATETIME, FOREIGN KEY (role_id) REFERENCES roles(id));
+    CREATE TABLE IF NOT EXISTS department_meets (id TEXT PRIMARY KEY, department_id TEXT NOT NULL, title TEXT NOT NULL, meet_link TEXT, description TEXT, scheduled_at DATETIME NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (department_id) REFERENCES departments(id));
+    CREATE TABLE IF NOT EXISTS department_documents (id TEXT PRIMARY KEY, department_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT, file_url TEXT, status TEXT DEFAULT 'pending', created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (department_id) REFERENCES departments(id));
+    CREATE TABLE IF NOT EXISTS department_instructions (id TEXT PRIMARY KEY, department_id TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, priority TEXT DEFAULT 'medium', created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (department_id) REFERENCES departments(id));
+    CREATE TABLE IF NOT EXISTS department_projects (id TEXT PRIMARY KEY, department_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT, status TEXT DEFAULT 'upcoming', deadline DATETIME, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (department_id) REFERENCES departments(id));
+    CREATE TABLE IF NOT EXISTS club_meets (id TEXT PRIMARY KEY, title TEXT NOT NULL, meet_link TEXT, description TEXT, scheduled_at DATETIME NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS inter_dept_meets (id TEXT PRIMARY KEY, title TEXT NOT NULL, meet_link TEXT, description TEXT, scheduled_at DATETIME NOT NULL, departments TEXT NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS case_studies (id TEXT PRIMARY KEY, tag TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS team_members (id TEXT PRIMARY KEY, initials TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS blog_posts (id TEXT PRIMARY KEY, date TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS partners (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS announcements (id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS role_transfers (id TEXT PRIMARY KEY, from_user_id TEXT NOT NULL, to_user_id TEXT NOT NULL, role_id TEXT NOT NULL, status TEXT DEFAULT 'pending', created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (from_user_id) REFERENCES users(id), FOREIGN KEY (to_user_id) REFERENCES users(id), FOREIGN KEY (role_id) REFERENCES roles(id));
+    CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, status TEXT DEFAULT 'upcoming', deadline DATETIME, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS project_departments (project_id TEXT NOT NULL, department_id TEXT NOT NULL, PRIMARY KEY (project_id, department_id), FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (department_id) REFERENCES departments(id));
+    CREATE TABLE IF NOT EXISTS project_roles (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL, role_name TEXT NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (user_id) REFERENCES users(id));
+  `);
+  // Migration: add acceptance tracking columns to role_transfers
+  try { await db.exec("ALTER TABLE role_transfers ADD COLUMN from_user_accepted INTEGER DEFAULT 0"); } catch {}
+  try { await db.exec("ALTER TABLE role_transfers ADD COLUMN to_user_accepted INTEGER DEFAULT 0"); } catch {}
+  tablesEnsured = true;
+}
+
+let currentEnv: any = null;
+
+async function seedData(db: any, env?: any) {
+  if (env) currentEnv = env;
+  if (seedDone) return;
   try {
-    await db.exec(`
-      CREATE TABLE IF NOT EXISTS departments (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT
-      );
-      CREATE TABLE IF NOT EXISTS roles (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL, power_level INTEGER NOT NULL, created_by TEXT
-      );
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL,
-        role_id TEXT NOT NULL, department_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (role_id) REFERENCES roles(id),
-        FOREIGN KEY (department_id) REFERENCES departments(id)
-      );
-      CREATE TABLE IF NOT EXISTS signup_requests (
-        id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL,
-        message TEXT, status TEXT DEFAULT 'pending',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-      CREATE TABLE IF NOT EXISTS admin_tokens (
-        token TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE,
-        name TEXT, role_id TEXT NOT NULL DEFAULT 'member',
-        created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        revoked_at DATETIME,
-        FOREIGN KEY (role_id) REFERENCES roles(id)
-      );
-      CREATE TABLE IF NOT EXISTS department_meets (
-        id TEXT PRIMARY KEY, department_id TEXT NOT NULL,
-        title TEXT NOT NULL, meet_link TEXT, description TEXT,
-        scheduled_at DATETIME NOT NULL, created_by TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (department_id) REFERENCES departments(id)
-      );
-      CREATE TABLE IF NOT EXISTS department_documents (
-        id TEXT PRIMARY KEY, department_id TEXT NOT NULL,
-        title TEXT NOT NULL, description TEXT, file_url TEXT,
-        status TEXT DEFAULT 'pending', created_by TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (department_id) REFERENCES departments(id)
-      );
-      CREATE TABLE IF NOT EXISTS department_instructions (
-        id TEXT PRIMARY KEY, department_id TEXT NOT NULL,
-        title TEXT NOT NULL, content TEXT NOT NULL,
-        priority TEXT DEFAULT 'medium', created_by TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (department_id) REFERENCES departments(id)
-      );
-      CREATE TABLE IF NOT EXISTS department_projects (
-        id TEXT PRIMARY KEY, department_id TEXT NOT NULL,
-        name TEXT NOT NULL, description TEXT,
-        status TEXT DEFAULT 'upcoming', deadline DATETIME,
-        created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (department_id) REFERENCES departments(id)
-      );
-    `);
-  } catch (e: any) {
-    logError("DDL failed", e);
-    // Tables may already exist from a previous schema — continue
-  }
+    const roleSql = "INSERT OR IGNORE INTO roles (id, name, power_level, created_by) VALUES (?, ?, ?, ?)";
+    await db.prepare(roleSql).bind("president", "President", 100, "system").run();
+    await db.prepare(roleSql).bind("vice_president", "Vice President", 100, "system").run();
+    await db.prepare(roleSql).bind("secretary", "Secretary", 80, "system").run();
+    await db.prepare(roleSql).bind("lead", "Technical Lead", 50, "system").run();
+    await db.prepare(roleSql).bind("member", "General Member", 10, "system").run();
 
-  try {
-    // Seed default roles (idempotent)
-    const roleSql =
-      "INSERT OR IGNORE INTO roles (id, name, power_level, created_by) VALUES (?, ?, ?, ?)";
-    await db
-      .prepare(roleSql)
-      .bind("president", "President", 100, "system")
-      .run();
-    await db
-      .prepare(roleSql)
-      .bind("vice_president", "Vice President", 100, "system")
-      .run();
-    await db
-      .prepare(roleSql)
-      .bind("secretary", "Secretary", 80, "system")
-      .run();
-    await db
-      .prepare(roleSql)
-      .bind("lead", "Technical Lead", 50, "system")
-      .run();
-    await db
-      .prepare(roleSql)
-      .bind("member", "General Member", 10, "system")
-      .run();
+    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("tech", "Technical", "Handles technical infrastructure and UI").run();
+    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("rnd", "Research & Development", "Handles consulting research").run();
+    await db.prepare("INSERT OR REPLACE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("marketing", "Marketing", "Handles marketing, outreach, and communications").run();
+    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("social_media", "Social Media", "Handles social media presence and content").run();
+    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("finance", "Finance", "Handles budgeting and financial planning").run();
+    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("legal", "Legal", "Handles legal compliance and documentation").run();
+    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("hr", "Human Resources", "Handles recruitment and people management").run();
 
-    // Seed departments (idempotent)
-    await db.prepare(
-      "INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)",
-    ).bind("tech", "Technology", "Handles technical infrastructure and UI").run();
-    await db.prepare(
-      "INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)",
-    ).bind("rnd", "Research & Development", "Handles consulting research").run();
-
-    // Seed a dev admin token with a random token if DB is empty
-    const tc: any = await db
-      .prepare("SELECT COUNT(*) as cnt FROM admin_tokens")
-      .first();
-    if (tc && tc.cnt === 0) {
-      const randomToken = crypto.randomUUID().replace(/-/g, "");
-      console.log("DEV TOKEN (first-time seed):", randomToken);
-      await db
-        .prepare(
-          "INSERT OR IGNORE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(
-          randomToken,
-          "admin@vitstudent.ac.in",
-          "Dev Admin",
-          "president",
-          "system",
-        )
-        .run();
+    if (!currentEnv || currentEnv.ENVIRONMENT !== "production") {
+      const devToken = crypto.randomUUID().replace(/-/g, "");
+      await db.prepare("INSERT OR REPLACE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)").bind(devToken, "admin@vitstudent.ac.in", "Dev Admin", "president", "system").run();
+      console.log("DEV TOKEN:", devToken);
     }
+
+    const csCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM case_studies").first();
+    if (csCount && csCount.cnt === 0) {
+      const cs = "INSERT OR IGNORE INTO case_studies (id, tag, title, description) VALUES (?, ?, ?, ?)";
+      await db.prepare(cs).bind("cs1", "Strategy", "EdTech Startup Growth", "Developed a comprehensive Go-To-Market strategy and user acquisition model for a rising EdTech platform serving 50K+ students.").run();
+      await db.prepare(cs).bind("cs2", "Operations", "NGO Operational Overhaul", "Streamlined logistics and supply chain inefficiencies for a local food distribution non-profit, reducing costs by 30%.").run();
+      await db.prepare(cs).bind("cs3", "Marketing", "Social Media Campaign", "Designed a viral social media campaign for a mental health awareness organization, reaching 2M+ impressions.").run();
+      await db.prepare(cs).bind("cs4", "Finance", "Fundraising Strategy", "Created a diversified fundraising strategy for an educational NGO, increasing donations by 45% in 6 months.").run();
+      await db.prepare(cs).bind("cs5", "Impact", "Rural Education Program", "Developed a scalable rural education program model for an NGO, impacting 10,000+ students across 50 villages.").run();
+      await db.prepare(cs).bind("cs6", "Technology", "Digital Transformation", "Led digital transformation for a legacy non-profit, modernizing their tech stack and improving efficiency by 60%.").run();
+    }
+
+    const tmCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM team_members").first();
+    if (tmCount && tmCount.cnt === 0) {
+      const tm = "INSERT OR IGNORE INTO team_members (id, initials, name, role) VALUES (?, ?, ?, ?)";
+      await db.prepare(tm).bind("tm1", "JD", "John Doe", "President").run();
+      await db.prepare(tm).bind("tm2", "JS", "Jane Smith", "Director of External Relations").run();
+      await db.prepare(tm).bind("tm3", "AT", "Alex Turner", "Director of Internal Relations").run();
+      await db.prepare(tm).bind("tm4", "EC", "Emily Chen", "Director of L&D").run();
+      await db.prepare(tm).bind("tm5", "MR", "Michael Ross", "VP of Projects").run();
+      await db.prepare(tm).bind("tm6", "SL", "Sarah Lee", "Head of Marketing").run();
+    }
+
+    const bpCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM blog_posts").first();
+    if (bpCount && bpCount.cnt === 0) {
+      const bp = "INSERT OR IGNORE INTO blog_posts (id, date, title, description) VALUES (?, ?, ?, ?)";
+      await db.prepare(bp).bind("bp1", "Jan 15, 2026", "The Future of Social Impact", "How Gen-Z consultants are changing the non-profit landscape with innovative strategies and digital-first approaches.").run();
+      await db.prepare(bp).bind("bp2", "Jan 10, 2026", "Strategy Frameworks 101", "A deep dive into MECE and creating effective structures for problem-solving in consulting engagements.").run();
+      await db.prepare(bp).bind("bp3", "Jan 5, 2026", "Building Sustainable NGOs", "Key insights from our 20+ projects on what makes non-profits thrive in the long term.").run();
+      await db.prepare(bp).bind("bp4", "Dec 28, 2025", "Student Leadership Guide", "How to lead high-performing student teams and deliver real impact for social organizations.").run();
+    }
+
+    const pCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM partners").first();
+    if (pCount && pCount.cnt === 0) {
+      const pi = "INSERT OR IGNORE INTO partners (id, name) VALUES (?, ?)";
+      await db.prepare(pi).bind("p1", "Partner Org 1").run();
+      await db.prepare(pi).bind("p2", "Partner Org 2").run();
+      await db.prepare(pi).bind("p3", "Partner Org 3").run();
+      await db.prepare(pi).bind("p4", "Partner Org 4").run();
+      await db.prepare(pi).bind("p5", "Partner Org 5").run();
+      await db.prepare(pi).bind("p6", "Partner Org 6").run();
+      await db.prepare(pi).bind("p7", "Partner Org 7").run();
+      await db.prepare(pi).bind("p8", "Partner Org 8").run();
+    }
+    seedDone = true;
   } catch (e: any) {
     logError("Seed failed", e);
   }
-  auxTablesReady = true;
 }
 
 /**
@@ -174,6 +159,7 @@ async function ensureAuxTables(db: any) {
 const ALLOWED_ORIGINS = [
   "https://180dc-admin.pages.dev",
   "https://admin.180dc.org",
+  "https://180dc-admin-frontend.pages.dev",
 ];
 
 const isDevOrigin = (o: string) => {
@@ -198,7 +184,8 @@ app.use(
 // Auth middleware
 app.use("*", async (c, next) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
+    await seedData(c.env.DB);
   } catch (e: any) {
     logError("DB init failed", e, c);
     return c.json({ error: "Database initialization failed" }, 500);
@@ -208,7 +195,9 @@ app.use("*", async (c, next) => {
   const url = new URL(c.req.url);
   if (
     (url.pathname === "/api/signup-requests" && c.req.method === "POST") ||
-    url.pathname === "/api/dev-login"
+    url.pathname === "/api/dev-login" ||
+    url.pathname === "/api/departments" ||
+    (url.pathname.startsWith("/api/content") && c.req.method === "GET")
   ) {
     await next();
     return;
@@ -262,7 +251,7 @@ app.use("*", async (c, next) => {
 
   if (!user) {
     return c.json(
-      { error: "Unauthorized: Email not registered by Board." },
+      { error: "Unauthorized: Email not registered." },
       401,
     );
   }
@@ -284,6 +273,53 @@ const requireBoard = (c: any) => {
 };
 
 // ---------------------------------------------------------
+// CONTENT ENDPOINTS (Public — landing page data)
+// ---------------------------------------------------------
+app.get("/api/content/case-studies", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    await seedData(c.env.DB, c.env);
+    const rows = await c.env.DB.prepare("SELECT * FROM case_studies ORDER BY created_at ASC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.get("/api/content/team-members", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    await seedData(c.env.DB, c.env);
+    const rows = await c.env.DB.prepare("SELECT * FROM team_members ORDER BY created_at ASC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.get("/api/content/blog-posts", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    await seedData(c.env.DB, c.env);
+    const rows = await c.env.DB.prepare("SELECT * FROM blog_posts ORDER BY created_at ASC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.get("/api/content/partners", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    await seedData(c.env.DB, c.env);
+    const rows = await c.env.DB.prepare("SELECT * FROM partners ORDER BY created_at ASC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// ---------------------------------------------------------
 // 1. ADD NEW MEMBER (Only Pres / VP)
 // ---------------------------------------------------------
 app.post("/api/members", async (c) => {
@@ -292,20 +328,28 @@ app.post("/api/members", async (c) => {
     const body = await c.req.json();
     const email = validateEmail(body.email);
     const name = sanitizeStr(body.name);
+    const departmentId = sanitizeStr(body.departmentId) || null;
     if (!email || !name) {
       return c.json({ error: "Invalid or missing email/name" }, 400);
     }
 
-    // Automatically assigns them the 'member' role initially
     const insert = await c.env.DB.prepare(
-      "INSERT INTO users (id, name, email, role_id) VALUES (lower(hex(randomblob(16))), ?, ?, 'member')",
+      "INSERT INTO users (id, name, email, role_id, department_id) VALUES (lower(hex(randomblob(16))), ?, ?, 'member', ?)",
     )
-      .bind(name, email)
+      .bind(name, email, departmentId)
       .run();
+
+    const token = crypto.randomUUID().replace(/-/g, "");
+    const user: any = c.get("user");
+    await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?").bind(email).run();
+    await c.env.DB.prepare(
+      "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, 'member', ?)",
+    ).bind(token, email, name, user.id).run();
 
     return c.json({
       success: true,
       message: "Added " + email + " as a General Member.",
+      token,
     });
   } catch (e: any) {
     return c.json({ error: e.message }, 403);
@@ -381,7 +425,7 @@ app.post("/api/dev-login", async (c) => {
 // ---------------------------------------------------------
 app.get("/api/dashboard", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     const user: any = c.get("user");
 
     const pendingRequests =
@@ -410,6 +454,11 @@ app.get("/api/dashboard", async (c) => {
       },
       pendingRequests: pendingRequests.results || [],
       adminTokens: adminTokens.results || [],
+      roleTransfers: (await c.env.DB.prepare(
+        "SELECT rt.*, fu.name as from_name, fu.email as from_email, tu.name as to_name, tu.email as to_email, r.name as role_name FROM role_transfers rt LEFT JOIN users fu ON rt.from_user_id = fu.id LEFT JOIN users tu ON rt.to_user_id = tu.id LEFT JOIN roles r ON rt.role_id = r.id WHERE rt.status = 'pending' ORDER BY rt.created_at DESC",
+      ).all()).results || [],
+      departments: (await c.env.DB.prepare("SELECT id, name, description FROM departments ORDER BY name ASC").all()).results || [],
+      announcements: (await c.env.DB.prepare("SELECT * FROM announcements ORDER BY created_at DESC LIMIT 20").all()).results || [],
       flags: {
         canAccessHub: user.power_level >= 50,
         canManageBoard: user.power_level >= 100,
@@ -425,7 +474,7 @@ app.get("/api/dashboard", async (c) => {
 // ---------------------------------------------------------
 app.get("/api/admin-tokens", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     requireBoard(c);
     const rows = await c.env.DB.prepare(
       "SELECT token, email, name, role_id, created_by, created_at, revoked_at FROM admin_tokens ORDER BY created_at DESC",
@@ -438,7 +487,7 @@ app.get("/api/admin-tokens", async (c) => {
 
 app.post("/api/admin-tokens", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     requireBoard(c);
     const body = await c.req.json();
     const email = validateEmail(body.email);
@@ -471,7 +520,7 @@ app.post("/api/admin-tokens", async (c) => {
 
 app.delete("/api/admin-tokens/:token", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     requireBoard(c);
     const token = c.req.param("token");
     await c.env.DB.prepare(
@@ -490,7 +539,7 @@ app.delete("/api/admin-tokens/:token", async (c) => {
 // ---------------------------------------------------------
 app.post("/api/board-users", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     requireBoard(c);
 
     const body = await c.req.json();
@@ -498,6 +547,7 @@ app.post("/api/board-users", async (c) => {
     const name =
       sanitizeStr(body.name) || email?.split?.("@")?.[0] || "board-member";
     const roleId = sanitizeStr(body.roleId);
+    const departmentId = sanitizeStr(body.departmentId) || null;
 
     if (!email || !roleId) {
       return c.json({ error: "Missing email or roleId" }, 400);
@@ -515,7 +565,7 @@ app.post("/api/board-users", async (c) => {
 
     if (roleRow.power_level < 50) {
       return c.json(
-        { error: "Board users should use a board-level role" },
+        { error: "Role must be lead-level or above" },
         400,
       );
     }
@@ -528,15 +578,15 @@ app.post("/api/board-users", async (c) => {
 
     if (userRow) {
       await c.env.DB.prepare(
-        "UPDATE users SET name = ?, role_id = ? WHERE email = ?",
+        "UPDATE users SET name = ?, role_id = ?, department_id = ? WHERE email = ?",
       )
-        .bind(name, roleId, email)
+        .bind(name, roleId, departmentId, email)
         .run();
     } else {
       await c.env.DB.prepare(
-        "INSERT INTO users (id, name, email, role_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
+        "INSERT INTO users (id, name, email, role_id, department_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
       )
-        .bind(name, email, roleId)
+        .bind(name, email, roleId, departmentId)
         .run();
     }
 
@@ -636,23 +686,206 @@ app.post("/api/roles", async (c) => {
 });
 
 // ---------------------------------------------------------
-// 4. ROLE TRANSFERS / EXCHANGES
+// 4. LIST USERS & ROLES (for Admin Console)
 // ---------------------------------------------------------
+app.get("/api/users", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const rows = await c.env.DB.prepare(
+      "SELECT u.id, u.name, u.email, u.role_id, u.department_id, u.created_at, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id ORDER BY u.name ASC",
+    ).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.get("/api/roles", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const rows = await c.env.DB.prepare("SELECT id, name, power_level FROM roles ORDER BY power_level DESC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// ---------------------------------------------------------
+// 5. ROLE TRANSFERS
+// ---------------------------------------------------------
+app.get("/api/role-transfers", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const rows = await c.env.DB.prepare(
+      "SELECT rt.*, fu.name as from_name, fu.email as from_email, tu.name as to_name, tu.email as to_email, r.name as role_name FROM role_transfers rt JOIN users fu ON rt.from_user_id = fu.id JOIN users tu ON rt.to_user_id = tu.id JOIN roles r ON rt.role_id = r.id WHERE rt.status = 'pending' ORDER BY rt.created_at DESC",
+    ).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
 app.post("/api/role-transfers", async (c) => {
   try {
-    requireBoard(c); // Pres/VP initiates or approves the swap
+    await ensureTables(c.env.DB);
+    requireBoard(c);
     const body = await c.req.json();
-    const fromUserId = body.fromUserId;
-    const toUserId = body.toUserId;
-    const roleIdToTransfer = body.roleIdToTransfer;
+    const fromUserId = sanitizeStr(body.fromUserId);
+    const toUserId = sanitizeStr(body.toUserId);
+    const roleId = sanitizeStr(body.roleId);
+    if (!fromUserId || !toUserId || !roleId) {
+      return c.json({ error: "Missing fromUserId, toUserId, or roleId" }, 400);
+    }
+    const user: any = c.get("user");
+    await c.env.DB.prepare(
+      "INSERT INTO role_transfers (id, from_user_id, to_user_id, role_id, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
+    ).bind(fromUserId, toUserId, roleId, user.id).run();
+    return c.json({ success: true, message: "Role transfer request created" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
 
-    // In a full implementation, you'd insert into role_transfers and wait for confirmation.
-    // For direct VP execution, we can swap immediately.
+app.post("/api/role-transfers/:id/approve", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const id = c.req.param("id");
+    const row: any = await c.env.DB.prepare("SELECT * FROM role_transfers WHERE id = ?").bind(id).first();
+    if (!row) return c.json({ error: "Request not found" }, 404);
+    if (row.status !== "pending") return c.json({ error: "Request already processed" }, 400);
 
-    // Example: Swap role logic
-    // ... DB Transaction ...
+    const fromPower: any = await c.env.DB.prepare(
+      "SELECT power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
+    ).bind(row.from_user_id).first();
+    const toPower: any = await c.env.DB.prepare(
+      "SELECT power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
+    ).bind(row.to_user_id).first();
+    const targetRole: any = await c.env.DB.prepare("SELECT power_level FROM roles WHERE id = ?").bind(row.role_id).first();
 
-    return c.json({ success: true, message: "Role exchange executed." });
+    if (!fromPower || !toPower || !targetRole) return c.json({ error: "User or role not found" }, 400);
+    if (fromPower.power_level >= 100 || toPower.power_level >= 100) {
+      return c.json({ error: "Cannot transfer President/VP roles" }, 400);
+    }
+
+    // Swap: give target user the new role, demote source user to target's old role
+    await c.env.DB.prepare("UPDATE users SET role_id = ? WHERE id = ?").bind(row.role_id, row.to_user_id).run();
+    const fromUserRole: any = await c.env.DB.prepare("SELECT role_id FROM users WHERE id = ?").bind(row.from_user_id).first();
+    await c.env.DB.prepare("UPDATE users SET role_id = ? WHERE id = ?").bind(fromUserRole?.role_id || "member", row.from_user_id).run();
+    // Actually let's just swap: target gets the requested role, source gets member
+    // Actually the proper logic: the from_user transfers their role to to_user, and from_user gets demoted to member
+    // Let me redo: Target gets the role_id specified, Source gets demoted to 'member'
+    await c.env.DB.prepare("UPDATE users SET role_id = 'member' WHERE id = ?").bind(row.from_user_id).run();
+
+    await c.env.DB.prepare("UPDATE role_transfers SET status = 'approved' WHERE id = ?").bind(id).run();
+    return c.json({ success: true, message: "Role transfer approved and executed" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.post("/api/role-transfers/:id/reject", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const id = c.req.param("id");
+    await c.env.DB.prepare("UPDATE role_transfers SET status = 'rejected' WHERE id = ?").bind(id).run();
+    return c.json({ success: true, message: "Role transfer rejected" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// My role transfers (for involved users to see and accept/decline)
+app.get("/api/my-role-transfers", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    const rows = await c.env.DB.prepare(
+      `SELECT rt.*, fu.name as from_name, fu.email as from_email,
+        tu.name as to_name, tu.email as to_email, r.name as role_name
+       FROM role_transfers rt
+       JOIN users fu ON rt.from_user_id = fu.id
+       JOIN users tu ON rt.to_user_id = tu.id
+       JOIN roles r ON rt.role_id = r.id
+       WHERE (rt.from_user_id = ? OR rt.to_user_id = ?) AND rt.status = 'pending'
+       ORDER BY rt.created_at DESC`,
+    ).bind(user.id, user.id).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.post("/api/my-role-transfers/:id/accept", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    const id = c.req.param("id");
+    const row: any = await c.env.DB.prepare("SELECT * FROM role_transfers WHERE id = ?").bind(id).first();
+    if (!row) return c.json({ error: "Request not found" }, 404);
+    if (row.status !== "pending") return c.json({ error: "Request already processed" }, 400);
+    if (user.id !== row.from_user_id && user.id !== row.to_user_id) {
+      return c.json({ error: "You are not involved in this transfer" }, 403);
+    }
+
+    if (user.id === row.from_user_id) {
+      await c.env.DB.prepare("UPDATE role_transfers SET from_user_accepted = 1 WHERE id = ?").bind(id).run();
+    } else {
+      await c.env.DB.prepare("UPDATE role_transfers SET to_user_accepted = 1 WHERE id = ?").bind(id).run();
+    }
+
+    // Check if both accepted
+    const updated: any = await c.env.DB.prepare(
+      "SELECT * FROM role_transfers WHERE id = ?",
+    ).bind(id).first();
+
+    if (updated.from_user_accepted && updated.to_user_accepted) {
+      // Both accepted — execute the swap
+      const fromPower: any = await c.env.DB.prepare(
+        "SELECT power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
+      ).bind(row.from_user_id).first();
+      const toPower: any = await c.env.DB.prepare(
+        "SELECT power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
+      ).bind(row.to_user_id).first();
+      const targetRole: any = await c.env.DB.prepare(
+        "SELECT power_level FROM roles WHERE id = ?",
+      ).bind(row.role_id).first();
+      if (!fromPower || !toPower || !targetRole) {
+        return c.json({ error: "User or role not found" }, 400);
+      }
+      if (fromPower.power_level >= 100 || toPower.power_level >= 100) {
+        return c.json({ error: "Cannot transfer President/VP roles" }, 400);
+      }
+
+      await c.env.DB.prepare("UPDATE users SET role_id = ? WHERE id = ?").bind(row.role_id, row.to_user_id).run();
+      await c.env.DB.prepare("UPDATE users SET role_id = 'member' WHERE id = ?").bind(row.from_user_id).run();
+      await c.env.DB.prepare("UPDATE role_transfers SET status = 'approved' WHERE id = ?").bind(id).run();
+      return c.json({ success: true, message: "Both accepted — roles swapped" });
+    }
+
+    return c.json({ success: true, message: "You accepted — waiting for the other party" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.post("/api/my-role-transfers/:id/decline", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    const id = c.req.param("id");
+    const row: any = await c.env.DB.prepare("SELECT * FROM role_transfers WHERE id = ?").bind(id).first();
+    if (!row) return c.json({ error: "Request not found" }, 404);
+    if (row.status !== "pending") return c.json({ error: "Request already processed" }, 400);
+    if (user.id !== row.from_user_id && user.id !== row.to_user_id) {
+      return c.json({ error: "You are not involved in this transfer" }, 403);
+    }
+    await c.env.DB.prepare("UPDATE role_transfers SET status = 'rejected' WHERE id = ?").bind(id).run();
+    return c.json({ success: true, message: "Transfer declined" });
   } catch (e: any) {
     return c.json({ error: e.message }, 403);
   }
@@ -696,20 +929,24 @@ app.delete("/api/members/:id", async (c) => {
 // 6a. Create a signup request (public - no auth required)
 app.post("/api/signup-requests", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     const body = await c.req.json();
     const name = sanitizeStr(body.name);
     const email = validateEmail(body.email);
     const message = sanitizeStr(body.message, MAX_MSG_LEN);
+    const departmentId = sanitizeStr(body.departmentId);
 
     if (!email || !name) {
       return c.json({ error: "Missing or invalid name/email" }, 400);
     }
+    if (!departmentId) {
+      return c.json({ error: "Department is required" }, 400);
+    }
 
     await c.env.DB.prepare(
-      "INSERT INTO signup_requests (id, name, email, message, status) VALUES (lower(hex(randomblob(16))), ?, ?, ?, 'pending')",
+      "INSERT INTO signup_requests (id, name, email, message, department_id, status) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, 'pending')",
     )
-      .bind(name, email, message)
+      .bind(name, email, message, departmentId)
       .run();
 
     return c.json({ success: true, message: "Signup request submitted." });
@@ -721,7 +958,7 @@ app.post("/api/signup-requests", async (c) => {
 // 6b. List pending signup requests (Admin only)
 app.get("/api/signup-requests", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     requireBoard(c);
     const rows = await c.env.DB.prepare(
       "SELECT * FROM signup_requests WHERE status = 'pending' ORDER BY created_at DESC",
@@ -735,7 +972,7 @@ app.get("/api/signup-requests", async (c) => {
 // 6c. Approve a signup request (Admin only)
 app.post("/api/signup-requests/:id/approve", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     requireBoard(c);
     const id = c.req.param("id");
 
@@ -746,11 +983,28 @@ app.post("/api/signup-requests/:id/approve", async (c) => {
       .first();
     if (!reqRow) return c.json({ error: "Request not found" }, 404);
 
+    const departmentId = sanitizeStr(reqRow.department_id) || sanitizeStr((await c.req.json().catch(() => ({}))).departmentId);
+
+    if (!departmentId) {
+      return c.json({ error: "Request has no department assigned" }, 400);
+    }
+
     // create user as general member
     await c.env.DB.prepare(
-      "INSERT INTO users (id, name, email, role_id) VALUES (lower(hex(randomblob(16))), ?, ?, 'member')",
+      "INSERT INTO users (id, name, email, role_id, department_id) VALUES (lower(hex(randomblob(16))), ?, ?, 'member', ?)",
     )
-      .bind(reqRow.name, reqRow.email)
+      .bind(reqRow.name, reqRow.email, departmentId)
+      .run();
+
+    // generate a login token for the approved user
+    await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?")
+      .bind(reqRow.email)
+      .run();
+    const newToken = crypto.randomUUID().replace(/-/g, "");
+    await c.env.DB.prepare(
+      "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, 'member', ?)",
+    )
+      .bind(newToken, reqRow.email, reqRow.name, c.get("user").id)
       .run();
 
     await c.env.DB.prepare("UPDATE signup_requests SET status = ? WHERE id = ?")
@@ -759,7 +1013,8 @@ app.post("/api/signup-requests/:id/approve", async (c) => {
 
     return c.json({
       success: true,
-      message: "Signup request approved and user created.",
+      message: "Signup request approved. Token created.",
+      token: newToken,
     });
   } catch (e: any) {
     return c.json({ error: e.message }, 403);
@@ -769,7 +1024,7 @@ app.post("/api/signup-requests/:id/approve", async (c) => {
 // 6d. Reject a signup request (Admin only)
 app.post("/api/signup-requests/:id/reject", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     requireBoard(c);
     const id = c.req.param("id");
     await c.env.DB.prepare("UPDATE signup_requests SET status = ? WHERE id = ?")
@@ -787,14 +1042,14 @@ app.post("/api/signup-requests/:id/reject", async (c) => {
 async function canAccessDept(c: any, deptId: string) {
   const user: any = c.get("user");
   if (user.power_level >= 100) return true;
-  if (user.department_id === deptId) return true;
+  if (user.power_level >= 50 && user.department_id === deptId) return true;
   throw new Error("Forbidden: you do not have access to this department");
 }
 
 // GET /api/departments/:id/overview — all department data in one call
 app.get("/api/departments/:id/overview", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
 
@@ -830,7 +1085,7 @@ app.get("/api/departments/:id/overview", async (c) => {
 // --- MEETS ---
 app.post("/api/departments/:id/meets", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
@@ -851,7 +1106,7 @@ app.post("/api/departments/:id/meets", async (c) => {
 
 app.delete("/api/departments/:id/meets/:meetId", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const meetId = c.req.param("meetId");
@@ -865,7 +1120,7 @@ app.delete("/api/departments/:id/meets/:meetId", async (c) => {
 // --- DOCUMENTS ---
 app.post("/api/departments/:id/documents", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
@@ -885,7 +1140,7 @@ app.post("/api/departments/:id/documents", async (c) => {
 
 app.delete("/api/departments/:id/documents/:docId", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const docId = c.req.param("docId");
@@ -899,7 +1154,7 @@ app.delete("/api/departments/:id/documents/:docId", async (c) => {
 // --- INSTRUCTIONS ---
 app.post("/api/departments/:id/instructions", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
@@ -919,7 +1174,7 @@ app.post("/api/departments/:id/instructions", async (c) => {
 
 app.delete("/api/departments/:id/instructions/:instructionId", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const instructionId = c.req.param("instructionId");
@@ -933,7 +1188,7 @@ app.delete("/api/departments/:id/instructions/:instructionId", async (c) => {
 // --- PROJECTS ---
 app.post("/api/departments/:id/projects", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
@@ -953,7 +1208,7 @@ app.post("/api/departments/:id/projects", async (c) => {
 
 app.put("/api/departments/:id/projects/:projectId/status", async (c) => {
   try {
-    await ensureAuxTables(c.env.DB);
+    await ensureTables(c.env.DB);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const projectId = c.req.param("projectId");
@@ -961,6 +1216,370 @@ app.put("/api/departments/:id/projects/:projectId/status", async (c) => {
     const status = sanitizeStr(body.status) || "upcoming";
     await c.env.DB.prepare("UPDATE department_projects SET status = ? WHERE id = ? AND department_id = ?").bind(status, projectId, deptId).run();
     return c.json({ success: true, message: "Project status updated" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// ---------------------------------------------------------
+// DEPARTMENTS LIST (for dropdowns)
+// ---------------------------------------------------------
+app.get("/api/departments", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rows = await c.env.DB.prepare("SELECT id, name, description FROM departments ORDER BY name ASC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.get("/api/departments/:id/members", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const deptId = c.req.param("id");
+    const rows = await c.env.DB.prepare(
+      "SELECT u.id, u.name, u.email, u.role_id, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id = ? ORDER BY u.name ASC",
+    ).bind(deptId).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.get("/api/departments/:id/instructions", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const deptId = c.req.param("id");
+    const rows = await c.env.DB.prepare(
+      "SELECT * FROM department_instructions WHERE department_id = ? ORDER BY created_at DESC",
+    ).bind(deptId).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// CLUB-WIDE MEETS
+// ---------------------------------------------------------
+app.get("/api/club-meets", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rows = await c.env.DB.prepare("SELECT * FROM club_meets ORDER BY scheduled_at ASC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.post("/api/club-meets", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (user.power_level < 50) {
+      return c.json({ error: "Forbidden: Lead or above only" }, 403);
+    }
+    const body = await c.req.json();
+    const title = sanitizeStr(body.title);
+    const meetLink = sanitizeStr(body.meetLink);
+    const description = sanitizeStr(body.description);
+    const scheduledAt = body.scheduledAt;
+    if (!title || !scheduledAt) return c.json({ error: "Missing title or scheduledAt" }, 400);
+    await c.env.DB.prepare(
+      "INSERT INTO club_meets (id, title, meet_link, description, scheduled_at, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
+    ).bind(title, meetLink || null, description || null, scheduledAt, user.id).run();
+    return c.json({ success: true, message: "Club-wide meet scheduled" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.delete("/api/club-meets/:id", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (user.power_level < 50) {
+      return c.json({ error: "Forbidden: Lead or above only" }, 403);
+    }
+    const meetId = c.req.param("id");
+    await c.env.DB.prepare("DELETE FROM club_meets WHERE id = ?").bind(meetId).run();
+    return c.json({ success: true, message: "Club-wide meet removed" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// ---------------------------------------------------------
+// INTER-DEPARTMENT MEETS
+// ---------------------------------------------------------
+app.get("/api/inter-dept-meets", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rows = await c.env.DB.prepare("SELECT * FROM inter_dept_meets ORDER BY scheduled_at ASC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.post("/api/inter-dept-meets", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (user.power_level < 50) {
+      return c.json({ error: "Forbidden: Lead or above only" }, 403);
+    }
+    const body = await c.req.json();
+    const title = sanitizeStr(body.title);
+    const meetLink = sanitizeStr(body.meetLink);
+    const description = sanitizeStr(body.description);
+    const scheduledAt = body.scheduledAt;
+    const departments = body.departments;
+    if (!title || !scheduledAt || !departments) {
+      return c.json({ error: "Missing title, scheduledAt, or departments" }, 400);
+    }
+    const deptsStr = Array.isArray(departments) ? departments.join(",") : String(departments);
+    await c.env.DB.prepare(
+      "INSERT INTO inter_dept_meets (id, title, meet_link, description, scheduled_at, departments, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?)",
+    ).bind(title, meetLink || null, description || null, scheduledAt, deptsStr, user.id).run();
+    return c.json({ success: true, message: "Inter-department meet scheduled" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.delete("/api/inter-dept-meets/:id", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (user.power_level < 50) {
+      return c.json({ error: "Forbidden: Lead or above only" }, 403);
+    }
+    const meetId = c.req.param("id");
+    await c.env.DB.prepare("DELETE FROM inter_dept_meets WHERE id = ?").bind(meetId).run();
+    return c.json({ success: true, message: "Inter-department meet removed" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// ---------------------------------------------------------
+// DEPARTMENT MEETS (read-only for all authenticated users)
+// ---------------------------------------------------------
+app.get("/api/department-meets", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rows = await c.env.DB.prepare(
+      "SELECT dm.*, d.name as department_name FROM department_meets dm JOIN departments d ON dm.department_id = d.id ORDER BY dm.scheduled_at ASC",
+    ).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// ANNOUNCEMENTS
+// ---------------------------------------------------------
+app.get("/api/announcements", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rows = await c.env.DB.prepare("SELECT * FROM announcements ORDER BY created_at DESC").all();
+    const user: any = c.get("user");
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.post("/api/announcements", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (user.power_level < 100) {
+      return c.json({ error: "Forbidden: President or VP only" }, 403);
+    }
+    const body = await c.req.json();
+    const title = sanitizeStr(body.title);
+    const content = sanitizeStr(body.content);
+    if (!title || !content) return c.json({ error: "Missing title or content" }, 400);
+    await c.env.DB.prepare(
+      "INSERT INTO announcements (id, title, content, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
+    ).bind(title, content, user.id).run();
+    return c.json({ success: true, message: "Announcement posted" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.delete("/api/announcements/:id", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (user.power_level < 100) {
+      return c.json({ error: "Forbidden: President or VP only" }, 403);
+    }
+    const id = c.req.param("id");
+    await c.env.DB.prepare("DELETE FROM announcements WHERE id = ?").bind(id).run();
+    return c.json({ success: true, message: "Announcement removed" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// ---------------------------------------------------------
+// PROJECTS (board creates, all view, leads assign roles)
+// ---------------------------------------------------------
+function canManageProject(c: any) {
+  const user: any = c.get("user");
+  if (user.power_level >= 100) return true;
+  if (user.power_level >= 50 && user.department_id) return true;
+  throw new Error("Forbidden: cannot manage project roles");
+}
+
+app.get("/api/projects", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+
+    let projects;
+    if (user.power_level >= 100 || !user.department_id) {
+      projects = await c.env.DB.prepare(
+        "SELECT p.* FROM projects p ORDER BY p.created_at DESC",
+      ).all();
+    } else {
+      projects = await c.env.DB.prepare(
+        "SELECT p.* FROM projects p JOIN project_departments pd ON p.id = pd.project_id WHERE pd.department_id = ? ORDER BY p.created_at DESC",
+      ).bind(user.department_id).all();
+    }
+
+    const results = [];
+    for (const proj of (projects.results || [])) {
+      const depts = await c.env.DB.prepare(
+        "SELECT d.id, d.name FROM project_departments pd JOIN departments d ON pd.department_id = d.id WHERE pd.project_id = ?",
+      ).bind(proj.id).all();
+
+      const roles = await c.env.DB.prepare(
+        "SELECT pr.id, pr.user_id, pr.role_name, u.name as user_name, u.email as user_email FROM project_roles pr JOIN users u ON pr.user_id = u.id WHERE pr.project_id = ? ORDER BY pr.created_at ASC",
+      ).bind(proj.id).all();
+
+      results.push({
+        ...proj,
+        departments: depts.results || [],
+        roles: roles.results || [],
+      });
+    }
+    return c.json({ success: true, data: results });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.post("/api/projects", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (user.power_level < 100) {
+      return c.json({ error: "Forbidden: President or VP only" }, 403);
+    }
+    const body = await c.req.json();
+    const name = sanitizeStr(body.name);
+    const description = sanitizeStr(body.description);
+    const deadline = body.deadline || null;
+    const departmentIds = body.departmentIds;
+    if (!name) return c.json({ error: "Missing project name" }, 400);
+    if (!Array.isArray(departmentIds) || departmentIds.length === 0) {
+      return c.json({ error: "Select at least one department" }, 400);
+    }
+
+    const projectId = crypto.randomUUID().replace(/-/g, "");
+    await c.env.DB.prepare(
+      "INSERT INTO projects (id, name, description, deadline, created_by) VALUES (?, ?, ?, ?, ?)",
+    ).bind(projectId, name, description || null, deadline, user.id).run();
+
+    for (const deptId of departmentIds) {
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO project_departments (project_id, department_id) VALUES (?, ?)",
+      ).bind(projectId, deptId).run();
+    }
+
+    return c.json({ success: true, message: "Project created" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.delete("/api/projects/:id", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (user.power_level < 100) {
+      return c.json({ error: "Forbidden: President or VP only" }, 403);
+    }
+    const id = c.req.param("id");
+    await c.env.DB.prepare("DELETE FROM project_departments WHERE project_id = ?").bind(id).run();
+    await c.env.DB.prepare("DELETE FROM project_roles WHERE project_id = ?").bind(id).run();
+    await c.env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(id).run();
+    return c.json({ success: true, message: "Project removed" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// Project role assignments
+app.post("/api/projects/:id/roles", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    const projectId = c.req.param("id");
+    const body = await c.req.json();
+    const userId = sanitizeStr(body.userId);
+    const roleName = sanitizeStr(body.roleName);
+    if (!userId || !roleName) return c.json({ error: "Missing userId or roleName" }, 400);
+
+    // Check project exists and user has access
+    const project: any = await c.env.DB.prepare("SELECT id FROM projects WHERE id = ?").bind(projectId).first();
+    if (!project) return c.json({ error: "Project not found" }, 404);
+
+    // Board can always assign; leads can only assign if their dept is on the project
+    if (user.power_level < 100) {
+      if (user.power_level < 50 || !user.department_id) {
+        return c.json({ error: "Forbidden" }, 403);
+      }
+      const deptCheck: any = await c.env.DB.prepare(
+        "SELECT 1 FROM project_departments WHERE project_id = ? AND department_id = ?",
+      ).bind(projectId, user.department_id).first();
+      if (!deptCheck) return c.json({ error: "Your department is not assigned to this project" }, 403);
+    }
+
+    await c.env.DB.prepare(
+      "INSERT INTO project_roles (id, project_id, user_id, role_name, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
+    ).bind(projectId, userId, roleName, user.id).run();
+
+    return c.json({ success: true, message: "Role assigned" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.delete("/api/projects/:id/roles/:roleId", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    const projectId = c.req.param("id");
+    const roleId = c.req.param("roleId");
+    if (user.power_level < 100) {
+      if (user.power_level < 50 || !user.department_id) {
+        return c.json({ error: "Forbidden" }, 403);
+      }
+      const deptCheck: any = await c.env.DB.prepare(
+        "SELECT 1 FROM project_departments WHERE project_id = ? AND department_id = ?",
+      ).bind(projectId, user.department_id).first();
+      if (!deptCheck) return c.json({ error: "Your department is not assigned to this project" }, 403);
+    }
+    await c.env.DB.prepare("DELETE FROM project_roles WHERE id = ? AND project_id = ?").bind(roleId, projectId).run();
+    return c.json({ success: true, message: "Role removed" });
   } catch (e: any) {
     return c.json({ error: e.message }, 403);
   }

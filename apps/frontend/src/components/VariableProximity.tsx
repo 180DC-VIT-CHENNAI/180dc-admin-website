@@ -165,6 +165,7 @@ const VariableProximity = forwardRef<HTMLSpanElement, VariableProximityProps>((p
       style={{ display: 'inline', ...style }}
       {...restProps}
     >
+      {/* eslint-disable-next-line react-hooks/refs */}
       {words.map((word, wordIndex) => (
         <span key={wordIndex} style={{ display: 'inline-block', whiteSpace: 'nowrap' }}>
           {word.split('').map(letter => {

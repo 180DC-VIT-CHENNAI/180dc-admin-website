@@ -7,11 +7,13 @@ interface Props {
   departmentName: string;
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export default function DepartmentPanel({ authToken, departmentId, departmentName }: Props) {
   const [meets, setMeets] = useState<any[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
   const [instructions, setInstructions] = useState<any[]>([]);
-  const [projects, setProjects] = useState<any[]>([]);
+  const [members, setMembers] = useState<any[]>([]);
+
   const [loading, setLoading] = useState(true);
 
   const [newMeetLink, setNewMeetLink] = useState("");
@@ -26,9 +28,7 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
   const [newInstContent, setNewInstContent] = useState("");
   const [newInstPriority, setNewInstPriority] = useState("medium");
 
-  const [newProjName, setNewProjName] = useState("");
-  const [newProjDesc, setNewProjDesc] = useState("");
-  const [newProjDeadline, setNewProjDeadline] = useState("");
+
 
   const headers = {
     "Content-Type": "application/json",
@@ -38,19 +38,24 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
   async function loadOverview() {
     try {
       setLoading(true);
-      const res = await fetch(apiUrl(`/api/departments/${departmentId}/overview`), { headers });
-      const data = await res.json();
-      if (data.success) {
-        setMeets(data.meets || []);
-        setDocuments(data.documents || []);
-        setInstructions(data.instructions || []);
-        setProjects(data.projects || []);
+      const [overviewRes, membersRes] = await Promise.all([
+        fetch(apiUrl(`/api/departments/${departmentId}/overview`), { headers }),
+        fetch(apiUrl(`/api/departments/${departmentId}/members`), { headers }),
+      ]);
+      const overview = await overviewRes.json();
+      const membersData = await membersRes.json();
+      if (overview.success) {
+        setMeets(overview.meets || []);
+        setDocuments(overview.documents || []);
+        setInstructions(overview.instructions || []);
       }
-    } catch { } finally {
+      if (membersData.success) setMembers(membersData.data || []);
+    } catch { /* ignore */ } finally {
       setLoading(false);
     }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { loadOverview() }, [departmentId]);
 
   if (loading) return <div className="card-doodle">Loading department...</div>;
@@ -71,6 +76,23 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
       </header>
 
       <div className="members-grid">
+        {/* DEPARTMENT MEMBERS */}
+        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+          <h3>Department Members ({members.length})</h3>
+          {members.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No members in this department.</p>}
+          <div style={{ display: "grid", gap: 6 }}>
+            {members.map((m) => (
+              <div key={m.id} className="card-doodle" style={{ padding: "0.6rem 1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <strong style={{ fontSize: 14 }}>{m.name}</strong>
+                  <span style={{ marginLeft: 8, fontSize: 12, color: "var(--primary-green)" }}>{m.role_name}</span>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{m.email}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* SCHEDULED MEETS */}
         <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
           <h3>Scheduled Google Meets</h3>
@@ -191,51 +213,7 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
           </div>
         </div>
 
-        {/* PROJECTS */}
-        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-          <h3>Upcoming Projects</h3>
-          {projects.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No projects yet.</p>}
-          <div style={{ display: "grid", gap: 8 }}>
-            {projects.map((p) => (
-              <div key={p.id} className="card-doodle" style={{ padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <strong>{p.name}</strong>
-                  <span className={`floating-note`} style={{ marginLeft: 8, fontSize: 12, padding: "0.2rem 0.6rem", transform: "none" }}>
-                    {p.status}
-                  </span>
-                  {p.description && <div style={{ color: "var(--text-secondary)", fontSize: 14, marginTop: 4 }}>{p.description}</div>}
-                  {p.deadline && <div style={{ fontSize: 13, marginTop: 2 }}>Deadline: {p.deadline?.slice(0, 10)}</div>}
-                </div>
-                <select className="input" style={{ width: 130 }} value={p.status} onChange={async (e) => {
-                  const res = await fetch(apiUrl(`/api/departments/${departmentId}/projects/${p.id}/status`), {
-                    method: "PUT", headers, body: JSON.stringify({ status: e.target.value }),
-                  });
-                  const data = await res.json();
-                  if (data.success) loadOverview();
-                }}>
-                  <option value="upcoming">Upcoming</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Completed</option>
-                  <option value="on_hold">On Hold</option>
-                </select>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 16 }}>
-            <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Project name" value={newProjName} onChange={(e) => setNewProjName(e.target.value)} />
-            <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Description" value={newProjDesc} onChange={(e) => setNewProjDesc(e.target.value)} />
-            <input className="input" style={{ flex: 1, minWidth: 140 }} type="date" value={newProjDeadline} onChange={(e) => setNewProjDeadline(e.target.value)} />
-            <button className="btn" onClick={async () => {
-              if (!newProjName) return alert("Project name required");
-              const res = await fetch(apiUrl(`/api/departments/${departmentId}/projects`), {
-                method: "POST", headers, body: JSON.stringify({ name: newProjName, description: newProjDesc, deadline: newProjDeadline || null }),
-              });
-              const data = await res.json();
-              if (data.success) { setNewProjName(""); setNewProjDesc(""); setNewProjDeadline(""); loadOverview(); }
-              else alert(data.error);
-            }}>Add Project</button>
-          </div>
-        </div>
+
       </div>
     </div>
   );

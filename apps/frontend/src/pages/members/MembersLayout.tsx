@@ -1,21 +1,32 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from "react";
 import MembersLogin from "./MembersLogin";
 import DepartmentPanel from "./DepartmentPanel";
 import { apiUrl } from "../../lib/api";
 
 const DEPT_NAMES: Record<string, string> = {
-  tech: "Technology",
+  tech: "Technical",
   rnd: "Research & Development",
+  marketing: "Marketing",
+  social_media: "Social Media",
+  finance: "Finance",
+  legal: "Legal",
+  hr: "Human Resources",
 };
 
 export default function MembersLayout() {
-  const [authToken, setAuthToken] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
-  const [powerLevel, setPowerLevel] = useState<number>(0);
-  const [departmentId, setDepartmentId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"members" | "department">("members");
+  const [authToken, setAuthToken] = useState<string | null>(() => sessionStorage.getItem("authToken"));
+  const [email, setEmail] = useState<string | null>(sessionStorage.getItem("authEmail"));
+  const [powerLevel, setPowerLevel] = useState<number>(() => {
+    const stored = sessionStorage.getItem("authPowerLevel");
+    return stored ? parseInt(stored, 10) : 0;
+  });
+  const [departmentId, setDepartmentId] = useState<string | null>(sessionStorage.getItem("authDepartmentId"));
+  const [activePanel, setActivePanel] = useState("dashboard");
+  const [activeDeptId, setActiveDeptId] = useState<string | null>(null);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [adminTokens, setAdminTokens] = useState<any[]>([]);
+  const [announcements, setAnnouncements] = useState<any[]>([]);
   const [dashboardReady, setDashboardReady] = useState(false);
   const [tokenEmail, setTokenEmail] = useState("");
   const [tokenName, setTokenName] = useState("");
@@ -24,12 +35,31 @@ export default function MembersLayout() {
   const [boardEmail, setBoardEmail] = useState("");
   const [boardName, setBoardName] = useState("");
   const [boardRoleId, setBoardRoleId] = useState("president");
+  const [boardDepartmentId, setBoardDepartmentId] = useState("");
   const [boardBusy, setBoardBusy] = useState(false);
   const [recentToken, setRecentToken] = useState<string | null>(null);
   const [showRecentToken, setShowRecentToken] = useState(false);
   const [memberEmail, setMemberEmail] = useState("");
   const [memberName, setMemberName] = useState("");
+  const [memberDepartmentId, setMemberDepartmentId] = useState("");
   const [memberBusy, setMemberBusy] = useState(false);
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [annTitle, setAnnTitle] = useState("");
+  const [annContent, setAnnContent] = useState("");
+  const [annBusy, setAnnBusy] = useState(false);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [allRoles, setAllRoles] = useState<any[]>([]);
+  const [roleTransfers, setRoleTransfers] = useState<any[]>([]);
+  const [dangerUserId, setDangerUserId] = useState("");
+  const [dangerNewRoleId, setDangerNewRoleId] = useState("");
+  const [dangerNewDeptId, setDangerNewDeptId] = useState("");
+  const [dangerBusy, setDangerBusy] = useState(false);
+  const [deleteUserId, setDeleteUserId] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [transferFromUserId, setTransferFromUserId] = useState("");
+  const [transferToUserId, setTransferToUserId] = useState("");
+  const [transferRoleId, setTransferRoleId] = useState("");
+  const [transferBusy, setTransferBusy] = useState(false);
 
   const maskToken = (token: string) =>
     token.length <= 12 ? token : `${token.slice(0, 6)}…${token.slice(-4)}`;
@@ -40,6 +70,10 @@ export default function MembersLayout() {
     serverPowerLevel?: number,
     serverDepartmentId?: string,
   ) => {
+    sessionStorage.setItem("authToken", token);
+    sessionStorage.setItem("authEmail", userEmail);
+    sessionStorage.setItem("authPowerLevel", String(serverPowerLevel ?? 10));
+    if (serverDepartmentId) sessionStorage.setItem("authDepartmentId", serverDepartmentId);
     setAuthToken(token);
     setEmail(userEmail);
     setPowerLevel(serverPowerLevel ?? 10);
@@ -60,588 +94,1071 @@ export default function MembersLayout() {
           if (data.user?.departmentId) setDepartmentId(data.user.departmentId);
           setPendingRequests(data.pendingRequests || []);
           setAdminTokens(data.adminTokens || []);
+          setAnnouncements(data.announcements || []);
+          setRoleTransfers(data.roleTransfers || []);
+          if (data.departments) setDepartments(data.departments);
           setDashboardReady(true);
         } else {
-          console.error(data.error || "Failed to load dashboard");
+          sessionStorage.clear();
+          setAuthToken(null);
         }
-      } catch (e) {
-        console.error("Failed to load dashboard", e);
+      } catch {
+        sessionStorage.clear();
+        setAuthToken(null);
       }
     }
     loadDashboard();
-  }, [authToken]);
+  }, [authToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasDepartment = departmentId && DEPT_NAMES[departmentId];
   const deptName = hasDepartment ? DEPT_NAMES[departmentId!] : "";
 
-  if (!authToken) return <MembersLogin onLogin={handleLogin} />;
+  type NavItem = { id: string; label: string; minPower: number; deptId?: string };
+  const baseNav: NavItem[] = [
+    { id: "dashboard", label: "Dashboard", minPower: 0 },
+    { id: "meets", label: "Meets", minPower: 0 },
+    { id: "projects", label: "Projects", minPower: 0 },
+    { id: "instructions", label: "Instructions", minPower: 0 },
+    { id: "transfers", label: "Transfers", minPower: 0 },
+    { id: "announcements", label: "Announcements", minPower: 0 },
+    { id: "admin", label: "Club Members", minPower: 100 },
+  ];
+  if (powerLevel >= 100) {
+    const deptLinks = departments.map((d: any) => ({
+      id: `dept-${d.id}`, label: `${d.name} Dept`, minPower: 0, deptId: d.id,
+    }));
+    baseNav.splice(1, 0, ...deptLinks);
+  } else if (hasDepartment && powerLevel >= 50) {
+    baseNav.splice(1, 0, { id: "department", label: deptName, minPower: 0 });
+  }
+  const visibleNav = baseNav.filter((n) => powerLevel >= n.minPower);
 
+  if (!authToken) return <MembersLogin onLogin={handleLogin} />;
   if (!dashboardReady) {
     return (
-      <div
-        style={{
-          backgroundColor: "var(--bg-primary)",
-          minHeight: "100vh",
-          width: "100%",
-        }}
-      >
+      <div style={{ backgroundColor: "var(--bg-primary)", minHeight: "100vh", width: "100%" }}>
         <div className="container" style={{ padding: "4rem 0" }}>
           <div className="card-doodle">Loading dashboard...</div>
         </div>
       </div>
     );
   }
+
   return (
-    <div
-      style={{
-        backgroundColor: "var(--bg-primary)",
-        minHeight: "100vh",
-        width: "100%",
-      }}
-    >
-      <div className="container" style={{ padding: "3rem 0" }}>
-        <header
-          style={{
-            borderBottom: "1px solid var(--border-light)",
-            paddingBottom: "1rem",
-            marginBottom: "2rem",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <h1 style={{ margin: 0 }}>Portal Dashboard</h1>
-            <p style={{ margin: 0, color: "var(--text-secondary)" }}>
-              Logged in as: {email}
-            </p>
-          </div>
-
-          <div style={{ textAlign: "right" }}>
-            <span className="floating-note">Power Level: {powerLevel}</span>
-            <br />
-            <br />
+    <div style={{ backgroundColor: "var(--bg-primary)", minHeight: "100vh", width: "100%", display: "flex" }}>
+      {/* SIDEBAR */}
+      <div style={{
+        width: 220, minWidth: 220, backgroundColor: "var(--bg-card)", borderRight: "1px solid var(--border-light)",
+        display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, height: "100vh", zIndex: 10,
+      }}>
+        <div style={{ padding: "1.5rem 1rem", borderBottom: "1px solid var(--border-light)" }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>180DC Portal</h2>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>{email}</div>
+          <div style={{ fontSize: 12, color: "var(--primary-green)", marginTop: 2 }}>Power: {powerLevel}</div>
+        </div>
+        <nav style={{ flex: 1, minHeight: 0, padding: "0.75rem 0", display: "flex", flexDirection: "column", gap: 2, overflowY: "auto" }}>
+          {visibleNav.map((item) => (
             <button
-              onClick={() => setAuthToken(null)}
-              className="btn"
-              style={{ background: "var(--primary-green)" }}
+              key={item.id}
+              onClick={() => {
+                if (item.deptId) { setActiveDeptId(item.deptId); setActivePanel("department"); }
+                else setActivePanel(item.id);
+              }}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "0.7rem 1.2rem", border: "none",
+                background: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id)
+                  ? "var(--primary-green)" : "transparent",
+                color: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id)
+                  ? "#fff" : "var(--text-primary)", cursor: "pointer",
+                fontSize: 14, fontWeight: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id) ? 600 : 400, textAlign: "left", width: "100%",
+                borderRadius: 0, transition: "background 0.15s",
+              }}
             >
-              Logout
+              {item.label}
             </button>
-          </div>
-        </header>
-
-        {hasDepartment && (
-          <div
+          ))}
+        </nav>
+        <div style={{ padding: "1rem", borderTop: "1px solid var(--border-light)" }}>
+          <button
+            onClick={() => { sessionStorage.clear(); setAuthToken(null); }}
             style={{
-              display: "flex",
-              gap: 8,
-              marginBottom: "2rem",
-              borderBottom: "1px solid var(--border-light)",
-              paddingBottom: "0.75rem",
+              display: "flex", alignItems: "center", gap: 8, padding: "0.5rem 1rem", border: "1px solid var(--border-light)",
+              background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 13, width: "100%",
+              borderRadius: 6,
             }}
           >
-            <button
-              className={activeTab === "members" ? "btn" : "btn outline"}
-              onClick={() => setActiveTab("members")}
-              style={{ padding: "0.5rem 1.5rem" }}
-            >
-              Members Panel
-            </button>
-            <button
-              className={activeTab === "department" ? "btn" : "btn outline"}
-              onClick={() => setActiveTab("department")}
-              style={{ padding: "0.5rem 1.5rem" }}
-            >
-              {deptName} Department
-            </button>
-          </div>
+            Logout
+          </button>
+        </div>
+      </div>
+
+      {/* MAIN CONTENT */}
+      <div style={{ marginLeft: 220, flex: 1, padding: "2rem", maxWidth: "calc(100vw - 220px)" }}>
+        {activePanel === "dashboard" && (
+          <>
+            <h2 style={{ marginTop: 0 }}>Dashboard</h2>
+            <div className="members-grid">
+              <div className="card-doodle">
+                <h3>Personal Profile</h3>
+                <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>{email}</p>
+                {hasDepartment && (
+                  <p style={{ color: "var(--primary-green)", fontSize: 14 }}>{deptName} Department</p>
+                )}
+              </div>
+
+              {powerLevel >= 50 && (
+                <div className="card-doodle">
+                  <h3>Access Hub</h3>
+                  <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+                    Visit all department websites from one place.
+                  </p>
+                  <button className="btn" onClick={() => window.open("/departments", "_blank")}>
+                    Open Access Hub
+                  </button>
+                </div>
+              )}
+
+              {hasDepartment && powerLevel >= 50 && (
+                <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                  <h3>{deptName} Department</h3>
+                  <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+                    Manage meets, documents, instructions, and projects.
+                  </p>
+                  <button className="btn" onClick={() => setActivePanel("department")}>
+                    Open Department Panel
+                  </button>
+                </div>
+              )}
+
+              {announcements.length > 0 && (
+                <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                  <h3>Recent Announcements</h3>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {announcements.slice(0, 3).map((a: any) => (
+                      <div key={a.id} className="card-doodle" style={{ padding: 12 }}>
+                        <strong>{a.title}</strong>
+                        <div style={{ fontSize: 13, marginTop: 4, whiteSpace: "pre-wrap" }}>{a.content}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-light)", marginTop: 6 }}>
+                          {a.created_at?.slice(0, 10)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
         )}
 
-        {activeTab === "department" && hasDepartment ? (
-          <DepartmentPanel
-            authToken={authToken!}
-            departmentId={departmentId!}
-            departmentName={deptName}
-          />
-        ) : (
-        <div className="members-grid">
-          <div className="card-doodle">
-            <h3>Personal Profile</h3>
-            <p style={{ color: "var(--text-secondary)" }}>
-              View your upcoming tasks and edit your details.
-            </p>
-            <button className="btn outline">Go to Profile</button>
-          </div>
+        {activePanel === "department" && (() => {
+          const deptId = activeDeptId || departmentId;
+          const deptName = deptId ? (DEPT_NAMES[deptId] || departments.find((d: any) => d.id === deptId)?.name || deptId) : "";
+          if (!deptId) return null;
+          return <DepartmentPanel authToken={authToken!} departmentId={deptId} departmentName={deptName} />;
+        })()}
 
-          {powerLevel >= 50 && (
-            <div className="card-doodle">
-              <h3>Access Hub</h3>
-              <p style={{ color: "var(--text-secondary)" }}>
-                Open the Access Hub to visit all department websites from one
-                place.
-              </p>
-              <button
-                className="btn"
-                onClick={() => window.open("/departments", "_blank")}
-                title="Open Access Hub"
-              >
-                Open Access Hub
-              </button>
+        {activePanel === "meets" && (
+          <>
+            <h2 style={{ marginTop: 0 }}>Meets</h2>
+            <div className="members-grid">
+              <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                <h3>Club-Wide Meets</h3>
+                <ClubMeetsSection authToken={authToken!} powerLevel={powerLevel} />
+              </div>
+              <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                <h3>Inter-Department Meets</h3>
+                <InterDeptMeetsSection authToken={authToken!} departments={departments} powerLevel={powerLevel} />
+              </div>
+              <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                <h3>Department Meets</h3>
+                <DepartmentMeetsSection
+                  authToken={authToken!}
+                  departments={departments}
+                  powerLevel={powerLevel}
+                  departmentId={departmentId}
+                />
+              </div>
             </div>
-          )}
+          </>
+        )}
 
-          {powerLevel >= 100 && (
-            <>
-              <div className="card-doodle">
-                <h3>Global Meets</h3>
-                <p style={{ color: "var(--text-secondary)" }}>
-                  Schedule meetings across all departments.
-                </p>
-                <button className="btn">Schedule Meet</button>
+        {activePanel === "projects" && (
+          <>
+            <h2 style={{ marginTop: 0 }}>Projects</h2>
+            <ProjectsSection
+              authToken={authToken!}
+              departments={departments}
+              allUsers={allUsers}
+              powerLevel={powerLevel}
+              departmentId={departmentId}
+            />
+          </>
+        )}
+
+        {activePanel === "instructions" && (
+          <>
+            <h2 style={{ marginTop: 0 }}>Instructions</h2>
+            <div className="members-grid">
+              <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                {!departmentId ? (
+                  <p style={{ color: "var(--text-secondary)" }}>You are not assigned to any department.</p>
+                ) : (
+                  <InstructionsSection authToken={authToken!} departmentId={departmentId!} />
+                )}
               </div>
+            </div>
+          </>
+        )}
 
-              <div
-                className="card-doodle"
-                style={{ border: "3px solid var(--accent)" }}
-              >
-                <h3 style={{ color: "var(--accent)" }}>Admin Settings</h3>
-                <p style={{ color: "var(--text-secondary)" }}>
-                  Create roles, transfer ownership, manage members.
-                </p>
-                <button className="btn" style={{ background: "var(--accent)" }}>
-                  Admin Console
-                </button>
+        {activePanel === "transfers" && (
+          <>
+            <h2 style={{ marginTop: 0 }}>Role Transfer Requests</h2>
+            <div className="members-grid">
+              <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                <TransfersSection authToken={authToken!} />
               </div>
+            </div>
+          </>
+        )}
 
+        {activePanel === "announcements" && (
+          <>
+            <h2 style={{ marginTop: 0 }}>Announcements</h2>
+            <div className="members-grid">
+              {powerLevel >= 100 && (
+                <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                  <h3>Post Announcement</h3>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <input className="input" placeholder="Title" value={annTitle} onChange={(e) => setAnnTitle(e.target.value)} />
+                    <textarea className="input" placeholder="Content" rows={4} value={annContent} onChange={(e) => setAnnContent(e.target.value)} />
+                    <button className="btn" disabled={annBusy} onClick={async () => {
+                      if (!annTitle.trim() || !annContent.trim()) return alert("Title and content required");
+                      setAnnBusy(true);
+                      try {
+                        const res = await fetch(apiUrl("/api/announcements"), {
+                          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                          body: JSON.stringify({ title: annTitle.trim(), content: annContent.trim() }),
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                          setAnnTitle(""); setAnnContent("");
+                          const r2 = await fetch(apiUrl("/api/announcements"), { headers: { Authorization: `Bearer ${authToken}` } });
+                          const d2 = await r2.json();
+                          if (d2.success) setAnnouncements(d2.data || []);
+                        } else alert(data.error);
+                      } finally { setAnnBusy(false); }
+                    }}>{annBusy ? "Posting..." : "Post Announcement"}</button>
+                  </div>
+                </div>
+              )}
+
+              {announcements.length === 0 && (
+                <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                  <p style={{ color: "var(--text-secondary)" }}>No announcements yet.</p>
+                </div>
+              )}
+
+              {announcements.map((a: any) => (
+                <div key={a.id} className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div style={{ flex: 1 }}>
+                      <h3 style={{ margin: 0 }}>{a.title}</h3>
+                      <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 4 }}>{a.created_at?.slice(0, 10)}</div>
+                      <div style={{ marginTop: 10, whiteSpace: "pre-wrap", color: "var(--text-secondary)" }}>{a.content}</div>
+                    </div>
+                    {powerLevel >= 100 && (
+                      <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13, marginLeft: 12 }} onClick={async () => {
+                        await fetch(apiUrl(`/api/announcements/${a.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                        setAnnouncements(announcements.filter((x: any) => x.id !== a.id));
+                      }}>Delete</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {activePanel === "admin" && powerLevel >= 100 && (
+          <>
+            <h2 style={{ marginTop: 0 }}>Club Members</h2>
+            <AdminDataLoader authToken={authToken!} setAllUsers={setAllUsers} setAllRoles={setAllRoles} />
+            <div className="members-grid">
+              {/* TOKEN REGISTRY */}
               <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
                 <h3>Admin Token Registry</h3>
-                <p style={{ color: "var(--text-secondary)" }}>
-                  Generate tokens for members, leads, or board accounts. The
-                  token is what the user types in the login screen.
+                <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+                  Generate tokens for members, leads, or board accounts. The token is what the user types in the login screen.
                 </p>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 12,
-                    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                    marginTop: 16,
-                  }}
-                >
-                  <input
-                    className="input"
-                    placeholder="Email"
-                    value={tokenEmail}
-                    onChange={(e) => setTokenEmail(e.target.value)}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Name"
-                    value={tokenName}
-                    onChange={(e) => setTokenName(e.target.value)}
-                  />
-                  <select
-                    className="input"
-                    value={tokenRoleId}
-                    onChange={(e) => setTokenRoleId(e.target.value)}
-                  >
+                <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(4, minmax(0, 1fr))", marginTop: 16 }}>
+                  <input className="input" placeholder="Email" value={tokenEmail} onChange={(e) => setTokenEmail(e.target.value)} />
+                  <input className="input" placeholder="Name" value={tokenName} onChange={(e) => setTokenName(e.target.value)} />
+                  <select className="input" value={tokenRoleId} onChange={(e) => setTokenRoleId(e.target.value)}>
                     <option value="member">member</option>
                     <option value="lead">lead</option>
                     <option value="secretary">secretary</option>
                     <option value="vice_president">vice_president</option>
                     <option value="president">president</option>
                   </select>
-                  <button
-                    className="btn"
-                    disabled={tokenBusy}
-                    onClick={async () => {
-                      if (!authToken) return;
-                      if (!tokenEmail.trim()) {
-                        alert("Enter an email first");
-                        return;
-                      }
-                      setTokenBusy(true);
-                      try {
-                        const res = await fetch(apiUrl("/api/admin-tokens"), {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${authToken}`,
-                          },
-                          body: JSON.stringify({
-                            email: tokenEmail.trim(),
-                            name: tokenName.trim(),
-                            roleId: tokenRoleId,
-                          }),
-                        });
-                        const data = await res.json();
-                        if (data.success) {
-                          setAdminTokens((prev) => [data, ...prev]);
-                          setTokenEmail("");
-                          setTokenName("");
-                          setTokenRoleId("member");
-                          setRecentToken(data.token);
-                          setShowRecentToken(false);
-                        } else {
-                          alert(data.error || "Failed to create token");
-                        }
-                      } catch (err: any) {
-                        alert(err.message);
-                      } finally {
-                        setTokenBusy(false);
-                      }
-                    }}
-                  >
-                    {tokenBusy ? "Creating..." : "Create Token"}
-                  </button>
+                  <button className="btn" disabled={tokenBusy} onClick={async () => {
+                    if (!authToken || !tokenEmail.trim()) { alert("Enter an email first"); return; }
+                    setTokenBusy(true);
+                    try {
+                      const res = await fetch(apiUrl("/api/admin-tokens"), {
+                        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                        body: JSON.stringify({ email: tokenEmail.trim(), name: tokenName.trim(), roleId: tokenRoleId }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        setAdminTokens((prev) => [data, ...prev]);
+                        setTokenEmail(""); setTokenName(""); setTokenRoleId("member");
+                        setRecentToken(data.token); setShowRecentToken(false);
+                      } else alert(data.error);
+                    } finally { setTokenBusy(false); }
+                  }}>{tokenBusy ? "Creating..." : "Create Token"}</button>
                 </div>
 
-                <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
+                {recentToken && (
+                  <div className="floating-note" style={{ marginTop: 16, display: "inline-flex", gap: 10, alignItems: "center" }}>
+                    <span>Latest token: {showRecentToken ? recentToken : maskToken(recentToken)}</span>
+                    <button className="btn outline" style={{ padding: "0.45rem 0.9rem", boxShadow: "none" }} onClick={async () => { await navigator.clipboard.writeText(recentToken); alert("Token copied"); }}>Copy</button>
+                    <button className="btn outline" style={{ padding: "0.45rem 0.9rem", boxShadow: "none" }} onClick={() => setShowRecentToken((v) => !v)}>{showRecentToken ? "Hide" : "Reveal"}</button>
+                  </div>
+                )}
+
+                <div style={{ display: "grid", gap: 8, marginTop: 16, maxHeight: 400, overflowY: "auto" }}>
                   {adminTokens.length === 0 && <p>No tokens created yet.</p>}
                   {adminTokens.map((item) => (
-                    <div
-                      key={item.token}
-                      className="card-doodle"
-                      style={{
-                        padding: 16,
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
+                    <div key={item.token} className="card-doodle" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div>
                         <strong>{item.name || item.email}</strong>
-                        <div
-                          style={{
-                            color: "var(--text-secondary)",
-                            fontSize: 14,
-                          }}
-                        >
-                          {item.email} · {item.role_id}
-                        </div>
-                        <div
-                          style={{
-                            marginTop: 8,
-                            fontFamily: "monospace",
-                            fontSize: 13,
-                            wordBreak: "break-all",
-                          }}
-                        >
-                          {item.token}
-                        </div>
+                        <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{item.email} · {item.role_id}</div>
+                        <div style={{ marginTop: 4, fontFamily: "monospace", fontSize: 12, wordBreak: "break-all" }}>{item.token}</div>
                       </div>
                       {!item.revoked_at ? (
-                        <button
-                          className="btn outline"
-                          onClick={async () => {
-                            if (!authToken) return;
-                            const res = await fetch(
-                              apiUrl(`/api/admin-tokens/${item.token}`),
-                              {
-                                method: "DELETE",
-                                headers: {
-                                  Authorization: `Bearer ${authToken}`,
-                                },
-                              },
-                            );
-                            const data = await res.json();
-                            if (data.success) {
-                              setAdminTokens((prev) =>
-                                prev.map((t) =>
-                                  t.token === item.token
-                                    ? {
-                                        ...t,
-                                        revoked_at: new Date().toISOString(),
-                                      }
-                                    : t,
-                                ),
-                              );
-                            } else {
-                              alert(data.error || "Failed to revoke token");
-                            }
-                          }}
-                        >
-                          Revoke
-                        </button>
-                      ) : (
-                        <span style={{ color: "var(--text-secondary)" }}>
-                          Revoked
-                        </span>
-                      )}
+                        <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
+                          const res = await fetch(apiUrl(`/api/admin-tokens/${item.token}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                          const data = await res.json();
+                          if (data.success) setAdminTokens((prev) => prev.map((t) => t.token === item.token ? { ...t, revoked_at: new Date().toISOString() } : t));
+                        }}>Revoke</button>
+                      ) : <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>Revoked</span>}
                     </div>
                   ))}
                 </div>
               </div>
 
+              {/* BOARD USER */}
               <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-                <h3>Create Board User</h3>
-                <p style={{ color: "var(--text-secondary)" }}>
-                  Create or update a board account, assign its role, and issue a
-                  fresh login token in one step.
+                <h3>Create Club Member</h3>
+                <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+                  Create or update a club member account, assign their role, and issue a login token.
                 </p>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 12,
-                    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                    marginTop: 16,
-                  }}
-                >
-                  <input
-                    className="input"
-                    placeholder="Email"
-                    value={boardEmail}
-                    onChange={(e) => setBoardEmail(e.target.value)}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Name"
-                    value={boardName}
-                    onChange={(e) => setBoardName(e.target.value)}
-                  />
-                  <select
-                    className="input"
-                    value={boardRoleId}
-                    onChange={(e) => setBoardRoleId(e.target.value)}
-                  >
+                <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(4, minmax(0, 1fr))", marginTop: 16 }}>
+                  <input className="input" placeholder="Email" value={boardEmail} onChange={(e) => setBoardEmail(e.target.value)} />
+                  <input className="input" placeholder="Name" value={boardName} onChange={(e) => setBoardName(e.target.value)} />
+                  <select className="input" value={boardRoleId} onChange={(e) => setBoardRoleId(e.target.value)}>
                     <option value="president">president</option>
                     <option value="vice_president">vice_president</option>
                     <option value="secretary">secretary</option>
                     <option value="lead">lead</option>
                   </select>
-                  <button
-                    className="btn"
-                    disabled={boardBusy}
-                    onClick={async () => {
-                      if (!authToken) return;
-                      if (!boardEmail.trim()) {
-                        alert("Enter an email first");
-                        return;
-                      }
-                      setBoardBusy(true);
-                      try {
-                        const res = await fetch(apiUrl("/api/board-users"), {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${authToken}`,
-                          },
-                          body: JSON.stringify({
-                            email: boardEmail.trim(),
-                            name: boardName.trim(),
-                            roleId: boardRoleId,
-                          }),
-                        });
-                        const data = await res.json();
-                        if (data.success) {
-                          setAdminTokens((prev) => [data, ...prev]);
-                          setBoardEmail("");
-                          setBoardName("");
-                          setBoardRoleId("president");
-                          setRecentToken(data.token);
-                          setShowRecentToken(false);
-                          alert(`Board user created. Token: ${data.token}`);
-                        } else {
-                          alert(data.error || "Failed to create board user");
-                        }
-                      } catch (err: any) {
-                        alert(err.message);
-                      } finally {
-                        setBoardBusy(false);
-                      }
-                    }}
-                  >
-                    {boardBusy ? "Creating..." : "Create Board User"}
-                  </button>
+                  <select className="input" value={boardDepartmentId} onChange={(e) => setBoardDepartmentId(e.target.value)}>
+                    <option value="">No department</option>
+                    {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                  <button className="btn" disabled={boardBusy} onClick={async () => {
+                    if (!authToken || !boardEmail.trim()) { alert("Enter an email first"); return; }
+                    setBoardBusy(true);
+                    try {
+                      const res = await fetch(apiUrl("/api/board-users"), {
+                        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                        body: JSON.stringify({ email: boardEmail.trim(), name: boardName.trim(), roleId: boardRoleId, departmentId: boardDepartmentId || null }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        setAdminTokens((prev) => [data, ...prev]);
+                        setBoardEmail(""); setBoardName(""); setBoardRoleId("president"); setBoardDepartmentId("");
+                        setRecentToken(data.token); setShowRecentToken(false);
+                        alert(`Board user created. Token: ${data.token}`);
+                      } else alert(data.error);
+                    } finally { setBoardBusy(false); }
+                  }}>{boardBusy ? "Creating..." : "Create Board User"}</button>
                 </div>
+              </div>
 
-                {recentToken && (
-                  <div
-                    className="floating-note"
-                    style={{
-                      marginTop: 16,
-                      display: "inline-flex",
-                      gap: 10,
-                      alignItems: "center",
-                    }}
-                  >
-                    <span>
-                      Latest token:{" "}
-                      {showRecentToken ? recentToken : maskToken(recentToken)}
-                    </span>
-                    <button
-                      className="btn outline"
-                      style={{ padding: "0.45rem 0.9rem", boxShadow: "none" }}
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(recentToken);
-                        alert("Token copied");
-                      }}
-                    >
-                      Copy
-                    </button>
-                    <button
-                      className="btn outline"
-                      style={{ padding: "0.45rem 0.9rem", boxShadow: "none" }}
-                      onClick={() => setShowRecentToken((v) => !v)}
-                    >
-                      {showRecentToken ? "Hide" : "Reveal"}
-                    </button>
+              {/* MEMBER */}
+              <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                <h3>Create Member</h3>
+                <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+                  Create a regular member directly with the `member` role.
+                </p>
+                <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(4, minmax(0, 1fr))", marginTop: 16 }}>
+                  <input className="input" placeholder="Email" value={memberEmail} onChange={(e) => setMemberEmail(e.target.value)} />
+                  <input className="input" placeholder="Name" value={memberName} onChange={(e) => setMemberName(e.target.value)} />
+                  <select className="input" value={memberDepartmentId} onChange={(e) => setMemberDepartmentId(e.target.value)}>
+                    <option value="">No department</option>
+                    {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                  <button className="btn" disabled={memberBusy} onClick={async () => {
+                    if (!authToken || !memberEmail.trim()) { alert("Enter an email first"); return; }
+                    setMemberBusy(true);
+                    try {
+                      const res = await fetch(apiUrl("/api/members"), {
+                        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                        body: JSON.stringify({ email: memberEmail.trim(), name: memberName.trim() || memberEmail.trim().split("@")[0], departmentId: memberDepartmentId || null }),
+                      });
+                      const data = await res.json();
+                      if (data.success) { setMemberEmail(""); setMemberName(""); setMemberDepartmentId(""); setRecentToken(data.token); setShowRecentToken(false); alert("Member created. Token: " + data.token); }
+                      else alert(data.error);
+                    } finally { setMemberBusy(false); }
+                  }}>{memberBusy ? "Creating..." : "Create Member"}</button>
+                </div>
+              </div>
+
+              {/* SIGNUP REQUESTS */}
+              <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                <h3>Pending Signup Requests</h3>
+                {pendingRequests.length === 0 ? <p>No pending requests.</p> : (
+                  <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                    {pendingRequests.map((r) => (
+                      <div key={r.id} className="card-doodle" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: 14 }}>
+                        <div>
+                          <strong>{r.name}</strong>
+                          <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{r.email}</div>
+                          {r.department_id && (
+                            <div style={{ fontSize: 12, marginTop: 2, color: "var(--primary-green)" }}>
+                              {departments.find((d: any) => d.id === r.department_id)?.name || r.department_id}
+                            </div>
+                          )}
+                          {r.message && <p style={{ marginTop: 6, fontSize: 13, color: "var(--text-secondary)" }}>{r.message}</p>}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <button className="btn" onClick={async () => {
+                            const res = await fetch(apiUrl(`/api/signup-requests/${r.id}/approve`), {
+                              method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+                            });
+                            const data = await res.json();
+                            if (data.success && data.token) alert(`User approved! Token for ${r.email}: ${data.token}`);
+                            setPendingRequests(pendingRequests.filter((p) => p.id !== r.id));
+                          }}>Approve</button>
+                          <button className="btn outline" onClick={async () => {
+                            await fetch(apiUrl(`/api/signup-requests/${r.id}/reject`), {
+                              method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+                            });
+                            setPendingRequests(pendingRequests.filter((p) => p.id !== r.id));
+                          }}>Reject</button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
 
-              <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-                <h3>Create Member</h3>
-                <p style={{ color: "var(--text-secondary)" }}>
-                  Create a regular member directly. This is for non-board
-                  accounts and uses the `member` role.
+              {/* DANGER ZONE */}
+              <div className="card-doodle" style={{ gridColumn: "1 / -1", border: "2px solid #e74c3c" }}>
+                <h3 style={{ color: "#e74c3c" }}>Danger Zone</h3>
+                <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+                  Change user roles or remove users permanently. These actions cannot be undone.
                 </p>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 12,
-                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                    marginTop: 16,
-                  }}
-                >
-                  <input
-                    className="input"
-                    placeholder="Email"
-                    value={memberEmail}
-                    onChange={(e) => setMemberEmail(e.target.value)}
-                  />
-                  <input
-                    className="input"
-                    placeholder="Name"
-                    value={memberName}
-                    onChange={(e) => setMemberName(e.target.value)}
-                  />
-                  <button
-                    className="btn"
-                    disabled={memberBusy}
-                    onClick={async () => {
-                      if (!authToken) return;
-                      if (!memberEmail.trim()) {
-                        alert("Enter an email first");
-                        return;
-                      }
-                      setMemberBusy(true);
-                      try {
-                        const res = await fetch(apiUrl("/api/members"), {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${authToken}`,
-                          },
-                          body: JSON.stringify({
-                            email: memberEmail.trim(),
-                            name:
-                              memberName.trim() ||
-                              memberEmail.trim().split("@")[0],
-                          }),
-                        });
-                        const data = await res.json();
-                        if (data.success) {
-                          setMemberEmail("");
-                          setMemberName("");
-                          alert(data.message || "Member created");
-                        } else {
-                          alert(data.error || "Failed to create member");
-                        }
-                      } catch (err: any) {
-                        alert(err.message);
-                      } finally {
-                        setMemberBusy(false);
-                      }
-                    }}
-                  >
-                    {memberBusy ? "Creating..." : "Create Member"}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-
-          {powerLevel >= 100 && (
-            <div style={{ gridColumn: "1 / -1", marginTop: "1rem" }}>
-              <h3>Pending Signup Requests</h3>
-              {pendingRequests.length === 0 && <p>No pending requests.</p>}
-              <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-                {pendingRequests.map((r) => (
-                  <div
-                    key={r.id}
-                    className="card-doodle"
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <div>
-                      <strong style={{ fontSize: "1.1rem" }}>{r.name}</strong>
-                      <div
-                        style={{ color: "var(--text-secondary)", marginTop: 6 }}
-                      >
-                        {r.email}
-                      </div>
-                      <p
-                        style={{ marginTop: 8, color: "var(--text-secondary)" }}
-                      >
-                        {r.message}
-                      </p>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 8,
-                      }}
-                    >
-                      <button
-                        onClick={async () => {
-                          await fetch(
-                            apiUrl(`/api/signup-requests/${r.id}/approve`),
-                            {
-                              method: "POST",
-                              headers: { Authorization: `Bearer ${authToken}` },
-                            },
-                          );
-                          setPendingRequests(
-                            pendingRequests.filter((p) => p.id !== r.id),
-                          );
-                        }}
-                        className="btn"
-                      >
-                        Approve
-                      </button>
-                      <button
-                        onClick={async () => {
-                          await fetch(
-                            apiUrl(`/api/signup-requests/${r.id}/reject`),
-                            {
-                              method: "POST",
-                              headers: { Authorization: `Bearer ${authToken}` },
-                            },
-                          );
-                          setPendingRequests(
-                            pendingRequests.filter((p) => p.id !== r.id),
-                          );
-                        }}
-                        className="btn outline"
-                      >
-                        Reject
-                      </button>
+                <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr 1fr", marginTop: 16 }}>
+                  <div className="card-doodle" style={{ padding: 14, border: "1px solid var(--border-light)" }}>
+                    <h4 style={{ margin: 0, fontSize: 15 }}>Change Role</h4>
+                    <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                      <select className="input" value={dangerUserId} onChange={(e) => setDangerUserId(e.target.value)}>
+                        <option value="">Select user</option>
+                        {allUsers.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.email}) - {u.role_name}</option>)}
+                      </select>
+                      <select className="input" value={dangerNewRoleId} onChange={(e) => setDangerNewRoleId(e.target.value)}>
+                        <option value="">Select new role</option>
+                        {allRoles.filter((r: any) => r.power_level < 100).map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                      </select>
+                      <select className="input" value={dangerNewDeptId} onChange={(e) => setDangerNewDeptId(e.target.value)}>
+                        <option value="">No department</option>
+                        {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      </select>
+                      <button className="btn" style={{ background: "#e74c3c" }} disabled={dangerBusy} onClick={async () => {
+                        if (!dangerUserId || !dangerNewRoleId) { alert("Select user and role"); return; }
+                        setDangerBusy(true);
+                        try {
+                          const res = await fetch(apiUrl(`/api/members/${dangerUserId}/role`), {
+                            method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                            body: JSON.stringify({ newRoleId: dangerNewRoleId, departmentId: dangerNewDeptId || null }),
+                          });
+                          const data = await res.json();
+                          if (data.success) { alert("Role updated"); setDangerUserId(""); setDangerNewRoleId(""); setDangerNewDeptId(""); }
+                          else alert(data.error);
+                        } finally { setDangerBusy(false); }
+                      }}>{dangerBusy ? "Updating..." : "Update Role"}</button>
                     </div>
                   </div>
-                ))}
+                  <div className="card-doodle" style={{ padding: 14, border: "1px solid var(--border-light)" }}>
+                    <h4 style={{ margin: 0, fontSize: 15 }}>Delete User</h4>
+                    <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                      <select className="input" value={deleteUserId} onChange={(e) => setDeleteUserId(e.target.value)}>
+                        <option value="">Select user</option>
+                        {allUsers.filter((u: any) => u.power_level < 100).map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+                      </select>
+                      <button className="btn" style={{ background: "#e74c3c" }} disabled={deleteBusy} onClick={async () => {
+                        if (!deleteUserId) { alert("Select a user"); return; }
+                        if (!confirm("Are you sure you want to permanently delete this user?")) return;
+                        setDeleteBusy(true);
+                        try {
+                          const res = await fetch(apiUrl(`/api/members/${deleteUserId}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                          const data = await res.json();
+                          if (data.success) { alert("User deleted"); setDeleteUserId(""); }
+                          else alert(data.error);
+                        } finally { setDeleteBusy(false); }
+                      }}>{deleteBusy ? "Deleting..." : "Delete User"}</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ROLE TRANSFER REQUESTS */}
+              <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                <h3>Role Transfer Requests</h3>
+                <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+                  Initiate a role transfer from one user to another. President/VP cannot be transferred.
+                </p>
+                <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(4, minmax(0, 1fr))", marginTop: 16 }}>
+                  <select className="input" value={transferFromUserId} onChange={(e) => setTransferFromUserId(e.target.value)}>
+                    <option value="">From user</option>
+                    {allUsers.filter((u: any) => u.power_level < 100).map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.role_name})</option>)}
+                  </select>
+                  <select className="input" value={transferToUserId} onChange={(e) => setTransferToUserId(e.target.value)}>
+                    <option value="">To user</option>
+                    {allUsers.filter((u: any) => u.power_level < 100).map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.role_name})</option>)}
+                  </select>
+                  <select className="input" value={transferRoleId} onChange={(e) => setTransferRoleId(e.target.value)}>
+                    <option value="">Select role</option>
+                    {allRoles.filter((r: any) => r.power_level < 100).map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                  <button className="btn" disabled={transferBusy} onClick={async () => {
+                    if (!transferFromUserId || !transferToUserId || !transferRoleId) { alert("Fill all fields"); return; }
+                    setTransferBusy(true);
+                    try {
+                      const res = await fetch(apiUrl("/api/role-transfers"), {
+                        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                        body: JSON.stringify({ fromUserId: transferFromUserId, toUserId: transferToUserId, roleId: transferRoleId }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        alert("Transfer request created");
+                        setTransferFromUserId(""); setTransferToUserId(""); setTransferRoleId("");
+                        const r2 = await fetch(apiUrl("/api/role-transfers"), { headers: { Authorization: `Bearer ${authToken}` } });
+                        const d2 = await r2.json();
+                        if (d2.success) setRoleTransfers(d2.data || []);
+                      } else alert(data.error);
+                    } finally { setTransferBusy(false); }
+                  }}>{transferBusy ? "Creating..." : "Create Transfer"}</button>
+                </div>
+                {roleTransfers.length > 0 && (
+                  <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
+                    <h4 style={{ margin: 0 }}>Pending Transfers</h4>
+                    {roleTransfers.map((rt: any) => (
+                      <div key={rt.id} className="card-doodle" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <strong>{rt.from_name || "Unknown"}</strong> → <strong>{rt.to_name || "Unknown"}</strong>
+                          <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>Role: {rt.role_name || rt.role_id}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className="btn" onClick={async () => {
+                            const res = await fetch(apiUrl(`/api/role-transfers/${rt.id}/approve`), {
+                              method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+                            });
+                            const data = await res.json();
+                            if (data.success) alert("Transfer approved and executed");
+                            setRoleTransfers(roleTransfers.filter((x: any) => x.id !== rt.id));
+                          }}>Approve</button>
+                          <button className="btn outline" onClick={async () => {
+                            await fetch(apiUrl(`/api/role-transfers/${rt.id}/reject`), {
+                              method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+                            });
+                            setRoleTransfers(roleTransfers.filter((x: any) => x.id !== rt.id));
+                          }}>Reject</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
-          )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdminDataLoader({ authToken, setAllUsers, setAllRoles }: { authToken: string; setAllUsers: any; setAllRoles: any }) {
+  useEffect(() => {
+    async function load() {
+      const [uRes, rRes] = await Promise.all([
+        fetch(apiUrl("/api/users"), { headers: { Authorization: `Bearer ${authToken}` } }),
+        fetch(apiUrl("/api/roles"), { headers: { Authorization: `Bearer ${authToken}` } }),
+      ]);
+      const uData = await uRes.json();
+      const rData = await rRes.json();
+      if (uData.success) setAllUsers(uData.data || []);
+      if (rData.success) setAllRoles(rData.data || []);
+    }
+    load();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+function ClubMeetsSection({ authToken, powerLevel }: { authToken: string; powerLevel: number }) {
+  const [meets, setMeets] = useState<any[]>([]);
+  const [title, setTitle] = useState("");
+  const [link, setLink] = useState("");
+  const [when, setWhen] = useState("");
+  const headers = { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" };
+  const canManage = powerLevel >= 50;
+
+  async function load() {
+    const res = await fetch(apiUrl("/api/club-meets"), { headers: { Authorization: `Bearer ${authToken}` } });
+    const data = await res.json();
+    if (data.success) setMeets(data.data || []);
+  }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []);
+
+  return (
+    <div>
+      {meets.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No club-wide meets scheduled.</p>}
+      <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+        {meets.map((m) => (
+          <div key={m.id} className="card-doodle" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <strong>{m.title}</strong>
+              <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{m.scheduled_at?.slice(0, 16).replace("T", " ")}</div>
+              {m.meet_link && <a href={m.meet_link} target="_blank" style={{ color: "var(--primary-green)", fontWeight: 700, fontSize: 13 }}>Join ↗</a>}
+            </div>
+            {canManage && (
+              <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={async () => {
+                await fetch(apiUrl(`/api/club-meets/${m.id}`), { method: "DELETE", headers });
+                setMeets(meets.filter((x) => x.id !== m.id));
+              }}>Delete</button>
+            )}
+          </div>
+        ))}
+      </div>
+      {canManage && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Meet link" value={link} onChange={(e) => setLink(e.target.value)} />
+          <input className="input" style={{ flex: 1, minWidth: 140 }} type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+          <button className="btn" onClick={async () => {
+            if (!title || !when) return alert("Title and date required");
+            const res = await fetch(apiUrl("/api/club-meets"), {
+              method: "POST", headers, body: JSON.stringify({ title, meetLink: link, scheduledAt: when }),
+            });
+            const data = await res.json();
+            if (data.success) { setTitle(""); setLink(""); setWhen(""); load(); }
+            else alert(data.error);
+          }}>Schedule</button>
         </div>
       )}
+    </div>
+  );
+}
+
+function DepartmentMeetsSection({ authToken, departments, powerLevel, departmentId }: { authToken: string; departments: any[]; powerLevel: number; departmentId: string | null }) {
+  const [meets, setMeets] = useState<any[]>([]);
+  const [title, setTitle] = useState("");
+  const [link, setLink] = useState("");
+  const [when, setWhen] = useState("");
+  const headers = { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" };
+
+  async function load() {
+    const res = await fetch(apiUrl("/api/department-meets"), { headers: { Authorization: `Bearer ${authToken}` } });
+    const data = await res.json();
+    if (data.success) setMeets(data.data || []);
+  }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []);
+
+  const isLead = powerLevel >= 50 && departmentId;
+  const userDeptName = departmentId ? departments.find((d: any) => d.id === departmentId)?.name : null;
+
+  return (
+    <div>
+      {meets.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No department meets scheduled.</p>}
+      <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+        {meets.map((m) => (
+          <div key={m.id} className="card-doodle" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <strong>{m.title}</strong>
+              <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{m.scheduled_at?.slice(0, 16).replace("T", " ")}</div>
+              <div style={{ fontSize: 12, color: "var(--primary-green)" }}>{m.department_name}</div>
+              {m.meet_link && <a href={m.meet_link} target="_blank" style={{ color: "var(--primary-green)", fontWeight: 700, fontSize: 13 }}>Join ↗</a>}
+            </div>
+            {isLead && m.department_id === departmentId && (
+              <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={async () => {
+                await fetch(apiUrl(`/api/departments/${departmentId}/meets/${m.id}`), { method: "DELETE", headers });
+                setMeets(meets.filter((x) => x.id !== m.id));
+              }}>Delete</button>
+            )}
+          </div>
+        ))}
+      </div>
+      {isLead && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 8, borderTop: "1px solid var(--border-light)" }}>
+          <div style={{ fontSize: 13, color: "var(--text-secondary)", width: "100%", marginBottom: 4 }}>
+            Schedule a meet for <strong>{userDeptName}</strong>:
+          </div>
+          <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Meet link" value={link} onChange={(e) => setLink(e.target.value)} />
+          <input className="input" style={{ flex: 1, minWidth: 140 }} type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+          <button className="btn" onClick={async () => {
+            if (!title || !when) return alert("Title and date required");
+            const res = await fetch(apiUrl(`/api/departments/${departmentId}/meets`), {
+              method: "POST", headers, body: JSON.stringify({ title, meetLink: link, scheduledAt: when }),
+            });
+            const data = await res.json();
+            if (data.success) { setTitle(""); setLink(""); setWhen(""); load(); }
+            else alert(data.error);
+          }}>Schedule</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InterDeptMeetsSection({ authToken, departments, powerLevel }: { authToken: string; departments: any[]; powerLevel: number }) {
+  const [meets, setMeets] = useState<any[]>([]);
+  const [title, setTitle] = useState("");
+  const [link, setLink] = useState("");
+  const [when, setWhen] = useState("");
+  const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
+  const headers = { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" };
+  const canManage = powerLevel >= 50;
+
+  async function load() {
+    const res = await fetch(apiUrl("/api/inter-dept-meets"), { headers: { Authorization: `Bearer ${authToken}` } });
+    const data = await res.json();
+    if (data.success) setMeets(data.data || []);
+  }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []);
+
+  function toggleDept(id: string) {
+    setSelectedDepts((prev) => prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]);
+  }
+
+  return (
+    <div>
+      {meets.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No inter-department meets scheduled.</p>}
+      <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+        {meets.map((m) => (
+          <div key={m.id} className="card-doodle" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <strong>{m.title}</strong>
+              <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{m.scheduled_at?.slice(0, 16).replace("T", " ")}</div>
+              <div style={{ fontSize: 12, color: "var(--text-light)" }}>Depts: {(m.departments || "").split(",").join(", ")}</div>
+              {m.meet_link && <a href={m.meet_link} target="_blank" style={{ color: "var(--primary-green)", fontWeight: 700, fontSize: 13 }}>Join ↗</a>}
+            </div>
+            {canManage && (
+              <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={async () => {
+                await fetch(apiUrl(`/api/inter-dept-meets/${m.id}`), { method: "DELETE", headers });
+                setMeets(meets.filter((x) => x.id !== m.id));
+              }}>Delete</button>
+            )}
+          </div>
+        ))}
+      </div>
+      {canManage && (
+        <div style={{ display: "flex", gap: 8, flexDirection: "column" }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Meet link" value={link} onChange={(e) => setLink(e.target.value)} />
+            <input className="input" style={{ flex: 1, minWidth: 140 }} type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {departments.map((d: any) => (
+              <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, cursor: "pointer" }}>
+                <input type="checkbox" checked={selectedDepts.includes(d.id)} onChange={() => toggleDept(d.id)} />
+                {d.name}
+              </label>
+            ))}
+          </div>
+          <button className="btn" onClick={async () => {
+            if (!title || !when) return alert("Title and date required");
+            if (selectedDepts.length === 0) return alert("Select at least one department");
+            const res = await fetch(apiUrl("/api/inter-dept-meets"), {
+              method: "POST", headers, body: JSON.stringify({ title, meetLink: link, scheduledAt: when, departments: selectedDepts }),
+            });
+            const data = await res.json();
+            if (data.success) { setTitle(""); setLink(""); setWhen(""); setSelectedDepts([]); load(); }
+            else alert(data.error);
+          }}>Schedule Inter-Department Meet</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectsSection({ authToken, departments, allUsers, powerLevel, departmentId }: { authToken: string; departments: any[]; allUsers: any[]; powerLevel: number; departmentId: string | null }) {
+  const [projects, setProjects] = useState<any[]>([]);
+  const [deptMembers, setDeptMembers] = useState<any[]>([]);
+  const [assignProjectId, setAssignProjectId] = useState("");
+  const [assignUserId, setAssignUserId] = useState("");
+  const [assignRoleName, setAssignRoleName] = useState("");
+  const [assignBusy, setAssignBusy] = useState(false);
+
+  const canManage = powerLevel >= 50 && departmentId;
+  const isBoard = powerLevel >= 100;
+
+  async function load() {
+    const [projRes, membersRes] = await Promise.all([
+      fetch(apiUrl("/api/projects"), { headers: { Authorization: `Bearer ${authToken}` } }),
+      isBoard
+        ? fetch(apiUrl("/api/users"), { headers: { Authorization: `Bearer ${authToken}` } })
+        : departmentId
+          ? fetch(apiUrl(`/api/departments/${departmentId}/members`), { headers: { Authorization: `Bearer ${authToken}` } })
+          : Promise.resolve(null),
+    ]);
+    const projData = await projRes.json();
+    if (projData.success) setProjects(projData.data || []);
+    if (membersRes) {
+      const membersData = await membersRes.json();
+      setDeptMembers(membersData.success ? (membersData.data || []) : []);
+    }
+  }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []);
+
+  const availableMembers = isBoard ? allUsers : deptMembers;
+
+  return (
+    <div className="members-grid">
+      {isBoard && (
+        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+          <h3>Create Project</h3>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+            Create a new project and assign which departments can access it.
+          </p>
+          <CreateProjectSection authToken={authToken} departments={departments} onCreated={load} />
+        </div>
+      )}
+      {projects.length === 0 && (
+        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+          <p style={{ color: "var(--text-secondary)" }}>No projects yet.</p>
+        </div>
+      )}
+      {projects.map((p) => {
+        const userDeptAssigned = departmentId && p.departments?.some((d: any) => d.id === departmentId);
+        const canAssign = (isBoard || (canManage && userDeptAssigned));
+
+        return (
+          <div key={p.id} className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0 }}>{p.name}</h3>
+                <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 2 }}>
+                  Status: {p.status}
+                  {p.deadline && ` · Deadline: ${p.deadline.slice(0, 10)}`}
+                </div>
+                {p.description && (
+                  <div style={{ marginTop: 6, color: "var(--text-secondary)", fontSize: 14 }}>{p.description}</div>
+                )}
+                <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {p.departments?.map((d: any) => (
+                    <span key={d.id} className="floating-note" style={{ fontSize: 11, padding: "0.2rem 0.6rem", transform: "none" }}>
+                      {d.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              {isBoard && (
+                <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13, marginLeft: 12 }} onClick={async () => {
+                  if (!confirm(`Delete project "${p.name}"?`)) return;
+                  await fetch(apiUrl(`/api/projects/${p.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                  setProjects(projects.filter((x: any) => x.id !== p.id));
+                }}>Delete</button>
+              )}
+            </div>
+
+            {p.roles?.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <strong style={{ fontSize: 14 }}>Roles</strong>
+                <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+                  {p.roles.map((r: any) => (
+                    <div key={r.id} className="card-doodle" style={{ padding: "0.5rem 0.8rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <strong style={{ fontSize: 13 }}>{r.user_name}</strong>
+                        <span style={{ marginLeft: 8, fontSize: 12, color: "var(--primary-green)" }}>{r.role_name}</span>
+                      </div>
+                      {canAssign && (
+                        <button className="btn outline" style={{ padding: "0.2rem 0.6rem", fontSize: 11 }} onClick={async () => {
+                          await fetch(apiUrl(`/api/projects/${p.id}/roles/${r.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                          load();
+                        }}>Remove</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {canAssign && (
+              <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", borderTop: "1px solid var(--border-light)", paddingTop: 12 }}>
+                <select className="input" style={{ flex: 1, minWidth: 120 }} value={assignProjectId === p.id ? assignUserId : ""} onChange={(e) => { setAssignProjectId(p.id); setAssignUserId(e.target.value); }}>
+                  <option value="">Select member</option>
+                  {availableMembers.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+                </select>
+                <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Role name" value={assignProjectId === p.id ? assignRoleName : ""} onChange={(e) => { setAssignProjectId(p.id); setAssignRoleName(e.target.value); }} />
+                <button className="btn" disabled={assignBusy} onClick={async () => {
+                  if (!assignUserId || !assignRoleName) return alert("Select member and enter role name");
+                  setAssignBusy(true);
+                  try {
+                    const res = await fetch(apiUrl(`/api/projects/${p.id}/roles`), {
+                      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                      body: JSON.stringify({ userId: assignUserId, roleName: assignRoleName }),
+                    });
+                    const data = await res.json();
+                    if (data.success) { setAssignUserId(""); setAssignRoleName(""); setAssignProjectId(""); load(); }
+                    else alert(data.error);
+                  } finally { setAssignBusy(false); }
+                }}>{assignBusy ? "Assigning..." : "Assign Role"}</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CreateProjectSection({ authToken, departments, onCreated }: { authToken: string; departments: any[]; onCreated?: () => void }) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  function toggleDept(id: string) {
+    setSelectedDepts((prev) => prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]);
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
+      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+        <input className="input" placeholder="Project name" value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="input" placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <input className="input" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {departments.map((d: any) => (
+          <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, cursor: "pointer" }}>
+            <input type="checkbox" checked={selectedDepts.includes(d.id)} onChange={() => toggleDept(d.id)} />
+            {d.name}
+          </label>
+        ))}
+      </div>
+      <div>
+        <button className="btn" disabled={busy} onClick={async () => {
+          if (!name.trim()) return alert("Project name required");
+          if (selectedDepts.length === 0) return alert("Select at least one department");
+          setBusy(true);
+          try {
+            const res = await fetch(apiUrl("/api/projects"), {
+              method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+              body: JSON.stringify({ name: name.trim(), description: description.trim() || null, deadline: deadline || null, departmentIds: selectedDepts }),
+            });
+            const data = await res.json();
+            if (data.success) { setName(""); setDescription(""); setDeadline(""); setSelectedDepts([]); if (onCreated) onCreated(); alert("Project created"); }
+            else alert(data.error);
+          } finally { setBusy(false); }
+        }}>{busy ? "Creating..." : "Create Project"}</button>
+      </div>
+    </div>
+  );
+}
+
+function InstructionsSection({ authToken, departmentId }: { authToken: string; departmentId: string }) {
+  const [instructions, setInstructions] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch(apiUrl(`/api/departments/${departmentId}/instructions`), { headers: { Authorization: `Bearer ${authToken}` } })
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setInstructions(d.data || []); })
+      .catch(() => { /* ignore */ });
+  }, [departmentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div>
+      {instructions.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No instructions for your department.</p>}
+      <div style={{ display: "grid", gap: 8 }}>
+        {instructions.map((inst) => (
+          <div key={inst.id} className="card-doodle" style={{ padding: "1rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <strong style={{ fontSize: 15 }}>{inst.title}</strong>
+              <span className="floating-note" style={{ fontSize: 11, padding: "0.15rem 0.5rem", transform: "none" }}>
+                {inst.priority}
+              </span>
+            </div>
+            <div style={{ color: "var(--text-secondary)", whiteSpace: "pre-wrap", fontSize: 14 }}>{inst.content}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TransfersSection({ authToken }: { authToken: string }) {
+  const [transfers, setTransfers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  async function load() {
+    try {
+      const res = await fetch(apiUrl("/api/my-role-transfers"), { headers: { Authorization: `Bearer ${authToken}` } });
+      const d = await res.json();
+      if (d.success) setTransfers(d.data || []);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []);
+
+  if (loading) return <p>Loading...</p>;
+
+  return (
+    <div>
+      {transfers.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No pending role transfers involving you.</p>}
+      <div style={{ display: "grid", gap: 8 }}>
+        {transfers.map((t: any) => (
+          <div key={t.id} className="card-doodle" style={{ padding: "1rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <strong>{t.from_name}</strong> <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>→</span> <strong>{t.to_name}</strong>
+                <div style={{ color: "var(--primary-green)", fontSize: 13 }}>Role: {t.role_name}</div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn" style={{ padding: "0.4rem 1rem" }} onClick={async () => {
+                  const res = await fetch(apiUrl(`/api/my-role-transfers/${t.id}/accept`), {
+                    method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+                  });
+                  const d = await res.json();
+                  if (d.success) { load(); alert(d.message); }
+                  else alert(d.error);
+                }}>Accept</button>
+                <button className="btn outline" style={{ padding: "0.4rem 1rem" }} onClick={async () => {
+                  const res = await fetch(apiUrl(`/api/my-role-transfers/${t.id}/decline`), {
+                    method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+                  });
+                  const d = await res.json();
+                  if (d.success) { load(); alert(d.message); }
+                  else alert(d.error);
+                }}>Decline</button>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

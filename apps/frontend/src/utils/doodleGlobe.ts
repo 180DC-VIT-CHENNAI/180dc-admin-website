@@ -132,7 +132,7 @@ function drawOceanDoodles(ctx: CanvasRenderingContext2D, width: number, height: 
     for (let t = 0; t < 1; t += 0.05) {
       const px = x + t * len;
       const py = y + Math.sin(t * 8 + i) * 3;
-      t === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      if (t === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
     }
     ctx.stroke();
   }
@@ -159,7 +159,7 @@ function drawOceanDoodles(ctx: CanvasRenderingContext2D, width: number, height: 
   ctx.globalAlpha = 1;
 }
 
-function drawCompass(ctx: CanvasRenderingContext2D, width: number, _height: number) {
+function drawCompass(ctx: CanvasRenderingContext2D, width: number, _height: number) { // eslint-disable-line @typescript-eslint/no-unused-vars
   const cx = width - 80;
   const cy = 80;
   const size = 35;
@@ -219,7 +219,9 @@ function drawCompass(ctx: CanvasRenderingContext2D, width: number, _height: numb
 }
 
 function getCountryPath(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   feature: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   projection: any,
   ctx: CanvasRenderingContext2D
 ): string | null {
@@ -259,7 +261,9 @@ function drawSketchyCountry(
 }
 
 export function generateDoodleGlobeTexture(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   countriesGeoJSON: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   indiaGeoJSON: any,
   width = 2048,
   height = 1024
@@ -337,7 +341,7 @@ export function generateDoodlePinTexture(
       const outerR = r * (i === 0 ? 1 : 0.5 + Math.random() * 0.5);
       const px = cx + Math.cos(angle) * outerR;
       const py = cy + Math.sin(angle) * outerR;
-      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
     }
     ctx.closePath();
     ctx.fillStyle = color;
