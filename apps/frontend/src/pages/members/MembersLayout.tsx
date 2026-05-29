@@ -1,11 +1,19 @@
 import { useState, useEffect } from "react";
 import MembersLogin from "./MembersLogin";
+import DepartmentPanel from "./DepartmentPanel";
 import { apiUrl } from "../../lib/api";
+
+const DEPT_NAMES: Record<string, string> = {
+  tech: "Technology",
+  rnd: "Research & Development",
+};
 
 export default function MembersLayout() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [powerLevel, setPowerLevel] = useState<number>(0);
+  const [departmentId, setDepartmentId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"members" | "department">("members");
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [adminTokens, setAdminTokens] = useState<any[]>([]);
   const [dashboardReady, setDashboardReady] = useState(false);
@@ -30,10 +38,12 @@ export default function MembersLayout() {
     token: string,
     userEmail: string,
     serverPowerLevel?: number,
+    serverDepartmentId?: string,
   ) => {
     setAuthToken(token);
     setEmail(userEmail);
     setPowerLevel(serverPowerLevel ?? 10);
+    if (serverDepartmentId) setDepartmentId(serverDepartmentId);
   };
 
   useEffect(() => {
@@ -47,6 +57,7 @@ export default function MembersLayout() {
         if (data.success) {
           setEmail(data.user?.email || email);
           setPowerLevel(data.user?.powerLevel ?? powerLevel);
+          if (data.user?.departmentId) setDepartmentId(data.user.departmentId);
           setPendingRequests(data.pendingRequests || []);
           setAdminTokens(data.adminTokens || []);
           setDashboardReady(true);
@@ -59,6 +70,9 @@ export default function MembersLayout() {
     }
     loadDashboard();
   }, [authToken]);
+
+  const hasDepartment = departmentId && DEPT_NAMES[departmentId];
+  const deptName = hasDepartment ? DEPT_NAMES[departmentId!] : "";
 
   if (!authToken) return <MembersLogin onLogin={handleLogin} />;
 
@@ -110,13 +124,47 @@ export default function MembersLayout() {
             <button
               onClick={() => setAuthToken(null)}
               className="btn"
-              style={{ background: "var(--accent)" }}
+              style={{ background: "var(--primary-green)" }}
             >
               Logout
             </button>
           </div>
         </header>
 
+        {hasDepartment && (
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginBottom: "2rem",
+              borderBottom: "1px solid var(--border-light)",
+              paddingBottom: "0.75rem",
+            }}
+          >
+            <button
+              className={activeTab === "members" ? "btn" : "btn outline"}
+              onClick={() => setActiveTab("members")}
+              style={{ padding: "0.5rem 1.5rem" }}
+            >
+              Members Panel
+            </button>
+            <button
+              className={activeTab === "department" ? "btn" : "btn outline"}
+              onClick={() => setActiveTab("department")}
+              style={{ padding: "0.5rem 1.5rem" }}
+            >
+              {deptName} Department
+            </button>
+          </div>
+        )}
+
+        {activeTab === "department" && hasDepartment ? (
+          <DepartmentPanel
+            authToken={authToken!}
+            departmentId={departmentId!}
+            departmentName={deptName}
+          />
+        ) : (
         <div className="members-grid">
           <div className="card-doodle">
             <h3>Personal Profile</h3>
@@ -593,6 +641,7 @@ export default function MembersLayout() {
             </div>
           )}
         </div>
+      )}
       </div>
     </div>
   );

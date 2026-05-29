@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { apiUrl } from "../../lib/api";
 
 interface MembersLoginProps {
-  onLogin: (token: string, email: string, powerLevel?: number) => void;
+  onLogin: (token: string, email: string, powerLevel?: number, departmentId?: string) => void;
 }
 
 export default function MembersLogin({ onLogin }: MembersLoginProps) {
@@ -78,7 +78,7 @@ export default function MembersLogin({ onLogin }: MembersLoginProps) {
                     });
                     const data = await res.json();
                     if (data.success) {
-                      onLogin(token, data.email, data.powerLevel);
+                      onLogin(token, data.email, data.powerLevel, data.departmentId);
                     } else {
                       alert("Login failed: " + (data.error || "unknown"));
                     }

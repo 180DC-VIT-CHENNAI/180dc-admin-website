@@ -19,6 +19,9 @@
   --text-primary: #1a1a1a;
   --text-secondary: #555555;
   --border-light: rgba(0, 0, 0, 0.08);
+  --accent: #8dc63f;
+  --accent-bg: rgba(141, 198, 63, 0.1);
+  --accent-border: #8dc63f;
 }
 
 [data-theme="dark"] {
@@ -33,6 +36,9 @@
   --cream: #1a1a1a;
   --primary-white: #121212;
   --border-light: rgba(255, 255, 255, 0.08);
+  --accent: #8dc63f;
+  --accent-bg: rgba(141, 198, 63, 0.15);
+  --accent-border: #8dc63f;
 }
 
 * {

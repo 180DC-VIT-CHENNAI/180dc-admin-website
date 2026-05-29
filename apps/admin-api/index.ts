@@ -73,6 +73,34 @@ async function ensureAuxTables(db: any) {
         revoked_at DATETIME,
         FOREIGN KEY (role_id) REFERENCES roles(id)
       );
+      CREATE TABLE IF NOT EXISTS department_meets (
+        id TEXT PRIMARY KEY, department_id TEXT NOT NULL,
+        title TEXT NOT NULL, meet_link TEXT, description TEXT,
+        scheduled_at DATETIME NOT NULL, created_by TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (department_id) REFERENCES departments(id)
+      );
+      CREATE TABLE IF NOT EXISTS department_documents (
+        id TEXT PRIMARY KEY, department_id TEXT NOT NULL,
+        title TEXT NOT NULL, description TEXT, file_url TEXT,
+        status TEXT DEFAULT 'pending', created_by TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (department_id) REFERENCES departments(id)
+      );
+      CREATE TABLE IF NOT EXISTS department_instructions (
+        id TEXT PRIMARY KEY, department_id TEXT NOT NULL,
+        title TEXT NOT NULL, content TEXT NOT NULL,
+        priority TEXT DEFAULT 'medium', created_by TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (department_id) REFERENCES departments(id)
+      );
+      CREATE TABLE IF NOT EXISTS department_projects (
+        id TEXT PRIMARY KEY, department_id TEXT NOT NULL,
+        name TEXT NOT NULL, description TEXT,
+        status TEXT DEFAULT 'upcoming', deadline DATETIME,
+        created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (department_id) REFERENCES departments(id)
+      );
     `);
   } catch (e: any) {
     logError("DDL failed", e);
@@ -103,6 +131,14 @@ async function ensureAuxTables(db: any) {
       .prepare(roleSql)
       .bind("member", "General Member", 10, "system")
       .run();
+
+    // Seed departments (idempotent)
+    await db.prepare(
+      "INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)",
+    ).bind("tech", "Technology", "Handles technical infrastructure and UI").run();
+    await db.prepare(
+      "INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)",
+    ).bind("rnd", "Research & Development", "Handles consulting research").run();
 
     // Seed a dev admin token with a random token if DB is empty
     const tc: any = await db
@@ -315,7 +351,7 @@ app.post("/api/dev-login", async (c) => {
     }
 
     const user: any = await c.env.DB.prepare(
-      "SELECT u.email, u.name, u.role_id, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
+      "SELECT u.email, u.name, u.role_id, u.department_id, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
     )
       .bind(entry.email)
       .first();
@@ -332,6 +368,7 @@ app.post("/api/dev-login", async (c) => {
       roleId: user.role_id || entry.role_id || "member",
       roleName: user.role_name || null,
       powerLevel: user.power_level ?? 10,
+      departmentId: user.department_id || null,
     });
   } catch (e: any) {
     return c.json({ error: e.message }, 500);
@@ -368,6 +405,7 @@ app.get("/api/dashboard", async (c) => {
         roleId: user.role_id,
         roleName: user.role_name,
         powerLevel: user.power_level,
+        departmentId: user.department_id || null,
       },
       pendingRequests: pendingRequests.results || [],
       adminTokens: adminTokens.results || [],
@@ -734,6 +772,191 @@ app.post("/api/signup-requests/:id/reject", async (c) => {
       .bind("rejected", id)
       .run();
     return c.json({ success: true, message: "Signup request rejected." });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// ---------------------------------------------------------
+// DEPARTMENT PAGES (Meets, Documents, Instructions, Projects)
+// ---------------------------------------------------------
+async function canAccessDept(c: any, deptId: string) {
+  const user: any = c.get("user");
+  if (user.power_level >= 100) return true;
+  if (user.department_id === deptId) return true;
+  throw new Error("Forbidden: you do not have access to this department");
+}
+
+// GET /api/departments/:id/overview — all department data in one call
+app.get("/api/departments/:id/overview", async (c) => {
+  try {
+    await ensureAuxTables(c.env.DB);
+    const deptId = c.req.param("id");
+    canAccessDept(c, deptId);
+
+    const meets = await c.env.DB.prepare(
+      "SELECT * FROM department_meets WHERE department_id = ? ORDER BY scheduled_at ASC",
+    ).bind(deptId).all();
+
+    const documents = await c.env.DB.prepare(
+      "SELECT * FROM department_documents WHERE department_id = ? ORDER BY created_at DESC",
+    ).bind(deptId).all();
+
+    const instructions = await c.env.DB.prepare(
+      "SELECT * FROM department_instructions WHERE department_id = ? ORDER BY created_at DESC",
+    ).bind(deptId).all();
+
+    const projects = await c.env.DB.prepare(
+      "SELECT * FROM department_projects WHERE department_id = ? ORDER BY created_at DESC",
+    ).bind(deptId).all();
+
+    return c.json({
+      success: true,
+      departmentId: deptId,
+      meets: meets.results || [],
+      documents: documents.results || [],
+      instructions: instructions.results || [],
+      projects: projects.results || [],
+    });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// --- MEETS ---
+app.post("/api/departments/:id/meets", async (c) => {
+  try {
+    await ensureAuxTables(c.env.DB);
+    const deptId = c.req.param("id");
+    canAccessDept(c, deptId);
+    const body = await c.req.json();
+    const title = sanitizeStr(body.title);
+    const meetLink = sanitizeStr(body.meetLink);
+    const description = sanitizeStr(body.description);
+    const scheduledAt = body.scheduledAt;
+    if (!title || !scheduledAt) return c.json({ error: "Missing title or scheduledAt" }, 400);
+    const user: any = c.get("user");
+    await c.env.DB.prepare(
+      "INSERT INTO department_meets (id, department_id, title, meet_link, description, scheduled_at, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?)",
+    ).bind(deptId, title, meetLink || null, description || null, scheduledAt, user.id).run();
+    return c.json({ success: true, message: "Meet scheduled" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.delete("/api/departments/:id/meets/:meetId", async (c) => {
+  try {
+    await ensureAuxTables(c.env.DB);
+    const deptId = c.req.param("id");
+    canAccessDept(c, deptId);
+    const meetId = c.req.param("meetId");
+    await c.env.DB.prepare("DELETE FROM department_meets WHERE id = ? AND department_id = ?").bind(meetId, deptId).run();
+    return c.json({ success: true, message: "Meet removed" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// --- DOCUMENTS ---
+app.post("/api/departments/:id/documents", async (c) => {
+  try {
+    await ensureAuxTables(c.env.DB);
+    const deptId = c.req.param("id");
+    canAccessDept(c, deptId);
+    const body = await c.req.json();
+    const title = sanitizeStr(body.title);
+    const description = sanitizeStr(body.description);
+    const fileUrl = sanitizeStr(body.fileUrl);
+    if (!title) return c.json({ error: "Missing title" }, 400);
+    const user: any = c.get("user");
+    await c.env.DB.prepare(
+      "INSERT INTO department_documents (id, department_id, title, description, file_url, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
+    ).bind(deptId, title, description || null, fileUrl || null, user.id).run();
+    return c.json({ success: true, message: "Document added" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.delete("/api/departments/:id/documents/:docId", async (c) => {
+  try {
+    await ensureAuxTables(c.env.DB);
+    const deptId = c.req.param("id");
+    canAccessDept(c, deptId);
+    const docId = c.req.param("docId");
+    await c.env.DB.prepare("DELETE FROM department_documents WHERE id = ? AND department_id = ?").bind(docId, deptId).run();
+    return c.json({ success: true, message: "Document removed" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// --- INSTRUCTIONS ---
+app.post("/api/departments/:id/instructions", async (c) => {
+  try {
+    await ensureAuxTables(c.env.DB);
+    const deptId = c.req.param("id");
+    canAccessDept(c, deptId);
+    const body = await c.req.json();
+    const title = sanitizeStr(body.title);
+    const content = sanitizeStr(body.content);
+    const priority = sanitizeStr(body.priority) || "medium";
+    if (!title || !content) return c.json({ error: "Missing title or content" }, 400);
+    const user: any = c.get("user");
+    await c.env.DB.prepare(
+      "INSERT INTO department_instructions (id, department_id, title, content, priority, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
+    ).bind(deptId, title, content, priority, user.id).run();
+    return c.json({ success: true, message: "Instruction added" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.delete("/api/departments/:id/instructions/:instructionId", async (c) => {
+  try {
+    await ensureAuxTables(c.env.DB);
+    const deptId = c.req.param("id");
+    canAccessDept(c, deptId);
+    const instructionId = c.req.param("instructionId");
+    await c.env.DB.prepare("DELETE FROM department_instructions WHERE id = ? AND department_id = ?").bind(instructionId, deptId).run();
+    return c.json({ success: true, message: "Instruction removed" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// --- PROJECTS ---
+app.post("/api/departments/:id/projects", async (c) => {
+  try {
+    await ensureAuxTables(c.env.DB);
+    const deptId = c.req.param("id");
+    canAccessDept(c, deptId);
+    const body = await c.req.json();
+    const name = sanitizeStr(body.name);
+    const description = sanitizeStr(body.description);
+    const deadline = body.deadline || null;
+    if (!name) return c.json({ error: "Missing project name" }, 400);
+    const user: any = c.get("user");
+    await c.env.DB.prepare(
+      "INSERT INTO department_projects (id, department_id, name, description, deadline, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
+    ).bind(deptId, name, description || null, deadline, user.id).run();
+    return c.json({ success: true, message: "Project added" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.put("/api/departments/:id/projects/:projectId/status", async (c) => {
+  try {
+    await ensureAuxTables(c.env.DB);
+    const deptId = c.req.param("id");
+    canAccessDept(c, deptId);
+    const projectId = c.req.param("projectId");
+    const body = await c.req.json();
+    const status = sanitizeStr(body.status) || "upcoming";
+    await c.env.DB.prepare("UPDATE department_projects SET status = ? WHERE id = ? AND department_id = ?").bind(status, projectId, deptId).run();
+    return c.json({ success: true, message: "Project status updated" });
   } catch (e: any) {
     return c.json({ error: e.message }, 403);
   }
