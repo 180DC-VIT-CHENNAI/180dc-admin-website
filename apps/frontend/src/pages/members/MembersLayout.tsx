@@ -717,7 +717,7 @@ function ClubMeetsSection({ authToken, powerLevel }: { authToken: string; powerL
   const [link, setLink] = useState("");
   const [when, setWhen] = useState("");
   const headers = { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" };
-  const canManage = powerLevel >= 50;
+  const canManage = powerLevel >= 100;
 
   async function load() {
     const res = await fetch(apiUrl("/api/club-meets"), { headers: { Authorization: `Bearer ${authToken}` } });
