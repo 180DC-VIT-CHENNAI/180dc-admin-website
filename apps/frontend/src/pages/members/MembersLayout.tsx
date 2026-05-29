@@ -121,7 +121,7 @@ export default function MembersLayout() {
     { id: "instructions", label: "Instructions", minPower: 0 },
     { id: "transfers", label: "Transfers", minPower: 0 },
     { id: "announcements", label: "Announcements", minPower: 0 },
-    { id: "admin", label: "Club Members", minPower: 100 },
+    { id: "admin", label: "Admin Console", minPower: 100 },
   ];
   if (powerLevel >= 100) {
     const deptLinks = departments.map((d: any) => ({
@@ -381,7 +381,7 @@ export default function MembersLayout() {
 
         {activePanel === "admin" && powerLevel >= 100 && (
           <>
-            <h2 style={{ marginTop: 0 }}>Club Members</h2>
+            <h2 style={{ marginTop: 0 }}>Admin Console</h2>
             <AdminDataLoader authToken={authToken!} setAllUsers={setAllUsers} setAllRoles={setAllRoles} />
             <div className="members-grid">
               {/* TOKEN REGISTRY */}

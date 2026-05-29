@@ -46,7 +46,11 @@ let tablesEnsured = false;
 let seedDone = false;
 
 async function ensureTables(db: any) {
-  if (tablesEnsured) return;
+  if (tablesEnsured) {
+    // Always run migrations even if tables were already ensured
+    await runMigrations(db);
+    return;
+  }
   await db.exec(`
     CREATE TABLE IF NOT EXISTS departments (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT);
     CREATE TABLE IF NOT EXISTS roles (id TEXT PRIMARY KEY, name TEXT NOT NULL, power_level INTEGER NOT NULL, created_by TEXT);
@@ -69,10 +73,14 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS project_departments (project_id TEXT NOT NULL, department_id TEXT NOT NULL, PRIMARY KEY (project_id, department_id), FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (department_id) REFERENCES departments(id));
     CREATE TABLE IF NOT EXISTS project_roles (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL, role_name TEXT NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (user_id) REFERENCES users(id));
   `);
-  // Migration: add acceptance tracking columns to role_transfers
+  await runMigrations(db);
+  tablesEnsured = true;
+}
+
+async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE role_transfers ADD COLUMN from_user_accepted INTEGER DEFAULT 0"); } catch {}
   try { await db.exec("ALTER TABLE role_transfers ADD COLUMN to_user_accepted INTEGER DEFAULT 0"); } catch {}
-  tablesEnsured = true;
+  try { await db.exec("ALTER TABLE signup_requests ADD COLUMN department_id TEXT"); } catch {}
 }
 
 let currentEnv: any = null;
