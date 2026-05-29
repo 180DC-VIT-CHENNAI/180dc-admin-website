@@ -135,18 +135,23 @@ async function ensureAuxTables(db: any) {
  */
 // CORS — runs first, handles preflight OPTIONS automatically
 const ALLOWED_ORIGINS = [
-  "http://127.0.0.1:5173",
-  "http://localhost:5173",
   "https://180dc-admin.pages.dev",
   "https://admin.180dc.org",
 ];
+
+const isDevOrigin = (o: string) => {
+  try {
+    const u = new URL(o);
+    return ["localhost", "127.0.0.1"].includes(u.hostname);
+  } catch { return false; }
+};
 
 app.use(
   "*",
   cors({
     origin: (origin) => {
-      if (!origin || ALLOWED_ORIGINS.includes(origin)) return origin;
-      return ALLOWED_ORIGINS[0];
+      if (!origin || isDevOrigin(origin) || ALLOWED_ORIGINS.includes(origin)) return origin;
+      return null;
     },
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
