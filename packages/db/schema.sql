@@ -113,16 +113,17 @@ INSERT INTO roles (id, name, power_level, created_by) VALUES
 
 -- ==========================================
 -- SEED DATA: Dummy Accounts for Development
+-- Replace with real accounts in production.
 -- ==========================================
-INSERT INTO users (id, name, email, role_id, department_id) VALUES 
-('dummy-president-1', 'Super Admin (Pres/VP)', 'admin@vitstudent.ac.in', 'president', NULL),
-('dummy-lead-tech', 'Dummy Tech Lead', 'techlead@vitstudent.ac.in', 'lead', 'tech'),
-('dummy-member-1', 'Dummy Member', 'member@vitstudent.ac.in', 'member', NULL);
+-- INSERT INTO users (id, name, email, role_id, department_id) VALUES 
+-- ('dummy-president-1', 'Super Admin (Pres/VP)', 'admin@vitstudent.ac.in', 'president', NULL),
+-- ('dummy-lead-tech', 'Dummy Tech Lead', 'techlead@vitstudent.ac.in', 'lead', 'tech'),
+-- ('dummy-member-1', 'Dummy Member', 'member@vitstudent.ac.in', 'member', NULL);
 
 -- ==========================================
 -- SEED DATA: Sample Admin Token Registry
 -- Replace or delete these rows after migrating to your own tokens.
 -- ==========================================
-INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES
-('dev-superuser-token', 'admin@vitstudent.ac.in', 'Admin', 'president', 'system');
+-- INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES
+-- ('dev-superuser-token', 'admin@vitstudent.ac.in', 'Admin', 'president', 'system');
 

@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 type Bindings = {
   DB: any;
   AUTH_SESSIONS: any;
+  ENVIRONMENT?: string;
 };
 
 type Variables = {
@@ -13,6 +14,35 @@ type Variables = {
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 let auxTablesReady = false;
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_STR_LEN = 255;
+const MAX_MSG_LEN = 2000;
+
+function sanitizeStr(val: unknown, maxLen = MAX_STR_LEN): string | null {
+  if (typeof val !== "string") return null;
+  const trimmed = val.trim();
+  if (trimmed.length === 0 || trimmed.length > maxLen) return null;
+  return trimmed;
+}
+
+function validateEmail(val: unknown): string | null {
+  const s = sanitizeStr(val);
+  if (!s || !EMAIL_RE.test(s)) return null;
+  return s;
+}
+
+function isProduction(c: any): boolean {
+  return c.env.ENVIRONMENT === "production";
+}
+
+function logError(context: string, err: any, c?: any) {
+  if (c && isProduction(c)) {
+    console.error(`[${context}] ${err.message}`);
+  } else {
+    console.error(`${context}:`, err);
+  }
+}
 
 async function ensureAuxTables(db: any) {
   if (auxTablesReady) return;
@@ -45,32 +75,56 @@ async function ensureAuxTables(db: any) {
       );
     `);
   } catch (e: any) {
-    console.error("DDL failed:", e);
+    logError("DDL failed", e);
     // Tables may already exist from a previous schema — continue
   }
 
   try {
     // Seed default roles (idempotent)
-    const roleSql = "INSERT OR IGNORE INTO roles (id, name, power_level, created_by) VALUES (?, ?, ?, ?)";
-    await db.prepare(roleSql).bind("president", "President", 100, "system").run();
-    await db.prepare(roleSql).bind("vice_president", "Vice President", 100, "system").run();
-    await db.prepare(roleSql).bind("secretary", "Secretary", 80, "system").run();
-    await db.prepare(roleSql).bind("lead", "Technical Lead", 50, "system").run();
-    await db.prepare(roleSql).bind("member", "General Member", 10, "system").run();
+    const roleSql =
+      "INSERT OR IGNORE INTO roles (id, name, power_level, created_by) VALUES (?, ?, ?, ?)";
+    await db
+      .prepare(roleSql)
+      .bind("president", "President", 100, "system")
+      .run();
+    await db
+      .prepare(roleSql)
+      .bind("vice_president", "Vice President", 100, "system")
+      .run();
+    await db
+      .prepare(roleSql)
+      .bind("secretary", "Secretary", 80, "system")
+      .run();
+    await db
+      .prepare(roleSql)
+      .bind("lead", "Technical Lead", 50, "system")
+      .run();
+    await db
+      .prepare(roleSql)
+      .bind("member", "General Member", 10, "system")
+      .run();
 
-    // Seed a dev admin token if empty
-    const tc: any = await db.prepare(
-      "SELECT COUNT(*) as cnt FROM admin_tokens",
-    ).first();
+    // Seed a dev admin token with a random token if DB is empty
+    const tc: any = await db
+      .prepare("SELECT COUNT(*) as cnt FROM admin_tokens")
+      .first();
     if (tc && tc.cnt === 0) {
-      await db.prepare(
-        "INSERT OR IGNORE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
-      )
-        .bind("dev-token-180dc", "admin@vitstudent.ac.in", "Dev Admin", "president", "system")
+      const randomToken = crypto.randomUUID().replace(/-/g, "");
+      await db
+        .prepare(
+          "INSERT OR IGNORE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(
+          randomToken,
+          "admin@vitstudent.ac.in",
+          "Dev Admin",
+          "president",
+          "system",
+        )
         .run();
     }
   } catch (e: any) {
-    console.error("Seed failed:", e);
+    logError("Seed failed", e);
   }
   auxTablesReady = true;
 }
@@ -80,10 +134,20 @@ async function ensureAuxTables(db: any) {
  * (In production, this decodes the Google/Clerk JWT token mapped to the VIT email)
  */
 // CORS — runs first, handles preflight OPTIONS automatically
+const ALLOWED_ORIGINS = [
+  "http://127.0.0.1:5173",
+  "http://localhost:5173",
+  "https://180dc-admin.pages.dev",
+  "https://admin.180dc.org",
+];
+
 app.use(
   "*",
   cors({
-    origin: "*",
+    origin: (origin) => {
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) return origin;
+      return ALLOWED_ORIGINS[0];
+    },
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
   }),
@@ -94,8 +158,8 @@ app.use("*", async (c, next) => {
   try {
     await ensureAuxTables(c.env.DB);
   } catch (e: any) {
-    console.error("DB init failed:", e);
-    return c.json({ error: "Database initialization failed: " + e.message }, 500);
+    logError("DB init failed", e, c);
+    return c.json({ error: "Database initialization failed" }, 500);
   }
 
   // Allow unauthenticated routes: public signup + dev-login (handles its own auth)
@@ -143,7 +207,7 @@ app.use("*", async (c, next) => {
       }
     }
   } catch (e) {
-    console.warn("admin_tokens lookup failed", e);
+    logError("admin_tokens lookup failed", e, c);
   }
 
   if (!email) {
@@ -184,8 +248,11 @@ app.post("/api/members", async (c) => {
   try {
     requireBoard(c);
     const body = await c.req.json();
-    const email = body.email;
-    const name = body.name;
+    const email = validateEmail(body.email);
+    const name = sanitizeStr(body.name);
+    if (!email || !name) {
+      return c.json({ error: "Invalid or missing email/name" }, 400);
+    }
 
     // Automatically assigns them the 'member' role initially
     const insert = await c.env.DB.prepare(
@@ -209,6 +276,9 @@ app.post("/api/members", async (c) => {
 // This returns the mapped email so the frontend can use it as the dev identity.
 app.post("/api/dev-login", async (c) => {
   try {
+    if (c.env.ENVIRONMENT === "production") {
+      return c.json({ error: "Not available in production" }, 403);
+    }
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
@@ -247,10 +317,7 @@ app.post("/api/dev-login", async (c) => {
 
     // If user is null here, the role_id in admin_tokens doesn't match any row in roles.
     if (!user) {
-      return c.json(
-        { error: "User role misconfigured: role not found" },
-        500,
-      );
+      return c.json({ error: "User role misconfigured: role not found" }, 500);
     }
 
     return c.json({
@@ -330,9 +397,9 @@ app.post("/api/admin-tokens", async (c) => {
     await ensureAuxTables(c.env.DB);
     requireBoard(c);
     const body = await c.req.json();
-    const email = body.email;
-    const roleId = body.roleId || "member";
-    const name = body.name || email?.split?.("@")?.[0] || "member";
+    const email = validateEmail(body.email);
+    const roleId = sanitizeStr(body.roleId) || "member";
+    const name = sanitizeStr(body.name) || email?.split?.("@")?.[0] || "member";
 
     if (!email) {
       return c.json({ error: "Missing email" }, 400);
@@ -378,9 +445,10 @@ app.post("/api/board-users", async (c) => {
     requireBoard(c);
 
     const body = await c.req.json();
-    const email = body.email;
-    const name = body.name || email?.split?.("@")?.[0] || "board-member";
-    const roleId = body.roleId;
+    const email = validateEmail(body.email);
+    const name =
+      sanitizeStr(body.name) || email?.split?.("@")?.[0] || "board-member";
+    const roleId = sanitizeStr(body.roleId);
 
     if (!email || !roleId) {
       return c.json({ error: "Missing email or roleId" }, 400);
@@ -460,8 +528,11 @@ app.put("/api/members/:id/role", async (c) => {
     requireBoard(c);
     const targetUserId = c.req.param("id");
     const body = await c.req.json();
-    const newRoleId = body.newRoleId;
-    const departmentId = body.departmentId;
+    const newRoleId = sanitizeStr(body.newRoleId);
+    const departmentId = sanitizeStr(body.departmentId);
+    if (!newRoleId) {
+      return c.json({ error: "Missing newRoleId" }, 400);
+    }
 
     await c.env.DB.prepare(
       "UPDATE users SET role_id = ?, department_id = ? WHERE id = ?",
@@ -482,10 +553,15 @@ app.post("/api/roles", async (c) => {
   try {
     requireBoard(c);
     const body = await c.req.json();
-    const roleId = body.roleId;
-    const name = body.name;
+    const roleId = sanitizeStr(body.roleId);
+    const name = sanitizeStr(body.name);
     const powerLevel = body.powerLevel;
-
+    if (!roleId || !name || typeof powerLevel !== "number") {
+      return c.json(
+        { error: "Missing or invalid roleId/name/powerLevel" },
+        400,
+      );
+    }
     if (powerLevel >= 100) {
       return c.json(
         {
@@ -575,12 +651,12 @@ app.post("/api/signup-requests", async (c) => {
   try {
     await ensureAuxTables(c.env.DB);
     const body = await c.req.json();
-    const name = body.name;
-    const email = body.email;
-    const message = body.message || null;
+    const name = sanitizeStr(body.name);
+    const email = validateEmail(body.email);
+    const message = sanitizeStr(body.message, MAX_MSG_LEN);
 
     if (!email || !name) {
-      return c.json({ error: "Missing name or email" }, 400);
+      return c.json({ error: "Missing or invalid name/email" }, 400);
     }
 
     await c.env.DB.prepare(
