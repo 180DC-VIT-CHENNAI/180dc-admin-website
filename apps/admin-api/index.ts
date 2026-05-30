@@ -207,6 +207,7 @@ app.use("*", async (c, next) => {
     (url.pathname === "/api/signup-requests" && c.req.method === "POST") ||
     url.pathname === "/api/dev-login" ||
     url.pathname === "/api/departments" ||
+    url.pathname === "/api/projects/completed" ||
     (url.pathname.startsWith("/api/content") && c.req.method === "GET")
   ) {
     await next();
@@ -1692,6 +1693,34 @@ app.post("/api/projects/:id/complete", async (c) => {
     return c.json({ success: true, message: "Project marked as complete" });
   } catch (e: any) {
     return c.json({ error: e.message }, 403);
+  }
+});
+
+app.post("/api/projects/:id/reopen", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const projectId = c.req.param("id");
+    const user: any = c.get("user");
+    if (user.power_level < 50) {
+      return c.json({ error: "Forbidden: Leads or above only" }, 403);
+    }
+    await c.env.DB.prepare("UPDATE projects SET status = 'upcoming' WHERE id = ?").bind(projectId).run();
+    return c.json({ success: true, message: "Project reopened" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// Public endpoint — returns completed projects (no auth required)
+app.get("/api/projects/completed", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const projects = await c.env.DB.prepare(
+      "SELECT id, name, description, company_org, deadline, created_at FROM projects WHERE status = 'completed' ORDER BY created_at DESC",
+    ).all();
+    return c.json({ success: true, data: projects.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
   }
 });
 

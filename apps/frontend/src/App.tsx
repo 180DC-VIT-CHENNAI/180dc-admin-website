@@ -31,6 +31,9 @@ function App() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [blogPosts, setBlogPosts] = useState<any[]>([]);
   const [partners, setPartners] = useState<string[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [completedProjects, setCompletedProjects] = useState<any[]>([]);
+  const authToken = sessionStorage.getItem("authToken");
 
   useEffect(() => {
     async function loadContent() {
@@ -46,6 +49,8 @@ function App() {
         if (bpRes.success) setBlogPosts(bpRes.data);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (pRes.success) setPartners(pRes.data.map((p: any) => p.name));
+        const completedRes = await fetch(apiUrl("/api/projects/completed")).then(r => r.json());
+        if (completedRes.success) setCompletedProjects(completedRes.data);
       } catch (e) {
         console.error("Failed to load content", e);
       }
@@ -432,6 +437,51 @@ function App() {
           </div>
         </div>
       </section>
+
+      {/* Completed Projects Section */}
+      {completedProjects.length > 0 && (
+        <section className="projects-section">
+          <div className="container">
+            <span className="section-label">Our Work</span>
+            <h2 className="reveal section-heading" style={{ marginBottom: "0.5rem" }}>
+              Completed Projects
+            </h2>
+            <p style={{ fontFamily: "'Patrick Hand', cursive", fontSize: "1.2rem", textAlign: "center", marginBottom: "3rem", color: "var(--text-secondary)" }}>
+              Projects delivered by our consulting teams
+            </p>
+            <div className="projects-grid">
+              {completedProjects.map((p: any) => (
+                <div key={p.id} className="card-doodle project-card">
+                  <h3 style={{ marginTop: 0 }}>{p.name}</h3>
+                  {p.company_org && (
+                    <div style={{ fontSize: 13, color: "var(--primary-green)", marginBottom: 8 }}>
+                      {p.company_org}
+                    </div>
+                  )}
+                  {p.description && (
+                    <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>{p.description}</p>
+                  )}
+                  {authToken && (
+                    <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12, marginTop: 8 }} onClick={async () => {
+                      const res = await fetch(apiUrl(`/api/projects/${p.id}/reopen`), {
+                        method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        setCompletedProjects(completedProjects.filter((x: any) => x.id !== p.id));
+                        alert("Project reopened");
+                      } else alert(data.error);
+                    }}>Reopen</button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <ScribbleSquiggle
+              style={{ width: 150, color: "#8dc63f", margin: "3rem auto 0", display: "block" }}
+            />
+          </div>
+        </section>
+      )}
 
       {/* Case Studies Section */}
       <section id="case-studies" className="cases-section">

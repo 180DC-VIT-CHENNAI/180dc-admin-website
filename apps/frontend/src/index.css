@@ -741,6 +741,31 @@ p {
   display: inline-block;
 }
 
+/* Completed Projects */
+.projects-section {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  background: var(--bg-light);
+  padding: 6rem 0;
+}
+
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+}
+
+.project-card h3 {
+  font-size: 1.3rem;
+  margin-bottom: 0.5rem;
+}
+
+.project-card p {
+  font-size: 0.95rem;
+  margin-bottom: 0;
+}
+
 /* Leadership */
 .leadership-section {
   min-height: 80vh;

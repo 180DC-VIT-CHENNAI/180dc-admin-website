@@ -453,9 +453,9 @@ export default function MembersLayout() {
 
               {/* BOARD USER */}
               <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-                <h3>Create Club Member</h3>
+                <h3>Create Board Member</h3>
                 <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-                  Create or update a club member account, assign their role, and issue a login token.
+                  Create or update a board member account, assign their role, and issue a login token.
                 </p>
                 <div className="admin-grid-4" style={{ marginTop: 16 }}>
                   <input className="input" placeholder="Email" value={boardEmail} onChange={(e) => setBoardEmail(e.target.value)} />
