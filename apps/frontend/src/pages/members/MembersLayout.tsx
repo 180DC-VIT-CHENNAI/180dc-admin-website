@@ -1260,7 +1260,7 @@ function ProjectTasksSection({ authToken, projectId, projectStatus, canManageTas
                 } finally { setCompleteAllBusy(false); }
               }}>{completeAllBusy ? "Completing..." : "Complete All"}</button>
             )}
-            {isBoard && projectStatus !== "completed" && allDone && (
+            {isBoard && projectStatus !== "completed" && (allDone || tasks.length === 0) && (
               <button className="btn" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} disabled={completeProjBusy} onClick={async () => {
                 setCompleteProjBusy(true);
                 try {
