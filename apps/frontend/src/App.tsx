@@ -462,7 +462,7 @@ function App() {
               style={completedProjects.length > 4 ? { maxHeight: 520, overflowY: "auto", paddingRight: 8 } : undefined}
             >
               {completedProjects.map((p: any) => (
-                <div key={p.id} className="card-doodle project-card" style={{ display: "flex", flexDirection: "column", height: 180 }}>
+                <div key={p.id} className="card-doodle project-card" style={{ display: "flex", flexDirection: "column", height: 220 }}>
                   <h3 style={{ marginTop: 0, flexShrink: 0 }}>{p.name}</h3>
                   {p.company_org && (
                     <div style={{ fontSize: 13, color: "var(--primary-green)", marginBottom: 8, flexShrink: 0 }}>

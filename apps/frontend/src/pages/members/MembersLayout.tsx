@@ -1106,7 +1106,7 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
                   </div>
 
                   {p.description && (
-                    <div style={{ marginTop: 10, padding: "0.6rem 0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", maxHeight: 100, overflowY: "auto", color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.5 }}>{p.description}</div>
+                    <div style={{ marginTop: 10, padding: "0.6rem 0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", maxHeight: 150, overflowY: "auto", color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.5 }}>{p.description}</div>
                   )}
 
                   {p.roles?.length > 0 && (
