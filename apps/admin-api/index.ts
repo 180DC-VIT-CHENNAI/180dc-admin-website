@@ -1916,6 +1916,7 @@ app.get("/api/projects/completed", async (c) => {
     const projects = await c.env.DB.prepare(
       "SELECT id, name, description, company_org, deadline, created_at FROM projects WHERE status = 'completed' ORDER BY created_at DESC",
     ).all();
+    c.header("Cache-Control", "no-cache, no-store, must-revalidate");
     return c.json({ success: true, data: projects.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
