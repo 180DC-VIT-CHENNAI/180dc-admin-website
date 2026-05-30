@@ -105,9 +105,9 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
                   <div style={{ color: "var(--text-secondary)", fontSize: 14 }}>{m.scheduled_at?.slice(0, 16).replace("T", " ")}</div>
                   {m.description && <div style={{ fontSize: 14, marginTop: 4 }}>{m.description}</div>}
                   {m.meet_link && (
-                    <a href={m.meet_link} target="_blank" style={{ color: "var(--primary-green)", fontWeight: 700, fontSize: 14 }}>
-                      Join Meet ↗
-                    </a>
+                    <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={() => window.open(m.meet_link, "_blank")}>
+                      Open Link
+                    </button>
                   )}
                 </div>
                 <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {

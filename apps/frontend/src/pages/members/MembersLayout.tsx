@@ -737,7 +737,7 @@ function ClubMeetsSection({ authToken, powerLevel }: { authToken: string; powerL
             <div>
               <strong>{m.title}</strong>
               <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{m.scheduled_at?.slice(0, 16).replace("T", " ")}</div>
-              {m.meet_link && <a href={m.meet_link} target="_blank" style={{ color: "var(--primary-green)", fontWeight: 700, fontSize: 13 }}>Join ↗</a>}
+              {m.meet_link && <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={() => window.open(m.meet_link, "_blank")}>Open Link</button>}
             </div>
             {canManage && (
               <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={async () => {
@@ -797,7 +797,7 @@ function DepartmentMeetsSection({ authToken, departments, powerLevel, department
               <strong>{m.title}</strong>
               <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{m.scheduled_at?.slice(0, 16).replace("T", " ")}</div>
               <div style={{ fontSize: 12, color: "var(--primary-green)" }}>{m.department_name}</div>
-              {m.meet_link && <a href={m.meet_link} target="_blank" style={{ color: "var(--primary-green)", fontWeight: 700, fontSize: 13 }}>Join ↗</a>}
+              {m.meet_link && <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={() => window.open(m.meet_link, "_blank")}>Open Link</button>}
             </div>
             {isLead && m.department_id === departmentId && (
               <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={async () => {
@@ -863,7 +863,7 @@ function InterDeptMeetsSection({ authToken, departments, powerLevel }: { authTok
               <strong>{m.title}</strong>
               <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{m.scheduled_at?.slice(0, 16).replace("T", " ")}</div>
               <div style={{ fontSize: 12, color: "var(--text-light)" }}>Depts: {(m.departments || "").split(",").join(", ")}</div>
-              {m.meet_link && <a href={m.meet_link} target="_blank" style={{ color: "var(--primary-green)", fontWeight: 700, fontSize: 13 }}>Join ↗</a>}
+              {m.meet_link && <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={() => window.open(m.meet_link, "_blank")}>Open Link</button>}
             </div>
             {canManage && (
               <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={async () => {
@@ -944,7 +944,7 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
         <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
           <h3>Create Project</h3>
           <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-            Create a new project and assign which departments can access it.
+            Create a new project for a company/org and assign which departments can access it.
           </p>
           <CreateProjectSection authToken={authToken} departments={departments} onCreated={load} />
         </div>
@@ -957,6 +957,7 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
       {projects.map((p) => {
         const userDeptAssigned = departmentId && p.departments?.some((d: any) => d.id === departmentId);
         const canAssign = (isBoard || (canManage && userDeptAssigned));
+        const canManageTasks = isBoard || (canManage && userDeptAssigned);
 
         return (
           <div key={p.id} className="card-doodle" style={{ gridColumn: "1 / -1" }}>
@@ -965,6 +966,7 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
                 <h3 style={{ margin: 0 }}>{p.name}</h3>
                 <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 2 }}>
                   Status: {p.status}
+                  {p.company_org && ` · ${p.company_org}`}
                   {p.deadline && ` · Deadline: ${p.deadline.slice(0, 10)}`}
                 </div>
                 {p.description && (
@@ -1031,6 +1033,14 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
                 }}>{assignBusy ? "Assigning..." : "Assign Role"}</button>
               </div>
             )}
+
+            <ProjectTasksSection
+              authToken={authToken}
+              projectId={p.id}
+              projectStatus={p.status}
+              canManageTasks={canManageTasks}
+              isBoard={isBoard}
+            />
           </div>
         );
       })}
@@ -1041,6 +1051,7 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
 function CreateProjectSection({ authToken, departments, onCreated }: { authToken: string; departments: any[]; onCreated?: () => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [companyOrg, setCompanyOrg] = useState("");
   const [deadline, setDeadline] = useState("");
   const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -1053,7 +1064,10 @@ function CreateProjectSection({ authToken, departments, onCreated }: { authToken
     <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
       <div className="admin-grid-3">
         <input className="input" placeholder="Project name" value={name} onChange={(e) => setName(e.target.value)} />
-        <input className="input" placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <input className="input" placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <input className="input" placeholder="Company / Org" value={companyOrg} onChange={(e) => setCompanyOrg(e.target.value)} />
+      </div>
+      <div className="admin-grid-2">
         <input className="input" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1072,14 +1086,129 @@ function CreateProjectSection({ authToken, departments, onCreated }: { authToken
           try {
             const res = await fetch(apiUrl("/api/projects"), {
               method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-              body: JSON.stringify({ name: name.trim(), description: description.trim() || null, deadline: deadline || null, departmentIds: selectedDepts }),
+              body: JSON.stringify({ name: name.trim(), description: description.trim() || null, companyOrg: companyOrg.trim() || null, deadline: deadline || null, departmentIds: selectedDepts }),
             });
             const data = await res.json();
-            if (data.success) { setName(""); setDescription(""); setDeadline(""); setSelectedDepts([]); if (onCreated) onCreated(); alert("Project created"); }
+            if (data.success) { setName(""); setDescription(""); setCompanyOrg(""); setDeadline(""); setSelectedDepts([]); if (onCreated) onCreated(); alert("Project created"); }
             else alert(data.error);
           } finally { setBusy(false); }
         }}>{busy ? "Creating..." : "Create Project"}</button>
       </div>
+    </div>
+  );
+}
+
+function ProjectTasksSection({ authToken, projectId, projectStatus, canManageTasks, isBoard }: { authToken: string; projectId: string; projectStatus: string; canManageTasks: boolean; isBoard: boolean }) {
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDesc, setTaskDesc] = useState("");
+  const [taskBusy, setTaskBusy] = useState(false);
+  const [completeAllBusy, setCompleteAllBusy] = useState(false);
+  const [completeProjBusy, setCompleteProjBusy] = useState(false);
+
+  async function loadTasks() {
+    const res = await fetch(apiUrl(`/api/projects/${projectId}/tasks`), { headers: { Authorization: `Bearer ${authToken}` } });
+    const data = await res.json();
+    if (data.success) setTasks(data.data || []);
+  }
+
+  useEffect(() => { loadTasks(); }, []);
+
+  const allDone = tasks.length > 0 && tasks.every((t: any) => t.status === "completed");
+
+  return (
+    <div style={{ marginTop: 12, borderTop: "1px solid var(--border-light)", paddingTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <strong style={{ fontSize: 14 }}>Tasks ({tasks.filter((t: any) => t.status === "completed").length}/{tasks.length})</strong>
+        {projectStatus !== "completed" && (
+          <div style={{ display: "flex", gap: 6 }}>
+            {canManageTasks && tasks.length > 0 && !allDone && (
+              <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} disabled={completeAllBusy} onClick={async () => {
+                setCompleteAllBusy(true);
+                try {
+                  const res = await fetch(apiUrl(`/api/projects/${projectId}/tasks/complete-all`), {
+                    method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+                  });
+                  const data = await res.json();
+                  if (data.success) loadTasks();
+                  else alert(data.error);
+                } finally { setCompleteAllBusy(false); }
+              }}>{completeAllBusy ? "Completing..." : "Complete All"}</button>
+            )}
+            {isBoard && projectStatus !== "completed" && allDone && (
+              <button className="btn" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} disabled={completeProjBusy} onClick={async () => {
+                setCompleteProjBusy(true);
+                try {
+                  const res = await fetch(apiUrl(`/api/projects/${projectId}/complete`), {
+                    method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+                  });
+                  const data = await res.json();
+                  if (data.success) { alert("Project marked as complete"); loadTasks(); window.location.reload(); }
+                  else alert(data.error);
+                } finally { setCompleteProjBusy(false); }
+              }}>{completeProjBusy ? "Completing..." : "Mark Project Complete"}</button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {tasks.length === 0 && <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>No tasks yet.</p>}
+
+      <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
+        {tasks.map((t: any) => (
+          <div key={t.id} className="card-doodle" style={{ padding: "0.5rem 0.8rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 16, color: t.status === "completed" ? "var(--primary-green)" : "var(--text-light)" }}>
+                  {t.status === "completed" ? "✓" : "○"}
+                </span>
+                <strong style={{ fontSize: 13, textDecoration: t.status === "completed" ? "line-through" : "none" }}>{t.title}</strong>
+              </div>
+              {t.description && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginLeft: 24 }}>{t.description}</div>}
+              {t.assigned_name && <div style={{ fontSize: 11, color: "var(--text-light)", marginLeft: 24 }}>Assigned to: {t.assigned_name}</div>}
+            </div>
+            {canManageTasks && projectStatus !== "completed" && (
+              t.status === "pending" ? (
+                <button className="btn outline" style={{ padding: "0.2rem 0.6rem", fontSize: 11 }} onClick={async () => {
+                  await fetch(apiUrl(`/api/projects/${projectId}/tasks/${t.id}`), {
+                    method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                    body: JSON.stringify({ status: "completed" }),
+                  });
+                  loadTasks();
+                }}>Complete</button>
+              ) : (
+                <button className="btn outline" style={{ padding: "0.2rem 0.6rem", fontSize: 11 }} onClick={async () => {
+                  await fetch(apiUrl(`/api/projects/${projectId}/tasks/${t.id}`), {
+                    method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                    body: JSON.stringify({ status: "pending" }),
+                  });
+                  loadTasks();
+                }}>Reopen</button>
+              )
+            )}
+          </div>
+        ))}
+      </div>
+
+      {canManageTasks && projectStatus !== "completed" && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input className="input" style={{ flex: 2, minWidth: 150 }} placeholder="Task title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} />
+          <input className="input" style={{ flex: 3, minWidth: 200 }} placeholder="Description (optional)" value={taskDesc} onChange={(e) => setTaskDesc(e.target.value)} />
+          <button className="btn" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} disabled={taskBusy} onClick={async () => {
+            if (!taskTitle.trim()) return alert("Task title required");
+            setTaskBusy(true);
+            try {
+              const res = await fetch(apiUrl(`/api/projects/${projectId}/tasks`), {
+                method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                body: JSON.stringify({ title: taskTitle.trim(), description: taskDesc.trim() || null }),
+              });
+              const data = await res.json();
+              if (data.success) { setTaskTitle(""); setTaskDesc(""); loadTasks(); }
+              else alert(data.error);
+            } finally { setTaskBusy(false); }
+          }}>{taskBusy ? "Adding..." : "Add Task"}</button>
+        </div>
+      )}
     </div>
   );
 }

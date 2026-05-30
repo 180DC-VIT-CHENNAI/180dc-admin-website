@@ -69,9 +69,10 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS partners (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS announcements (id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS role_transfers (id TEXT PRIMARY KEY, from_user_id TEXT NOT NULL, to_user_id TEXT NOT NULL, role_id TEXT NOT NULL, status TEXT DEFAULT 'pending', created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (from_user_id) REFERENCES users(id), FOREIGN KEY (to_user_id) REFERENCES users(id), FOREIGN KEY (role_id) REFERENCES roles(id));
-    CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, status TEXT DEFAULT 'upcoming', deadline DATETIME, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, company_org TEXT, status TEXT DEFAULT 'upcoming', deadline DATETIME, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS project_departments (project_id TEXT NOT NULL, department_id TEXT NOT NULL, PRIMARY KEY (project_id, department_id), FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (department_id) REFERENCES departments(id));
     CREATE TABLE IF NOT EXISTS project_roles (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL, role_name TEXT NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (user_id) REFERENCES users(id));
+    CREATE TABLE IF NOT EXISTS project_tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT, assigned_to TEXT, status TEXT DEFAULT 'pending', created_by TEXT, completed_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id));
   `);
   await runMigrations(db);
   tablesEnsured = true;
@@ -81,6 +82,7 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE role_transfers ADD COLUMN from_user_accepted INTEGER DEFAULT 0"); } catch {}
   try { await db.exec("ALTER TABLE role_transfers ADD COLUMN to_user_accepted INTEGER DEFAULT 0"); } catch {}
   try { await db.exec("ALTER TABLE signup_requests ADD COLUMN department_id TEXT"); } catch {}
+  try { await db.exec("ALTER TABLE projects ADD COLUMN company_org TEXT"); } catch {}
 }
 
 let currentEnv: any = null;
@@ -1494,6 +1496,7 @@ app.post("/api/projects", async (c) => {
     const body = await c.req.json();
     const name = sanitizeStr(body.name);
     const description = sanitizeStr(body.description);
+    const companyOrg = sanitizeStr(body.companyOrg);
     const deadline = body.deadline || null;
     const departmentIds = body.departmentIds;
     if (!name) return c.json({ error: "Missing project name" }, 400);
@@ -1503,8 +1506,8 @@ app.post("/api/projects", async (c) => {
 
     const projectId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
-      "INSERT INTO projects (id, name, description, deadline, created_by) VALUES (?, ?, ?, ?, ?)",
-    ).bind(projectId, name, description || null, deadline, user.id).run();
+      "INSERT INTO projects (id, name, description, company_org, deadline, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+    ).bind(projectId, name, description || null, companyOrg || null, deadline, user.id).run();
 
     for (const deptId of departmentIds) {
       await c.env.DB.prepare(
@@ -1588,6 +1591,105 @@ app.delete("/api/projects/:id/roles/:roleId", async (c) => {
     }
     await c.env.DB.prepare("DELETE FROM project_roles WHERE id = ? AND project_id = ?").bind(roleId, projectId).run();
     return c.json({ success: true, message: "Role removed" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+// ---------------------------------------------------------
+// PROJECT TASKS
+// ---------------------------------------------------------
+async function canManageProjectTasks(c: any, projectId: string) {
+  const user: any = c.get("user");
+  if (user.power_level >= 100) return true;
+  if (user.power_level >= 50 && user.department_id) {
+    const deptCheck: any = await c.env.DB.prepare(
+      "SELECT 1 FROM project_departments WHERE project_id = ? AND department_id = ?",
+    ).bind(projectId, user.department_id).first();
+    if (deptCheck) return true;
+  }
+  throw new Error("Forbidden: cannot manage tasks for this project");
+}
+
+app.get("/api/projects/:id/tasks", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const projectId = c.req.param("id");
+    const rows = await c.env.DB.prepare(
+      "SELECT pt.*, u.name as assigned_name FROM project_tasks pt LEFT JOIN users u ON pt.assigned_to = u.id WHERE pt.project_id = ? ORDER BY pt.created_at ASC",
+    ).bind(projectId).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+app.post("/api/projects/:id/tasks", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const projectId = c.req.param("id");
+    const user: any = c.get("user");
+    await canManageProjectTasks(c, projectId);
+    const body = await c.req.json();
+    const title = sanitizeStr(body.title);
+    const description = sanitizeStr(body.description);
+    const assignedTo = sanitizeStr(body.assignedTo);
+    if (!title) return c.json({ error: "Missing task title" }, 400);
+    await c.env.DB.prepare(
+      "INSERT INTO project_tasks (id, project_id, title, description, assigned_to, status, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, 'pending', ?)",
+    ).bind(projectId, title, description || null, assignedTo || null, user.id).run();
+    return c.json({ success: true, message: "Task created" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.put("/api/projects/:id/tasks/:taskId", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const projectId = c.req.param("id");
+    const taskId = c.req.param("taskId");
+    const user: any = c.get("user");
+    await canManageProjectTasks(c, projectId);
+    const body = await c.req.json();
+    const status = sanitizeStr(body.status);
+    if (!status || !["pending", "completed"].includes(status)) {
+      return c.json({ error: "Invalid status" }, 400);
+    }
+    if (status === "completed") {
+      await c.env.DB.prepare("UPDATE project_tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ? AND project_id = ?").bind(taskId, projectId).run();
+    } else {
+      await c.env.DB.prepare("UPDATE project_tasks SET status = 'pending', completed_at = NULL WHERE id = ? AND project_id = ?").bind(taskId, projectId).run();
+    }
+    return c.json({ success: true, message: "Task updated" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.post("/api/projects/:id/tasks/complete-all", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const projectId = c.req.param("id");
+    const user: any = c.get("user");
+    await canManageProjectTasks(c, projectId);
+    await c.env.DB.prepare("UPDATE project_tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE project_id = ? AND status = 'pending'").bind(projectId).run();
+    return c.json({ success: true, message: "All tasks completed" });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 403);
+  }
+});
+
+app.post("/api/projects/:id/complete", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const projectId = c.req.param("id");
+    const user: any = c.get("user");
+    if (user.power_level < 100) {
+      return c.json({ error: "Forbidden: President or VP only" }, 403);
+    }
+    await c.env.DB.prepare("UPDATE projects SET status = 'completed' WHERE id = ?").bind(projectId).run();
+    return c.json({ success: true, message: "Project marked as complete" });
   } catch (e: any) {
     return c.json({ error: e.message }, 403);
   }
