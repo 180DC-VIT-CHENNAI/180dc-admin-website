@@ -27,10 +27,19 @@ function App() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [caseStudies, setCaseStudies] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [teamMembers, setTeamMembers] = useState<any[]>([
+    { name: "John Doe", role: "President", initials: "JD" },
+    { name: "John Doe", role: "Vice President", initials: "JD" },
+    { name: "John Doe", role: "Head of Operations", initials: "JD" },
+    { name: "John Doe", role: "Head of Marketing", initials: "JD" },
+    { name: "John Doe", role: "Head of Finance", initials: "JD" },
+    { name: "John Doe", role: "Head of Research", initials: "JD" },
+  ]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [blogPosts, setBlogPosts] = useState<any[]>([]);
-  const [partners, setPartners] = useState<string[]>([]);
+  const [partners, setPartners] = useState<string[]>(
+    Array.from({ length: 20 }, (_, i) => `Partner ${i + 1}`),
+  );
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [completedProjects, setCompletedProjects] = useState<any[]>([]);
 
@@ -448,7 +457,10 @@ function App() {
             <p style={{ fontFamily: "'Patrick Hand', cursive", fontSize: "1.2rem", textAlign: "center", marginBottom: "3rem", color: "var(--text-secondary)" }}>
               Projects delivered by our consulting teams
             </p>
-            <div className="projects-grid">
+            <div
+              className="projects-grid"
+              style={completedProjects.length > 4 ? { maxHeight: 520, overflowY: "auto", paddingRight: 8 } : undefined}
+            >
               {completedProjects.map((p: any) => (
                 <div key={p.id} className="card-doodle project-card">
                   <h3 style={{ marginTop: 0 }}>{p.name}</h3>

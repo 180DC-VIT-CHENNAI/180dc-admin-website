@@ -82,22 +82,21 @@ const Globe = () => {
   }, []);
 
   useEffect(() => {
-    if (countries.features.length === 0) return;
-
     const timer = setTimeout(() => {
-      const worldFeatures = countries.features.filter((f: any) => f.properties.ISO_A3 !== 'IND');
-      const indiaFeatures = countries.features.filter((f: any) => f.properties.ISO_A3 === 'IND');
+      if (countries.features.length > 0) {
+        const worldFeatures = countries.features.filter((f: any) => f.properties.ISO_A3 !== 'IND');
+        const indiaFeatures = countries.features.filter((f: any) => f.properties.ISO_A3 === 'IND');
 
-      const texUrl = generateDoodleGlobeTexture(
-        { features: worldFeatures },
-        { features: indiaFeatures },
-        1024,
-        512
-      );
-      setDoodleTextureUrl(texUrl);
-
+        const texUrl = generateDoodleGlobeTexture(
+          { features: worldFeatures },
+          { features: indiaFeatures },
+          1024,
+          512
+        );
+        setDoodleTextureUrl(texUrl);
+      }
       setGlobeReady(true);
-    }, 300);
+    }, 3000);
 
     return () => clearTimeout(timer);
   }, [countries, allBranches]);
