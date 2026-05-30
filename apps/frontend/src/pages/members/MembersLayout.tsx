@@ -912,6 +912,7 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
   const [assignUserId, setAssignUserId] = useState("");
   const [assignRoleName, setAssignRoleName] = useState("");
   const [assignBusy, setAssignBusy] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const canManage = powerLevel >= 50 && departmentId;
   const isBoard = powerLevel >= 100;
@@ -949,12 +950,22 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
           <CreateProjectSection authToken={authToken} departments={departments} onCreated={load} />
         </div>
       )}
-      {projects.length === 0 && (
-        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-          <p style={{ color: "var(--text-secondary)" }}>No projects yet.</p>
-        </div>
-      )}
-      {projects.map((p) => {
+      <div className="card-doodle" style={{ gridColumn: "1 / -1", padding: "0.6rem 1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>
+          {showCompleted ? "Completed Projects" : "Active Projects"}
+        </span>
+        <button className={`btn ${showCompleted ? "" : "outline"}`} style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={() => setShowCompleted((v) => !v)}>
+          {showCompleted ? "Show Active" : "Completed Projects"}
+        </button>
+      </div>
+      {(() => {
+        const filtered = showCompleted ? projects.filter((p: any) => p.status === "completed") : projects.filter((p: any) => p.status !== "completed");
+        if (filtered.length === 0) {
+          return <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+            <p style={{ color: "var(--text-secondary)" }}>No {showCompleted ? "completed" : "active"} projects.</p>
+          </div>;
+        }
+        return filtered.map((p: any) => {
         const userDeptAssigned = departmentId && p.departments?.some((d: any) => d.id === departmentId);
         const canAssign = (isBoard || (canManage && userDeptAssigned));
         const canManageTasks = isBoard || (canManage && userDeptAssigned);
@@ -1043,7 +1054,8 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
             />
           </div>
         );
-      })}
+      });
+    })()}
     </div>
   );
 }

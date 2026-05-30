@@ -11,6 +11,9 @@ importers:
       turbo:
         specifier: latest
         version: 2.9.15
+      wrangler:
+        specifier: ^3.114.17
+        version: 3.114.17(@cloudflare/workers-types@4.20260528.1)
 
   apps/admin-api:
     dependencies:
