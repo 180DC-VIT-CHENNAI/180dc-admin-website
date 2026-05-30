@@ -61,6 +61,50 @@ function isValidUrl(val: unknown): boolean {
   try { new URL(val); return true; } catch { return false; }
 }
 
+function getClientIp(c: any): string {
+  return c.req.header("CF-Connecting-IP") || c.req.header("X-Forwarded-For") || "unknown";
+}
+
+async function checkRateLimit(c: any, endpoint: string, maxRequests: number, windowSeconds = 60): Promise<{ allowed: boolean; retryAfter: number }> {
+  const ip = getClientIp(c);
+  try {
+    const row: any = await c.env.DB.prepare(
+      "SELECT count, window_start FROM rate_limits WHERE ip = ? AND endpoint = ?",
+    ).bind(ip, endpoint).first();
+    const now = new Date();
+    if (!row) {
+      await c.env.DB.prepare("INSERT INTO rate_limits (ip, endpoint, count, window_start) VALUES (?, ?, 1, ?)").bind(ip, endpoint, now.toISOString()).run();
+      return { allowed: true, retryAfter: 0 };
+    }
+    const elapsed = (now.getTime() - new Date(row.window_start + "Z").getTime()) / 1000;
+    if (elapsed > windowSeconds) {
+      await c.env.DB.prepare("UPDATE rate_limits SET count = 1, window_start = ? WHERE ip = ? AND endpoint = ?").bind(ip, endpoint, now.toISOString()).run();
+      return { allowed: true, retryAfter: 0 };
+    }
+    if (row.count >= maxRequests) {
+      return { allowed: false, retryAfter: Math.ceil(windowSeconds - elapsed) };
+    }
+    await c.env.DB.prepare("UPDATE rate_limits SET count = count + 1 WHERE ip = ? AND endpoint = ?").bind(ip, endpoint).run();
+    return { allowed: true, retryAfter: 0 };
+  } catch { return { allowed: true, retryAfter: 0 }; }
+}
+
+async function addAuditLog(c: any, action: string, targetType: string | null, targetId: string | null, details: string | null) {
+  try {
+    const actorEmail = (c.get("user") as any)?.email || "system";
+    await c.env.DB.prepare(
+      "INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
+    ).bind(action, actorEmail, targetType, targetId, details).run();
+  } catch { /* audit log silently */ }
+}
+
+function maskToken(token: string): string {
+  if (token.length <= 8) return token;
+  return token.substring(0, 8) + "...";
+}
+
+const TOKEN_EXPIRY_DAYS = 90;
+
 async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
   const saltBytes = new Uint8Array(16);
   crypto.getRandomValues(saltBytes);
@@ -125,6 +169,8 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS recruitment_evaluation_criteria (id TEXT PRIMARY KEY, round_id TEXT NOT NULL, name TEXT NOT NULL, max_score REAL NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (round_id) REFERENCES recruitment_rounds(id));
     CREATE TABLE IF NOT EXISTS recruitment_evaluations (id TEXT PRIMARY KEY, application_id TEXT NOT NULL, criterion_id TEXT NOT NULL, evaluator_id TEXT NOT NULL, score REAL NOT NULL, comment TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (application_id) REFERENCES recruitment_applications(id), FOREIGN KEY (criterion_id) REFERENCES recruitment_evaluation_criteria(id));
     CREATE TABLE IF NOT EXISTS recruitment_domain_settings (domain_name TEXT PRIMARY KEY, is_open INTEGER DEFAULT 0, updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS rate_limits (ip TEXT NOT NULL, endpoint TEXT NOT NULL, count INTEGER DEFAULT 1, window_start DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (ip, endpoint));
+    CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, action TEXT NOT NULL, actor_email TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
   `);
   await runMigrations(db);
   tablesEnsured = true;
@@ -138,6 +184,7 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE projects ADD COLUMN year TEXT"); } catch { console.warn("Migration: year may already exist"); }
   try { await db.exec("ALTER TABLE recruitment_evaluations ADD COLUMN comment TEXT"); } catch { console.warn("Migration: recruitment_evaluations.comment may already exist"); }
   try { await db.exec("ALTER TABLE recruitment_applicants ADD COLUMN salt TEXT"); } catch { console.warn("Migration: salt may already exist"); }
+  try { await db.exec("ALTER TABLE admin_tokens ADD COLUMN expires_at DATETIME"); } catch { console.warn("Migration: expires_at may already exist"); }
   try {
     await db.exec(`CREATE TABLE IF NOT EXISTS recruitment_sessions (
       id TEXT PRIMARY KEY, applicant_id TEXT NOT NULL, token TEXT UNIQUE NOT NULL,
@@ -170,8 +217,8 @@ async function seedData(db: any, env?: any) {
 
     if (!currentEnv || (currentEnv.ENVIRONMENT || "").toLowerCase() !== "production") {
       const devToken = crypto.randomUUID().replace(/-/g, "");
-      await db.prepare("INSERT OR REPLACE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)").bind(devToken, "admin@vitstudent.ac.in", "Dev Admin", "president", "system").run();
-      console.log("DEV TOKEN:", devToken);
+      await db.prepare("INSERT OR REPLACE INTO admin_tokens (token, email, name, role_id, created_by, expires_at) VALUES (?, ?, ?, ?, ?, datetime('now', '+90 days'))").bind(devToken, "admin@vitstudent.ac.in", "Dev Admin", "president", "system").run();
+      console.info("Dev token generated (visible only in dev mode)");
     }
 
     const csCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM case_studies").first();
@@ -296,12 +343,12 @@ app.use("*", async (c, next) => {
     if (authHeader.startsWith("Bearer ")) {
       const token = authHeader.slice(7).trim();
       const tokenRow: any = await c.env.DB.prepare(
-        "SELECT token, email, name, role_id, revoked_at FROM admin_tokens WHERE token = ?",
+        "SELECT token, email, name, role_id, revoked_at, expires_at FROM admin_tokens WHERE token = ?",
       )
         .bind(token)
         .first();
 
-      if (tokenRow && !tokenRow.revoked_at) {
+      if (tokenRow && !tokenRow.revoked_at && (!tokenRow.expires_at || new Date(tokenRow.expires_at + "Z") > new Date())) {
         email = tokenRow.email;
 
         const existing: any = await c.env.DB.prepare(
@@ -361,6 +408,8 @@ const requireBoard = (c: any) => {
 async function getSessionApplicant(c: any): Promise<any | null> {
   const token = c.req.header("X-Session-Token") || "";
   if (!token) return null;
+  // Clean up expired sessions
+  await c.env.DB.prepare("DELETE FROM recruitment_sessions WHERE expires_at <= datetime('now')").run();
   const session: any = await c.env.DB.prepare(
     "SELECT sa.* FROM recruitment_sessions rs JOIN recruitment_applicants sa ON rs.applicant_id = sa.id WHERE rs.token = ? AND rs.expires_at > datetime('now')",
   ).bind(token).first();
@@ -438,8 +487,10 @@ app.post("/api/members", async (c) => {
     const user: any = c.get("user");
     await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?").bind(email).run();
     await c.env.DB.prepare(
-      "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, 'member', ?)",
+      "INSERT INTO admin_tokens (token, email, name, role_id, created_by, expires_at) VALUES (?, ?, ?, 'member', ?, datetime('now', '+90 days'))",
     ).bind(token, email, name, user.id).run();
+
+    await addAuditLog(c, "member_added", "user", null, "Added " + email + " as member");
 
     return c.json({
       success: true,
@@ -468,12 +519,12 @@ app.post("/api/dev-login", async (c) => {
     if (!token) return c.json({ error: "Missing token" }, 400);
 
     const entry: any = await c.env.DB.prepare(
-      "SELECT token, email, name, role_id, revoked_at FROM admin_tokens WHERE token = ?",
+      "SELECT token, email, name, role_id, revoked_at, expires_at FROM admin_tokens WHERE token = ?",
     )
       .bind(token)
       .first();
 
-    if (!entry || entry.revoked_at)
+    if (!entry || entry.revoked_at || (entry.expires_at && new Date(entry.expires_at + "Z") <= new Date()))
       return c.json({ error: "Invalid token" }, 401);
 
     const existing: any = await c.env.DB.prepare(
@@ -516,6 +567,29 @@ app.post("/api/dev-login", async (c) => {
 });
 
 // ---------------------------------------------------------
+// TOKEN ROTATION (any authenticated user can rotate their own token)
+// ---------------------------------------------------------
+app.post("/api/auth/rotate-token", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    const rl = await checkRateLimit(c, "rotate_token", 3, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many token rotations. You can only rotate 3 times per hour. Please try again later.", retryAfter: rl.retryAfter }, 429);
+    }
+    await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?").bind(user.email).run();
+    const newToken = crypto.randomUUID().replace(/-/g, "");
+    await c.env.DB.prepare(
+      "INSERT INTO admin_tokens (token, email, name, role_id, created_by, expires_at) VALUES (?, ?, ?, ?, ?, datetime('now', '+90 days'))",
+    ).bind(newToken, user.email, user.name, user.role_id, user.id).run();
+    await addAuditLog(c, "token_rotated", "admin_token", user.email, "Token rotated for " + user.email);
+    return c.json({ success: true, token: newToken });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// ---------------------------------------------------------
 // DASHBOARD BOOTSTRAP (single server payload for the members page)
 // ---------------------------------------------------------
 app.get("/api/dashboard", async (c) => {
@@ -537,6 +611,12 @@ app.get("/api/dashboard", async (c) => {
           ).all()
         : { results: [] };
 
+    const maskedTokens = (adminTokens.results || []).map((t: any) => ({
+      tokenPreview: maskToken(t.token),
+      email: t.email, name: t.name, role_id: t.role_id,
+      created_by: t.created_by, created_at: t.created_at, revoked_at: t.revoked_at,
+    }));
+
     return c.json({
       success: true,
       user: {
@@ -548,7 +628,7 @@ app.get("/api/dashboard", async (c) => {
         departmentId: user.department_id || null,
       },
       pendingRequests: pendingRequests.results || [],
-      adminTokens: adminTokens.results || [],
+      adminTokens: maskedTokens,
       roleTransfers: (await c.env.DB.prepare(
         "SELECT rt.*, fu.name as from_name, fu.email as from_email, tu.name as to_name, tu.email as to_email, r.name as role_name FROM role_transfers rt LEFT JOIN users fu ON rt.from_user_id = fu.id LEFT JOIN users tu ON rt.to_user_id = tu.id LEFT JOIN roles r ON rt.role_id = r.id WHERE rt.status = 'pending' ORDER BY rt.created_at DESC",
       ).all()).results || [],
@@ -574,7 +654,12 @@ app.get("/api/admin-tokens", async (c) => {
     const rows = await c.env.DB.prepare(
       "SELECT token, email, name, role_id, created_by, created_at, revoked_at FROM admin_tokens ORDER BY created_at DESC",
     ).all();
-    return c.json({ success: true, tokens: rows });
+    const masked = (rows.results || []).map((t: any) => ({
+      tokenPreview: maskToken(t.token),
+      email: t.email, name: t.name, role_id: t.role_id,
+      created_by: t.created_by, created_at: t.created_at, revoked_at: t.revoked_at,
+    }));
+    return c.json({ success: true, tokens: { results: masked } });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -602,10 +687,12 @@ app.post("/api/admin-tokens", async (c) => {
     const user: any = c.get("user");
 
     await c.env.DB.prepare(
-      "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO admin_tokens (token, email, name, role_id, created_by, expires_at) VALUES (?, ?, ?, ?, ?, datetime('now', '+90 days'))",
     )
       .bind(token, email, name, roleId, user.id)
       .run();
+
+    await addAuditLog(c, "token_created", "admin_token", null, "Token created for " + email);
 
     return c.json({ success: true, token, email, roleId, name });
   } catch (e: any) {
@@ -613,16 +700,19 @@ app.post("/api/admin-tokens", async (c) => {
   }
 });
 
-app.delete("/api/admin-tokens/:token", async (c) => {
+app.delete("/api/admin-tokens/:email", async (c) => {
   try {
     await ensureTables(c.env.DB);
     requireBoard(c);
-    const token = c.req.param("token");
+    const email = c.req.param("email");
+    const row: any = await c.env.DB.prepare("SELECT email FROM admin_tokens WHERE email = ?").bind(email).first();
+    if (!row) return c.json({ error: "Token not found for this email" }, 404);
     await c.env.DB.prepare(
-      "UPDATE admin_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE token = ?",
+      "UPDATE admin_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE email = ?",
     )
-      .bind(token)
+      .bind(email)
       .run();
+    await addAuditLog(c, "token_revoked", "admin_token", email, "Token revoked for " + email);
     return c.json({ success: true, message: "Token revoked." });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -694,10 +784,12 @@ app.post("/api/board-users", async (c) => {
     const creator: any = c.get("user");
 
     await c.env.DB.prepare(
-      "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO admin_tokens (token, email, name, role_id, created_by, expires_at) VALUES (?, ?, ?, ?, ?, datetime('now', '+90 days'))",
     )
       .bind(token, email, name, roleId, creator.id)
       .run();
+
+    await addAuditLog(c, "board_user_created", "user", null, "Board user created: " + email + " as " + roleId);
 
     return c.json({
       success: true,
@@ -753,6 +845,9 @@ app.post("/api/roles", async (c) => {
         { error: "Missing or invalid roleId/name/powerLevel" },
         400,
       );
+    }
+    if (!Number.isInteger(powerLevel) || powerLevel < 1) {
+      return c.json({ error: "powerLevel must be a positive integer" }, 400);
     }
     if (powerLevel >= 100) {
       return c.json(
@@ -866,16 +961,11 @@ app.post("/api/role-transfers/:id/approve", async (c) => {
       return c.json({ error: "Cannot transfer President/VP roles" }, 400);
     }
 
-    // Swap: give target user the new role, demote source user to target's old role
     await c.env.DB.prepare("UPDATE users SET role_id = ? WHERE id = ?").bind(row.role_id, row.to_user_id).run();
-    const fromUserRole: any = await c.env.DB.prepare("SELECT role_id FROM users WHERE id = ?").bind(row.from_user_id).first();
-    await c.env.DB.prepare("UPDATE users SET role_id = ? WHERE id = ?").bind(fromUserRole?.role_id || "member", row.from_user_id).run();
-    // Actually let's just swap: target gets the requested role, source gets member
-    // Actually the proper logic: the from_user transfers their role to to_user, and from_user gets demoted to member
-    // Let me redo: Target gets the role_id specified, Source gets demoted to 'member'
     await c.env.DB.prepare("UPDATE users SET role_id = 'member' WHERE id = ?").bind(row.from_user_id).run();
 
     await c.env.DB.prepare("UPDATE role_transfers SET status = 'approved' WHERE id = ?").bind(id).run();
+    await addAuditLog(c, "role_transfer_approved", "role_transfer", id, "Role transfer approved");
     return c.json({ success: true, message: "Role transfer approved and executed" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -1012,6 +1102,7 @@ app.delete("/api/members/:id", async (c) => {
     await c.env.DB.prepare("DELETE FROM users WHERE id = ?")
       .bind(targetId)
       .run();
+    await addAuditLog(c, "member_removed", "user", targetId, "Member removed");
     return c.json({ success: true, message: "Member removed permanently." });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -1097,7 +1188,7 @@ app.post("/api/signup-requests/:id/approve", async (c) => {
       .run();
     const newToken = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
-      "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, 'member', ?)",
+      "INSERT INTO admin_tokens (token, email, name, role_id, created_by, expires_at) VALUES (?, ?, ?, 'member', ?, datetime('now', '+90 days'))",
     )
       .bind(newToken, reqRow.email, reqRow.name, c.get("user").id)
       .run();
@@ -1105,6 +1196,8 @@ app.post("/api/signup-requests/:id/approve", async (c) => {
     await c.env.DB.prepare("UPDATE signup_requests SET status = ? WHERE id = ?")
       .bind("approved", id)
       .run();
+
+    await addAuditLog(c, "signup_approved", "signup_request", id, "Approved signup for " + reqRow.email);
 
     return c.json({
       success: true,
@@ -1588,12 +1681,26 @@ app.post("/api/projects", async (c) => {
     const name = sanitizeStr(body.name);
     const description = sanitizeStr(body.description);
     const companyOrg = sanitizeStr(body.companyOrg);
-    const year = sanitizeStr(body.year) || null;
+    const yearInput = sanitizeStr(body.year) || null;
     const deadline = body.deadline || null;
     const departmentIds = body.departmentIds;
     if (!name) return c.json({ error: "Missing project name" }, 400);
     if (!Array.isArray(departmentIds) || departmentIds.length === 0) {
       return c.json({ error: "Select at least one department" }, 400);
+    }
+    if (!yearInput && !deadline) {
+      return c.json({ error: "Provide either a year or a deadline date" }, 400);
+    }
+
+    // If deadline is provided, derive academic year from it (takes precedence over manual year)
+    let year = yearInput;
+    if (deadline) {
+      const d = new Date(deadline);
+      if (isNaN(d.getTime())) {
+        return c.json({ error: "Invalid deadline date" }, 400);
+      }
+      const y = d.getFullYear();
+      year = `${y}-${y + 1}`;
     }
 
     const projectId = crypto.randomUUID().replace(/-/g, "");
@@ -1830,6 +1937,10 @@ function canAccessRecruitAdmin(c: any) {
 app.post("/api/recruitment/register", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "recruitment_register", 5, 60);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many requests. Please try again later.", retryAfter: rl.retryAfter }, 429);
+    }
     const body = await c.req.json();
     const name = sanitizeStr(body.name);
     const email = validateEmail(body.email);
@@ -1837,8 +1948,11 @@ app.post("/api/recruitment/register", async (c) => {
     if (!name || !email || !password) {
       return c.json({ error: "Missing name, email, or password" }, 400);
     }
-    if (password.length < 6) {
-      return c.json({ error: "Password must be at least 6 characters" }, 400);
+    if (password.length < 8) {
+      return c.json({ error: "Password must be at least 8 characters" }, 400);
+    }
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+      return c.json({ error: "Password must contain uppercase, lowercase, and a digit" }, 400);
     }
 
     const existing: any = await c.env.DB.prepare("SELECT id FROM recruitment_applicants WHERE email = ?").bind(email).first();
@@ -1862,6 +1976,10 @@ app.post("/api/recruitment/register", async (c) => {
 app.post("/api/recruitment/login", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "recruitment_login", 10, 60);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many requests. Please try again later.", retryAfter: rl.retryAfter }, 429);
+    }
     const body = await c.req.json();
     const email = validateEmail(body.email);
     const password = sanitizeStr(body.password);
@@ -2055,6 +2173,9 @@ app.post("/api/recruitment/admin/evaluation-criteria", async (c) => {
     if (!roundId || !name || typeof maxScore !== "number") {
       return c.json({ error: "Missing roundId, name, or maxScore" }, 400);
     }
+    if (maxScore <= 0 || maxScore > 100) {
+      return c.json({ error: "maxScore must be between 1 and 100" }, 400);
+    }
 
     await c.env.DB.prepare(
       "INSERT INTO recruitment_evaluation_criteria (id, round_id, name, max_score) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
@@ -2099,6 +2220,14 @@ app.post("/api/recruitment/admin/evaluations", async (c) => {
     if (!applicationId || !criterionId || typeof score !== "number") {
       return c.json({ error: "Missing applicationId, criterionId, or score" }, 400);
     }
+    if (score < 0) {
+      return c.json({ error: "Score cannot be negative" }, 400);
+    }
+    const criterion: any = await c.env.DB.prepare("SELECT max_score FROM recruitment_evaluation_criteria WHERE id = ?").bind(criterionId).first();
+    if (!criterion) return c.json({ error: "Evaluation criterion not found" }, 400);
+    if (score > criterion.max_score) {
+      return c.json({ error: "Score cannot exceed max_score of " + criterion.max_score }, 400);
+    }
 
     // Check if evaluation already exists
     const existing: any = await c.env.DB.prepare(
@@ -2135,6 +2264,7 @@ app.put("/api/recruitment/admin/applications/:id/status", async (c) => {
     }
 
     await c.env.DB.prepare("UPDATE recruitment_applications SET status = ? WHERE id = ?").bind(status, id).run();
+    await addAuditLog(c, "application_status_change", "recruitment_application", id, "Status changed to " + status);
     return c.json({ success: true, message: "Status updated to " + status });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);

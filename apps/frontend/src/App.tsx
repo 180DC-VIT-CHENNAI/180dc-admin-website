@@ -33,7 +33,6 @@ function App() {
   const [partners, setPartners] = useState<string[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [completedProjects, setCompletedProjects] = useState<any[]>([]);
-  const authToken = sessionStorage.getItem("authToken");
 
   useEffect(() => {
     async function loadContent() {
@@ -461,18 +460,7 @@ function App() {
                   {p.description && (
                     <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>{p.description}</p>
                   )}
-                  {authToken && (
-                    <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12, marginTop: 8 }} onClick={async () => {
-                      const res = await fetch(apiUrl(`/api/projects/${p.id}/reopen`), {
-                        method: "POST", headers: { Authorization: `Bearer ${authToken}` },
-                      });
-                      const data = await res.json();
-                      if (data.success) {
-                        setCompletedProjects(completedProjects.filter((x: any) => x.id !== p.id));
-                        alert("Project reopened");
-                      } else alert(data.error);
-                    }}>Reopen</button>
-                  )}
+
                 </div>
               ))}
             </div>

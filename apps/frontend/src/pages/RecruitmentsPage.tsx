@@ -45,6 +45,8 @@ const RecruitmentsPage = () => {
       .catch(() => {});
   }, []);
 
+  const isRecruitmentOpen = openDomains.length > 0;
+
   // Register form
   const [regName, setRegName] = useState("");
   const [regEmail, setRegEmail] = useState("");
@@ -105,8 +107,8 @@ const RecruitmentsPage = () => {
     if (!regName.trim() || !regEmail.trim() || !regPassword.trim()) {
       setRegError("All fields are required"); return;
     }
-    if (regPassword.length < 6) {
-      setRegError("Password must be at least 6 characters"); return;
+    if (regPassword.length < 8) {
+      setRegError("Password must be at least 8 characters"); return;
     }
     setRegBusy(true);
     try {
@@ -201,7 +203,9 @@ const RecruitmentsPage = () => {
       <PillNav items={navItems} activeHref="/recruitments" logo="/images/180DC.png" />
 
       <section className="recruitments-hero">
-        <div className="recruitments-badge">Open for Applications</div>
+        <div className={`recruitments-badge ${isRecruitmentOpen ? "" : "closed"}`}>
+          {isRecruitmentOpen ? "Open for Applications" : "Applications Closed"}
+        </div>
         <h1>Join <span>180DC VIT Chennai</span></h1>
         <p>
           Become part of the world's largest student-led consultancy.
@@ -210,6 +214,16 @@ const RecruitmentsPage = () => {
         </p>
       </section>
 
+      {!isRecruitmentOpen && pageState === "landing" && (
+        <div className="recruitments-content">
+          <div className="recruitments-cta" style={{ border: "none", boxShadow: "none" }}>
+            <h3>Applications are currently closed</h3>
+            <p>We're not accepting applications right now. Check back later for recruitment updates.</p>
+          </div>
+        </div>
+      )}
+
+      {isRecruitmentOpen && pageState === "landing" && (
       <div className="recruitments-content">
         <div className="roadmap-header">
           <h2>Application Roadmap</h2>
@@ -258,184 +272,195 @@ const RecruitmentsPage = () => {
           </div>
         </div>
 
-        {pageState === "landing" && (
-          <div className="recruitments-cta">
-            <h3>Ready to Apply?</h3>
-            <p>Create an account or log in to submit your application.</p>
-            <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-              <button className="btn-white" onClick={() => setPageState("register")}>
-                Create Account &rarr;
-              </button>
-              <button className="btn-white outline" onClick={() => setPageState("login")}>
-                Already have an account? Log in
-              </button>
-            </div>
+        <div className="recruitments-cta">
+          <h3>Ready to Apply?</h3>
+          <p>Create an account or log in to submit your application.</p>
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+            <button className="btn-white" onClick={() => setPageState("register")}>
+              Create Account &rarr;
+            </button>
+            <button className="btn-white outline" onClick={() => setPageState("login")}>
+              Already have an account? Log in
+            </button>
           </div>
-        )}
-
-        {pageState === "register" && (
-          <div className="application-form-section">
-            <div className="form-header">
-              <h2>Create Your Account</h2>
-              <p>Register to apply for recruitment</p>
-            </div>
-            <form className="application-form" onSubmit={handleRegister}>
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="regName">Full Name</label>
-                  <input id="regName" type="text" placeholder="Enter your full name" value={regName} onChange={e => setRegName(e.target.value)} required />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="regEmail">Email Address</label>
-                  <input id="regEmail" type="email" placeholder="Enter your email" value={regEmail} onChange={e => setRegEmail(e.target.value)} required />
-                </div>
-              </div>
-              <div className="form-group form-group-full">
-                <label htmlFor="regPassword">Password</label>
-                <input id="regPassword" type="password" placeholder="Create a password (min 6 characters)" value={regPassword} onChange={e => setRegPassword(e.target.value)} required />
-              </div>
-              {regError && <p style={{ color: "#e74c3c", fontSize: 14 }}>{regError}</p>}
-              <div className="form-actions">
-                <button type="button" className="btn outline" onClick={() => setPageState("landing")}>Back</button>
-                <button type="submit" className="btn" disabled={regBusy}>{regBusy ? "Creating..." : "Create Account"}</button>
-              </div>
-              <p style={{ textAlign: "center", marginTop: 12, fontSize: 14 }}>
-                Already have an account?{" "}
-                <button type="button" className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={() => setPageState("login")}>Log in</button>
-              </p>
-            </form>
-          </div>
-        )}
-
-        {pageState === "login" && (
-          <div className="application-form-section">
-            <div className="form-header">
-              <h2>Log In</h2>
-              <p>Sign in to your recruitment account</p>
-            </div>
-            <form className="application-form" onSubmit={handleLogin}>
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="loginEmail">Email Address</label>
-                  <input id="loginEmail" type="email" placeholder="Enter your email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="loginPassword">Password</label>
-                  <input id="loginPassword" type="password" placeholder="Enter your password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required />
-                </div>
-              </div>
-              {loginError && <p style={{ color: "#e74c3c", fontSize: 14 }}>{loginError}</p>}
-              <div className="form-actions">
-                <button type="button" className="btn outline" onClick={() => setPageState("landing")}>Back</button>
-                <button type="submit" className="btn" disabled={loginBusy}>{loginBusy ? "Logging in..." : "Log In"}</button>
-              </div>
-              <p style={{ textAlign: "center", marginTop: 12, fontSize: 14 }}>
-                Don't have an account?{" "}
-                <button type="button" className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={() => setPageState("register")}>Create one</button>
-              </p>
-            </form>
-          </div>
-        )}
-
-        {pageState === "form" && applicant && (
-          <div className="application-form-section">
-            <div className="form-header">
-              <h2>Round 1 — Application Form</h2>
-              <p>Welcome, {applicant.name}! Fill in your details below.</p>
-            </div>
-            <form className="application-form" onSubmit={handleSubmitApplication}>
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="appName">Full Name</label>
-                  <input id="appName" type="text" value={appName} onChange={e => setAppName(e.target.value)} required />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="appEmail">Email Address</label>
-                  <input id="appEmail" type="email" value={appEmail} onChange={e => setAppEmail(e.target.value)} required />
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="appYear">Year of Study</label>
-                  <select id="appYear" value={appYear} onChange={e => setAppYear(e.target.value)} required defaultValue="">
-                    <option value="" disabled>Select your year</option>
-                    {years.map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label htmlFor="appCourse">Course / Branch</label>
-                  <input id="appCourse" type="text" placeholder="e.g. CSE, ECE, Mech..." value={appCourse} onChange={e => setAppCourse(e.target.value)} required />
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="appPrimaryDomain">Preferred Domain</label>
-                  <select id="appPrimaryDomain" value={appPrimaryDomain} onChange={e => setAppPrimaryDomain(e.target.value)} required defaultValue="">
-                    <option value="" disabled>Select a domain</option>
-                    {openDomains.length > 0 ? (
-                      openDomains.map(d => <option key={d} value={d}>{d}</option>)
-                    ) : (
-                      domains.map(d => <option key={d} value={d}>{d}</option>)
-                    )}
-                  </select>
-                  {openDomains.length === 0 && (
-                    <p style={{ color: "#e74c3c", fontSize: 12, marginTop: 4 }}>No domains are currently accepting applications. Check back later.</p>
-                  )}
-                </div>
-                <div className="form-group">
-                  <label htmlFor="appSecondaryDomain">Secondary Domain</label>
-                  <select id="appSecondaryDomain" value={appSecondaryDomain} onChange={e => setAppSecondaryDomain(e.target.value)} defaultValue="">
-                    <option value="">None</option>
-                    {openDomains.length > 0 ? (
-                      openDomains.map(d => <option key={d} value={d}>{d}</option>)
-                    ) : (
-                      domains.map(d => <option key={d} value={d}>{d}</option>)
-                    )}
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-group form-group-full">
-                <label htmlFor="appWhyDomain">Why did you choose {appPrimaryDomain || "your preferred domain"}?</label>
-                <textarea id="appWhyDomain" rows={3} placeholder="Tell us what draws you to this domain..." value={appWhyDomain} onChange={e => setAppWhyDomain(e.target.value)} required />
-              </div>
-
-              <div className="form-group form-group-full">
-                <label htmlFor="appPriorExperience">Any prior experience in this field?</label>
-                <textarea id="appPriorExperience" rows={3} placeholder="Projects, internships, courses, or relevant experience..." value={appPriorExperience} onChange={e => setAppPriorExperience(e.target.value)} />
-              </div>
-
-              <div className="form-group form-group-full">
-                <label htmlFor="appPortfolioLink">GitHub / Portfolio Link (required for Technical & R&D)</label>
-                <input id="appPortfolioLink" type="url" placeholder="https://github.com/your-username" value={appPortfolioLink} onChange={e => setAppPortfolioLink(e.target.value)} />
-              </div>
-
-              <div className="form-group form-group-full">
-                <label htmlFor="appWhyJoin">Why do you want to join 180DC?</label>
-                <textarea id="appWhyJoin" rows={4} placeholder="Tell us about yourself and why you'd be a great fit..." value={appWhyJoin} onChange={e => setAppWhyJoin(e.target.value)} required />
-              </div>
-
-              {appError && <p style={{ color: "#e74c3c", fontSize: 14 }}>{appError}</p>}
-
-              <div className="form-actions">
-                <button type="button" className="btn outline" onClick={() => { setApplicant(null); setPageState("landing"); }}>Cancel</button>
-                <button type="submit" className="btn" disabled={appBusy}>{appBusy ? "Submitting..." : "Submit Application"}</button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {pageState === "dashboard" && applicant && (
-          <ApplicantDashboard
-            applicant={applicant}
-            application={application}
-            loading={dashboardLoading}
-            onLogout={handleLogout}
-          />
-        )}
+        </div>
       </div>
+      )}
+
+      {isRecruitmentOpen && pageState === "register" && (
+      <div className="recruitments-content">
+        <div className="application-form-section">
+          <div className="form-header">
+            <h2>Create Your Account</h2>
+            <p>Register to apply for recruitment</p>
+          </div>
+          <form className="application-form" onSubmit={handleRegister}>
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="regName">Full Name</label>
+                <input id="regName" type="text" placeholder="Enter your full name" value={regName} onChange={e => setRegName(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label htmlFor="regEmail">Email Address</label>
+                <input id="regEmail" type="email" placeholder="Enter your email" value={regEmail} onChange={e => setRegEmail(e.target.value)} required />
+              </div>
+            </div>
+            <div className="form-group form-group-full">
+              <label htmlFor="regPassword">Password</label>
+              <input id="regPassword" type="password" placeholder="Create a password (min 8 chars, uppercase, lowercase, digit)" value={regPassword} onChange={e => setRegPassword(e.target.value)} required />
+            </div>
+            {regError && <p style={{ color: "#e74c3c", fontSize: 14 }}>{regError}</p>}
+            <div className="form-actions">
+              <button type="button" className="btn outline" onClick={() => setPageState("landing")}>Back</button>
+              <button type="submit" className="btn" disabled={regBusy}>{regBusy ? "Creating..." : "Create Account"}</button>
+            </div>
+            <p style={{ textAlign: "center", marginTop: 12, fontSize: 14 }}>
+              Already have an account?{" "}
+              <button type="button" className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={() => setPageState("login")}>Log in</button>
+            </p>
+          </form>
+        </div>
+      </div>
+      )}
+
+      {pageState === "login" && (
+      <div className="recruitments-content">
+        <div className="application-form-section">
+          <div className="form-header">
+            <h2>Log In</h2>
+            <p>Sign in to your recruitment account</p>
+          </div>
+          <form className="application-form" onSubmit={handleLogin}>
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="loginEmail">Email Address</label>
+                <input id="loginEmail" type="email" placeholder="Enter your email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label htmlFor="loginPassword">Password</label>
+                <input id="loginPassword" type="password" placeholder="Enter your password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required />
+              </div>
+            </div>
+            {loginError && <p style={{ color: "#e74c3c", fontSize: 14 }}>{loginError}</p>}
+            <div className="form-actions">
+              <button type="button" className="btn outline" onClick={() => setPageState("landing")}>Back</button>
+              <button type="submit" className="btn" disabled={loginBusy}>{loginBusy ? "Logging in..." : "Log In"}</button>
+            </div>
+            <p style={{ textAlign: "center", marginTop: 12, fontSize: 14 }}>
+              Don't have an account?{" "}
+              {isRecruitmentOpen ? (
+                <button type="button" className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={() => setPageState("register")}>Create one</button>
+              ) : (
+                <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>Registration is currently closed</span>
+              )}
+            </p>
+          </form>
+        </div>
+      </div>
+      )}
+
+      {isRecruitmentOpen && pageState === "form" && applicant && (
+      <div className="recruitments-content">
+        <div className="application-form-section">
+          <div className="form-header">
+            <h2>Round 1 — Application Form</h2>
+            <p>Welcome, {applicant.name}! Fill in your details below.</p>
+          </div>
+          <form className="application-form" onSubmit={handleSubmitApplication}>
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="appName">Full Name</label>
+                <input id="appName" type="text" value={appName} onChange={e => setAppName(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label htmlFor="appEmail">Email Address</label>
+                <input id="appEmail" type="email" value={appEmail} onChange={e => setAppEmail(e.target.value)} required />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="appYear">Year of Study</label>
+                <select id="appYear" value={appYear} onChange={e => setAppYear(e.target.value)} required defaultValue="">
+                  <option value="" disabled>Select your year</option>
+                  {years.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="appCourse">Course / Branch</label>
+                <input id="appCourse" type="text" placeholder="e.g. CSE, ECE, Mech..." value={appCourse} onChange={e => setAppCourse(e.target.value)} required />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="appPrimaryDomain">Preferred Domain</label>
+                <select id="appPrimaryDomain" value={appPrimaryDomain} onChange={e => setAppPrimaryDomain(e.target.value)} required defaultValue="">
+                  <option value="" disabled>Select a domain</option>
+                  {openDomains.length > 0 ? (
+                    openDomains.map(d => <option key={d} value={d}>{d}</option>)
+                  ) : (
+                    domains.map(d => <option key={d} value={d}>{d}</option>)
+                  )}
+                </select>
+                {openDomains.length === 0 && (
+                  <p style={{ color: "#e74c3c", fontSize: 12, marginTop: 4 }}>No domains are currently accepting applications. Check back later.</p>
+                )}
+              </div>
+              <div className="form-group">
+                <label htmlFor="appSecondaryDomain">Secondary Domain</label>
+                <select id="appSecondaryDomain" value={appSecondaryDomain} onChange={e => setAppSecondaryDomain(e.target.value)} defaultValue="">
+                  <option value="">None</option>
+                  {openDomains.length > 0 ? (
+                    openDomains.map(d => <option key={d} value={d}>{d}</option>)
+                  ) : (
+                    domains.map(d => <option key={d} value={d}>{d}</option>)
+                  )}
+                </select>
+              </div>
+            </div>
+
+            <div className="form-group form-group-full">
+              <label htmlFor="appWhyDomain">Why did you choose {appPrimaryDomain || "your preferred domain"}?</label>
+              <textarea id="appWhyDomain" rows={3} placeholder="Tell us what draws you to this domain..." value={appWhyDomain} onChange={e => setAppWhyDomain(e.target.value)} required />
+            </div>
+
+            <div className="form-group form-group-full">
+              <label htmlFor="appPriorExperience">Any prior experience in this field?</label>
+              <textarea id="appPriorExperience" rows={3} placeholder="Projects, internships, courses, or relevant experience..." value={appPriorExperience} onChange={e => setAppPriorExperience(e.target.value)} />
+            </div>
+
+            <div className="form-group form-group-full">
+              <label htmlFor="appPortfolioLink">GitHub / Portfolio Link (required for Technical & R&D)</label>
+              <input id="appPortfolioLink" type="url" placeholder="https://github.com/your-username" value={appPortfolioLink} onChange={e => setAppPortfolioLink(e.target.value)} />
+            </div>
+
+            <div className="form-group form-group-full">
+              <label htmlFor="appWhyJoin">Why do you want to join 180DC?</label>
+              <textarea id="appWhyJoin" rows={4} placeholder="Tell us about yourself and why you'd be a great fit..." value={appWhyJoin} onChange={e => setAppWhyJoin(e.target.value)} required />
+            </div>
+
+            {appError && <p style={{ color: "#e74c3c", fontSize: 14 }}>{appError}</p>}
+
+            <div className="form-actions">
+              <button type="button" className="btn outline" onClick={() => { setApplicant(null); setPageState("landing"); }}>Cancel</button>
+              <button type="submit" className="btn" disabled={appBusy}>{appBusy ? "Submitting..." : "Submit Application"}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      )}
+
+      {pageState === "dashboard" && applicant && (
+      <div className="recruitments-content">
+        <ApplicantDashboard
+          applicant={applicant}
+          application={application}
+          loading={dashboardLoading}
+          onLogout={handleLogout}
+        />
+      </div>
+      )}
     </div>
   );
 };

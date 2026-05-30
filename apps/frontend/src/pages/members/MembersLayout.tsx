@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import MembersLogin from "./MembersLogin";
 import DepartmentPanel from "./DepartmentPanel";
 import RecruitmentsPanel from "./RecruitmentsPanel";
+import ProfileSection from "./ProfileSection";
 import { apiUrl } from "../../lib/api";
 import "./MembersLayout.css";
 
@@ -119,6 +120,7 @@ export default function MembersLayout() {
   type NavItem = { id: string; label: string; minPower: number; deptId?: string };
   const baseNav: NavItem[] = [
     { id: "dashboard", label: "Dashboard", minPower: 0 },
+    { id: "profile", label: "Profile", minPower: 0 },
     { id: "meets", label: "Meets", minPower: 0 },
     { id: "projects", label: "Projects", minPower: 0 },
     { id: "instructions", label: "Instructions", minPower: 0 },
@@ -254,6 +256,16 @@ export default function MembersLayout() {
               )}
             </div>
           </>
+        )}
+
+        {activePanel === "profile" && (
+          <ProfileSection
+            authToken={authToken!}
+            email={email || ""}
+            powerLevel={powerLevel}
+            departmentId={departmentId}
+            deptName={deptName}
+          />
         )}
 
         {activePanel === "department" && (() => {
@@ -443,13 +455,13 @@ export default function MembersLayout() {
                       <div>
                         <strong>{item.name || item.email}</strong>
                         <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{item.email} · {item.role_id}</div>
-                        <div style={{ marginTop: 4, fontFamily: "monospace", fontSize: 12, wordBreak: "break-all" }}>{item.token}</div>
+                        <div style={{ marginTop: 4, fontFamily: "monospace", fontSize: 12, wordBreak: "break-all" }}>{item.tokenPreview || item.token}</div>
                       </div>
                       {!item.revoked_at ? (
                         <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
-                          const res = await fetch(apiUrl(`/api/admin-tokens/${item.token}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                          const res = await fetch(apiUrl(`/api/admin-tokens/${item.email}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
                           const data = await res.json();
-                          if (data.success) setAdminTokens((prev) => prev.map((t) => t.token === item.token ? { ...t, revoked_at: new Date().toISOString() } : t));
+                          if (data.success) setAdminTokens((prev) => prev.map((t) => t.email === item.email ? { ...t, revoked_at: new Date().toISOString() } : t));
                         }}>Revoke</button>
                       ) : <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>Revoked</span>}
                     </div>
@@ -1175,8 +1187,11 @@ function CreateProjectSection({ authToken, departments, onCreated }: { authToken
         <input className="input" placeholder="Company / Org" value={companyOrg} onChange={(e) => setCompanyOrg(e.target.value)} />
       </div>
       <div className="admin-grid-2">
-        <input className="input" placeholder="Year (e.g. 2025-2026)" value={projectYear} onChange={(e) => setProjectYear(e.target.value)} />
+        <input className="input" placeholder="Year (e.g. 2025, 2026, 2027)" value={projectYear} onChange={(e) => setProjectYear(e.target.value)} />
         <input className="input" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+      </div>
+      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: -8 }}>
+        Fill either year OR date. If both are provided, the date takes precedence.
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {departments.map((d: any) => (
@@ -1190,6 +1205,8 @@ function CreateProjectSection({ authToken, departments, onCreated }: { authToken
         <button className="btn" disabled={busy} onClick={async () => {
           if (!name.trim()) return alert("Project name required");
           if (selectedDepts.length === 0) return alert("Select at least one department");
+          if (!projectYear.trim() && !deadline) return alert("Provide either a year or a deadline date");
+          if (projectYear.trim() && !/^\d{4}$/.test(projectYear.trim())) return alert("Year must be a 4-digit year (e.g. 2025, 2026, 2027)");
           setBusy(true);
           try {
             const res = await fetch(apiUrl("/api/projects"), {
