@@ -283,6 +283,16 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
+.recruitments-cta .btn-white.outline {
+  background: transparent;
+  border: 2px solid #fff;
+  color: #fff;
+}
+
+.recruitments-cta .btn-white.outline:hover {
+  background: rgba(255,255,255,0.15);
+}
+
 .application-form-section {
   margin-top: 60px;
   animation: formSlideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);

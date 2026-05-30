@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import MembersLogin from "./MembersLogin";
 import DepartmentPanel from "./DepartmentPanel";
+import RecruitmentsPanel from "./RecruitmentsPanel";
 import { apiUrl } from "../../lib/api";
 import "./MembersLayout.css";
 
@@ -121,6 +122,7 @@ export default function MembersLayout() {
     { id: "meets", label: "Meets", minPower: 0 },
     { id: "projects", label: "Projects", minPower: 0 },
     { id: "instructions", label: "Instructions", minPower: 0 },
+    { id: "recruitments", label: "Recruitments", minPower: 50 },
     { id: "transfers", label: "Transfers", minPower: 0 },
     { id: "announcements", label: "Announcements", minPower: 0 },
     { id: "admin", label: "Admin Console", minPower: 100 },
@@ -325,6 +327,10 @@ export default function MembersLayout() {
           </>
         )}
 
+        {activePanel === "recruitments" && (
+          <RecruitmentsPanel authToken={authToken!} powerLevel={powerLevel} />
+        )}
+
         {activePanel === "announcements" && (
           <>
             <h2 style={{ marginTop: 0 }}>Announcements</h2>
@@ -483,7 +489,7 @@ export default function MembersLayout() {
                         setAdminTokens((prev) => [data, ...prev]);
                         setBoardEmail(""); setBoardName(""); setBoardRoleId("president"); setBoardDepartmentId("");
                         setRecentToken(data.token); setShowRecentToken(false);
-                        alert(`Board user created. Token: ${data.token}`);
+                        alert(`Board user created successfully.`);
                       } else alert(data.error);
                     } finally { setBoardBusy(false); }
                   }}>{boardBusy ? "Creating..." : "Create Board User"}</button>
@@ -512,7 +518,7 @@ export default function MembersLayout() {
                         body: JSON.stringify({ email: memberEmail.trim(), name: memberName.trim() || memberEmail.trim().split("@")[0], departmentId: memberDepartmentId || null }),
                       });
                       const data = await res.json();
-                      if (data.success) { setMemberEmail(""); setMemberName(""); setMemberDepartmentId(""); setRecentToken(data.token); setShowRecentToken(false); alert("Member created. Token: " + data.token); }
+                      if (data.success) { setMemberEmail(""); setMemberName(""); setMemberDepartmentId(""); setRecentToken(data.token); setShowRecentToken(false); alert("Member created successfully."); }
                       else alert(data.error);
                     } finally { setMemberBusy(false); }
                   }}>{memberBusy ? "Creating..." : "Create Member"}</button>
@@ -542,7 +548,7 @@ export default function MembersLayout() {
                               method: "POST", headers: { Authorization: `Bearer ${authToken}` },
                             });
                             const data = await res.json();
-                            if (data.success && data.token) alert(`User approved! Token for ${r.email}: ${data.token}`);
+                            if (data.success && data.token) alert(`User approved!`);
                             setPendingRequests(pendingRequests.filter((p) => p.id !== r.id));
                           }}>Approve</button>
                           <button className="btn outline" onClick={async () => {

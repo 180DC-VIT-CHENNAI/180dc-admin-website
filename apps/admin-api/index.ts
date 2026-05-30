@@ -42,6 +42,52 @@ function logError(context: string, err: any, c?: any) {
   }
 }
 
+function errorResponse(c: any, message: string, status: number) {
+  if (isProduction(c)) {
+    const generic: Record<number, string> = {
+      400: "Bad request", 401: "Unauthorized", 403: "Forbidden",
+      404: "Not found", 409: "Conflict", 500: "Internal server error",
+    };
+    return c.json({ error: generic[status] || "An error occurred" }, status);
+  }
+  return c.json({ error: message }, status);
+}
+
+const URL_RE = /^https?:\/\/.+/;
+
+function isValidUrl(val: unknown): boolean {
+  if (typeof val !== "string") return false;
+  if (!URL_RE.test(val)) return false;
+  try { new URL(val); return true; } catch { return false; }
+}
+
+async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
+  const saltBytes = new Uint8Array(16);
+  crypto.getRandomValues(saltBytes);
+  const salt = Array.from(saltBytes).map(b => b.toString(16).padStart(2, "0")).join("");
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const derivedBits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: encoder.encode(salt), iterations: 100000, hash: "SHA-256" },
+    keyMaterial, 256,
+  );
+  const hashArray = Array.from(new Uint8Array(derivedBits));
+  const hash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  return { hash, salt };
+}
+
+async function verifyPassword(password: string, salt: string, storedHash: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const derivedBits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: encoder.encode(salt), iterations: 100000, hash: "SHA-256" },
+    keyMaterial, 256,
+  );
+  const hashArray = Array.from(new Uint8Array(derivedBits));
+  const hash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  return hash === storedHash;
+}
+
 let tablesEnsured = false;
 let seedDone = false;
 
@@ -73,16 +119,31 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS project_departments (project_id TEXT NOT NULL, department_id TEXT NOT NULL, PRIMARY KEY (project_id, department_id), FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (department_id) REFERENCES departments(id));
     CREATE TABLE IF NOT EXISTS project_roles (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL, role_name TEXT NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (user_id) REFERENCES users(id));
     CREATE TABLE IF NOT EXISTS project_tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT, assigned_to TEXT, status TEXT DEFAULT 'pending', created_by TEXT, completed_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id));
+    CREATE TABLE IF NOT EXISTS recruitment_rounds (id TEXT PRIMARY KEY, name TEXT NOT NULL, is_active INTEGER DEFAULT 0, start_date DATETIME, end_date DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS recruitment_applicants (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, name TEXT NOT NULL, password_hash TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS recruitment_applications (id TEXT PRIMARY KEY, applicant_id TEXT NOT NULL, round_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, year TEXT NOT NULL, course TEXT NOT NULL, primary_domain TEXT NOT NULL, secondary_domain TEXT, why_join TEXT NOT NULL, why_domain TEXT NOT NULL, prior_experience TEXT, portfolio_link TEXT, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (applicant_id) REFERENCES recruitment_applicants(id), FOREIGN KEY (round_id) REFERENCES recruitment_rounds(id));
+    CREATE TABLE IF NOT EXISTS recruitment_evaluation_criteria (id TEXT PRIMARY KEY, round_id TEXT NOT NULL, name TEXT NOT NULL, max_score REAL NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (round_id) REFERENCES recruitment_rounds(id));
+    CREATE TABLE IF NOT EXISTS recruitment_evaluations (id TEXT PRIMARY KEY, application_id TEXT NOT NULL, criterion_id TEXT NOT NULL, evaluator_id TEXT NOT NULL, score REAL NOT NULL, comment TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (application_id) REFERENCES recruitment_applications(id), FOREIGN KEY (criterion_id) REFERENCES recruitment_evaluation_criteria(id));
+    CREATE TABLE IF NOT EXISTS recruitment_domain_settings (domain_name TEXT PRIMARY KEY, is_open INTEGER DEFAULT 0, updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
   `);
   await runMigrations(db);
   tablesEnsured = true;
 }
 
 async function runMigrations(db: any) {
-  try { await db.exec("ALTER TABLE role_transfers ADD COLUMN from_user_accepted INTEGER DEFAULT 0"); } catch {}
-  try { await db.exec("ALTER TABLE role_transfers ADD COLUMN to_user_accepted INTEGER DEFAULT 0"); } catch {}
-  try { await db.exec("ALTER TABLE signup_requests ADD COLUMN department_id TEXT"); } catch {}
-  try { await db.exec("ALTER TABLE projects ADD COLUMN company_org TEXT"); } catch {}
+  try { await db.exec("ALTER TABLE role_transfers ADD COLUMN from_user_accepted INTEGER DEFAULT 0"); } catch { console.warn("Migration: from_user_accepted may already exist"); }
+  try { await db.exec("ALTER TABLE role_transfers ADD COLUMN to_user_accepted INTEGER DEFAULT 0"); } catch { console.warn("Migration: to_user_accepted may already exist"); }
+  try { await db.exec("ALTER TABLE signup_requests ADD COLUMN department_id TEXT"); } catch { console.warn("Migration: department_id may already exist"); }
+  try { await db.exec("ALTER TABLE projects ADD COLUMN company_org TEXT"); } catch { console.warn("Migration: company_org may already exist"); }
+  try { await db.exec("ALTER TABLE recruitment_evaluations ADD COLUMN comment TEXT"); } catch { console.warn("Migration: recruitment_evaluations.comment may already exist"); }
+  try { await db.exec("ALTER TABLE recruitment_applicants ADD COLUMN salt TEXT"); } catch { console.warn("Migration: salt may already exist"); }
+  try {
+    await db.exec(`CREATE TABLE IF NOT EXISTS recruitment_sessions (
+      id TEXT PRIMARY KEY, applicant_id TEXT NOT NULL, token TEXT UNIQUE NOT NULL,
+      expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (applicant_id) REFERENCES recruitment_applicants(id)
+    )`);
+  } catch (e: any) { logError("Migration: recruitment_sessions table", e); }
 }
 
 let currentEnv: any = null;
@@ -106,7 +167,7 @@ async function seedData(db: any, env?: any) {
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("legal", "Legal", "Handles legal compliance and documentation").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("hr", "Human Resources", "Handles recruitment and people management").run();
 
-    if (!currentEnv || currentEnv.ENVIRONMENT !== "production") {
+    if (!currentEnv || (currentEnv.ENVIRONMENT || "").toLowerCase() !== "production") {
       const devToken = crypto.randomUUID().replace(/-/g, "");
       await db.prepare("INSERT OR REPLACE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)").bind(devToken, "admin@vitstudent.ac.in", "Dev Admin", "president", "system").run();
       console.log("DEV TOKEN:", devToken);
@@ -154,6 +215,16 @@ async function seedData(db: any, env?: any) {
       await db.prepare(pi).bind("p6", "Partner Org 6").run();
       await db.prepare(pi).bind("p7", "Partner Org 7").run();
       await db.prepare(pi).bind("p8", "Partner Org 8").run();
+    }
+    const rrCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM recruitment_rounds").first();
+    if (rrCount && rrCount.cnt === 0) {
+      await db.prepare("INSERT OR IGNORE INTO recruitment_rounds (id, name, is_active) VALUES (?, ?, ?)").bind("round1", "Round 1", 1).run();
+      await db.prepare("INSERT OR IGNORE INTO recruitment_rounds (id, name, is_active) VALUES (?, ?, ?)").bind("round2", "Round 2", 0).run();
+    }
+
+    const knownDomains = ["Technical", "R&D", "Operations", "PR & Outreach", "Design & Creative", "Content & Editorial", "HR & Logistics", "Finance"];
+    for (const domain of knownDomains) {
+      await db.prepare("INSERT OR IGNORE INTO recruitment_domain_settings (domain_name, is_open) VALUES (?, ?)").bind(domain, 1).run();
     }
     seedDone = true;
   } catch (e: any) {
@@ -208,7 +279,10 @@ app.use("*", async (c, next) => {
     url.pathname === "/api/dev-login" ||
     url.pathname === "/api/departments" ||
     url.pathname === "/api/projects/completed" ||
-    (url.pathname.startsWith("/api/content") && c.req.method === "GET")
+    (url.pathname.startsWith("/api/content") && c.req.method === "GET") ||
+    url.pathname === "/api/recruitment/register" ||
+    url.pathname === "/api/recruitment/login" ||
+    url.pathname === "/api/recruitment/open-domains"
   ) {
     await next();
     return;
@@ -283,6 +357,15 @@ const requireBoard = (c: any) => {
   }
 };
 
+async function getSessionApplicant(c: any): Promise<any | null> {
+  const token = c.req.header("X-Session-Token") || "";
+  if (!token) return null;
+  const session: any = await c.env.DB.prepare(
+    "SELECT sa.* FROM recruitment_sessions rs JOIN recruitment_applicants sa ON rs.applicant_id = sa.id WHERE rs.token = ? AND rs.expires_at > datetime('now')",
+  ).bind(token).first();
+  return session || null;
+}
+
 // ---------------------------------------------------------
 // CONTENT ENDPOINTS (Public — landing page data)
 // ---------------------------------------------------------
@@ -293,7 +376,7 @@ app.get("/api/content/case-studies", async (c) => {
     const rows = await c.env.DB.prepare("SELECT * FROM case_studies ORDER BY created_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -304,7 +387,7 @@ app.get("/api/content/team-members", async (c) => {
     const rows = await c.env.DB.prepare("SELECT * FROM team_members ORDER BY created_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -315,7 +398,7 @@ app.get("/api/content/blog-posts", async (c) => {
     const rows = await c.env.DB.prepare("SELECT * FROM blog_posts ORDER BY created_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -326,7 +409,7 @@ app.get("/api/content/partners", async (c) => {
     const rows = await c.env.DB.prepare("SELECT * FROM partners ORDER BY created_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -363,7 +446,7 @@ app.post("/api/members", async (c) => {
       token,
     });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -427,7 +510,7 @@ app.post("/api/dev-login", async (c) => {
       departmentId: user.department_id || null,
     });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -476,7 +559,7 @@ app.get("/api/dashboard", async (c) => {
       },
     });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -492,7 +575,7 @@ app.get("/api/admin-tokens", async (c) => {
     ).all();
     return c.json({ success: true, tokens: rows });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -525,7 +608,7 @@ app.post("/api/admin-tokens", async (c) => {
 
     return c.json({ success: true, token, email, roleId, name });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -541,7 +624,7 @@ app.delete("/api/admin-tokens/:token", async (c) => {
       .run();
     return c.json({ success: true, message: "Token revoked." });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -624,7 +707,7 @@ app.post("/api/board-users", async (c) => {
       message: "Board user created and token issued.",
     });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -650,7 +733,7 @@ app.put("/api/members/:id/role", async (c) => {
 
     return c.json({ success: true, message: "Role updated successfully." });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -692,7 +775,7 @@ app.post("/api/roles", async (c) => {
       message: "Custom role " + name + " created.",
     });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -708,7 +791,7 @@ app.get("/api/users", async (c) => {
     ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -719,7 +802,7 @@ app.get("/api/roles", async (c) => {
     const rows = await c.env.DB.prepare("SELECT id, name, power_level FROM roles ORDER BY power_level DESC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -735,7 +818,7 @@ app.get("/api/role-transfers", async (c) => {
     ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -756,7 +839,7 @@ app.post("/api/role-transfers", async (c) => {
     ).bind(fromUserId, toUserId, roleId, user.id).run();
     return c.json({ success: true, message: "Role transfer request created" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -794,7 +877,7 @@ app.post("/api/role-transfers/:id/approve", async (c) => {
     await c.env.DB.prepare("UPDATE role_transfers SET status = 'approved' WHERE id = ?").bind(id).run();
     return c.json({ success: true, message: "Role transfer approved and executed" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -806,7 +889,7 @@ app.post("/api/role-transfers/:id/reject", async (c) => {
     await c.env.DB.prepare("UPDATE role_transfers SET status = 'rejected' WHERE id = ?").bind(id).run();
     return c.json({ success: true, message: "Role transfer rejected" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -827,7 +910,7 @@ app.get("/api/my-role-transfers", async (c) => {
     ).bind(user.id, user.id).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -880,7 +963,7 @@ app.post("/api/my-role-transfers/:id/accept", async (c) => {
 
     return c.json({ success: true, message: "You accepted — waiting for the other party" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -898,7 +981,7 @@ app.post("/api/my-role-transfers/:id/decline", async (c) => {
     await c.env.DB.prepare("UPDATE role_transfers SET status = 'rejected' WHERE id = ?").bind(id).run();
     return c.json({ success: true, message: "Transfer declined" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -930,7 +1013,7 @@ app.delete("/api/members/:id", async (c) => {
       .run();
     return c.json({ success: true, message: "Member removed permanently." });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -962,7 +1045,7 @@ app.post("/api/signup-requests", async (c) => {
 
     return c.json({ success: true, message: "Signup request submitted." });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -976,7 +1059,7 @@ app.get("/api/signup-requests", async (c) => {
     ).all();
     return c.json({ success: true, requests: rows });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1028,7 +1111,7 @@ app.post("/api/signup-requests/:id/approve", async (c) => {
       token: newToken,
     });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1043,7 +1126,7 @@ app.post("/api/signup-requests/:id/reject", async (c) => {
       .run();
     return c.json({ success: true, message: "Signup request rejected." });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1089,7 +1172,7 @@ app.get("/api/departments/:id/overview", async (c) => {
       projects: projects.results || [],
     });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1105,13 +1188,14 @@ app.post("/api/departments/:id/meets", async (c) => {
     const description = sanitizeStr(body.description);
     const scheduledAt = body.scheduledAt;
     if (!title || !scheduledAt) return c.json({ error: "Missing title or scheduledAt" }, 400);
+    if (meetLink && !isValidUrl(meetLink)) return c.json({ error: "Invalid meet link URL" }, 400);
     const user: any = c.get("user");
     await c.env.DB.prepare(
       "INSERT INTO department_meets (id, department_id, title, meet_link, description, scheduled_at, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?)",
     ).bind(deptId, title, meetLink || null, description || null, scheduledAt, user.id).run();
     return c.json({ success: true, message: "Meet scheduled" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1124,7 +1208,7 @@ app.delete("/api/departments/:id/meets/:meetId", async (c) => {
     await c.env.DB.prepare("DELETE FROM department_meets WHERE id = ? AND department_id = ?").bind(meetId, deptId).run();
     return c.json({ success: true, message: "Meet removed" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1139,13 +1223,14 @@ app.post("/api/departments/:id/documents", async (c) => {
     const description = sanitizeStr(body.description);
     const fileUrl = sanitizeStr(body.fileUrl);
     if (!title) return c.json({ error: "Missing title" }, 400);
+    if (fileUrl && !isValidUrl(fileUrl)) return c.json({ error: "Invalid file URL" }, 400);
     const user: any = c.get("user");
     await c.env.DB.prepare(
       "INSERT INTO department_documents (id, department_id, title, description, file_url, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
     ).bind(deptId, title, description || null, fileUrl || null, user.id).run();
     return c.json({ success: true, message: "Document added" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1158,7 +1243,7 @@ app.delete("/api/departments/:id/documents/:docId", async (c) => {
     await c.env.DB.prepare("DELETE FROM department_documents WHERE id = ? AND department_id = ?").bind(docId, deptId).run();
     return c.json({ success: true, message: "Document removed" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1179,7 +1264,7 @@ app.post("/api/departments/:id/instructions", async (c) => {
     ).bind(deptId, title, content, priority, user.id).run();
     return c.json({ success: true, message: "Instruction added" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1192,7 +1277,7 @@ app.delete("/api/departments/:id/instructions/:instructionId", async (c) => {
     await c.env.DB.prepare("DELETE FROM department_instructions WHERE id = ? AND department_id = ?").bind(instructionId, deptId).run();
     return c.json({ success: true, message: "Instruction removed" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1213,7 +1298,7 @@ app.post("/api/departments/:id/projects", async (c) => {
     ).bind(deptId, name, description || null, deadline, user.id).run();
     return c.json({ success: true, message: "Project added" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1228,7 +1313,7 @@ app.put("/api/departments/:id/projects/:projectId/status", async (c) => {
     await c.env.DB.prepare("UPDATE department_projects SET status = ? WHERE id = ? AND department_id = ?").bind(status, projectId, deptId).run();
     return c.json({ success: true, message: "Project status updated" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1241,7 +1326,7 @@ app.get("/api/departments", async (c) => {
     const rows = await c.env.DB.prepare("SELECT id, name, description FROM departments ORDER BY name ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -1249,12 +1334,13 @@ app.get("/api/departments/:id/members", async (c) => {
   try {
     await ensureTables(c.env.DB);
     const deptId = c.req.param("id");
+    canAccessDept(c, deptId);
     const rows = await c.env.DB.prepare(
       "SELECT u.id, u.name, u.email, u.role_id, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id = ? ORDER BY u.name ASC",
     ).bind(deptId).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -1262,12 +1348,13 @@ app.get("/api/departments/:id/instructions", async (c) => {
   try {
     await ensureTables(c.env.DB);
     const deptId = c.req.param("id");
+    canAccessDept(c, deptId);
     const rows = await c.env.DB.prepare(
       "SELECT * FROM department_instructions WHERE department_id = ? ORDER BY created_at DESC",
     ).bind(deptId).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -1280,7 +1367,7 @@ app.get("/api/club-meets", async (c) => {
     const rows = await c.env.DB.prepare("SELECT * FROM club_meets ORDER BY scheduled_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -1297,12 +1384,13 @@ app.post("/api/club-meets", async (c) => {
     const description = sanitizeStr(body.description);
     const scheduledAt = body.scheduledAt;
     if (!title || !scheduledAt) return c.json({ error: "Missing title or scheduledAt" }, 400);
+    if (meetLink && !isValidUrl(meetLink)) return c.json({ error: "Invalid meet link URL" }, 400);
     await c.env.DB.prepare(
       "INSERT INTO club_meets (id, title, meet_link, description, scheduled_at, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
     ).bind(title, meetLink || null, description || null, scheduledAt, user.id).run();
     return c.json({ success: true, message: "Club-wide meet scheduled" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1317,7 +1405,7 @@ app.delete("/api/club-meets/:id", async (c) => {
     await c.env.DB.prepare("DELETE FROM club_meets WHERE id = ?").bind(meetId).run();
     return c.json({ success: true, message: "Club-wide meet removed" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1330,7 +1418,7 @@ app.get("/api/inter-dept-meets", async (c) => {
     const rows = await c.env.DB.prepare("SELECT * FROM inter_dept_meets ORDER BY scheduled_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -1350,13 +1438,14 @@ app.post("/api/inter-dept-meets", async (c) => {
     if (!title || !scheduledAt || !departments) {
       return c.json({ error: "Missing title, scheduledAt, or departments" }, 400);
     }
+    if (meetLink && !isValidUrl(meetLink)) return c.json({ error: "Invalid meet link URL" }, 400);
     const deptsStr = Array.isArray(departments) ? departments.join(",") : String(departments);
     await c.env.DB.prepare(
       "INSERT INTO inter_dept_meets (id, title, meet_link, description, scheduled_at, departments, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?)",
     ).bind(title, meetLink || null, description || null, scheduledAt, deptsStr, user.id).run();
     return c.json({ success: true, message: "Inter-department meet scheduled" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1371,7 +1460,7 @@ app.delete("/api/inter-dept-meets/:id", async (c) => {
     await c.env.DB.prepare("DELETE FROM inter_dept_meets WHERE id = ?").bind(meetId).run();
     return c.json({ success: true, message: "Inter-department meet removed" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1386,7 +1475,7 @@ app.get("/api/department-meets", async (c) => {
     ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -1400,7 +1489,7 @@ app.get("/api/announcements", async (c) => {
     const user: any = c.get("user");
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -1420,7 +1509,7 @@ app.post("/api/announcements", async (c) => {
     ).bind(title, content, user.id).run();
     return c.json({ success: true, message: "Announcement posted" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1435,7 +1524,7 @@ app.delete("/api/announcements/:id", async (c) => {
     await c.env.DB.prepare("DELETE FROM announcements WHERE id = ?").bind(id).run();
     return c.json({ success: true, message: "Announcement removed" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1483,7 +1572,7 @@ app.get("/api/projects", async (c) => {
     }
     return c.json({ success: true, data: results });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -1518,7 +1607,7 @@ app.post("/api/projects", async (c) => {
 
     return c.json({ success: true, message: "Project created" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1535,7 +1624,7 @@ app.delete("/api/projects/:id", async (c) => {
     await c.env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(id).run();
     return c.json({ success: true, message: "Project removed" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1571,7 +1660,7 @@ app.post("/api/projects/:id/roles", async (c) => {
 
     return c.json({ success: true, message: "Role assigned" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1593,7 +1682,7 @@ app.delete("/api/projects/:id/roles/:roleId", async (c) => {
     await c.env.DB.prepare("DELETE FROM project_roles WHERE id = ? AND project_id = ?").bind(roleId, projectId).run();
     return c.json({ success: true, message: "Role removed" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1621,7 +1710,7 @@ app.get("/api/projects/:id/tasks", async (c) => {
     ).bind(projectId).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -1641,7 +1730,7 @@ app.post("/api/projects/:id/tasks", async (c) => {
     ).bind(projectId, title, description || null, assignedTo || null, user.id).run();
     return c.json({ success: true, message: "Task created" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1664,7 +1753,7 @@ app.put("/api/projects/:id/tasks/:taskId", async (c) => {
     }
     return c.json({ success: true, message: "Task updated" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1677,7 +1766,7 @@ app.post("/api/projects/:id/tasks/complete-all", async (c) => {
     await c.env.DB.prepare("UPDATE project_tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE project_id = ? AND status = 'pending'").bind(projectId).run();
     return c.json({ success: true, message: "All tasks completed" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1692,7 +1781,7 @@ app.post("/api/projects/:id/complete", async (c) => {
     await c.env.DB.prepare("UPDATE projects SET status = 'completed' WHERE id = ?").bind(projectId).run();
     return c.json({ success: true, message: "Project marked as complete" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1707,7 +1796,7 @@ app.post("/api/projects/:id/reopen", async (c) => {
     await c.env.DB.prepare("UPDATE projects SET status = 'upcoming' WHERE id = ?").bind(projectId).run();
     return c.json({ success: true, message: "Project reopened" });
   } catch (e: any) {
-    return c.json({ error: e.message }, 403);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -1720,7 +1809,419 @@ app.get("/api/projects/completed", async (c) => {
     ).all();
     return c.json({ success: true, data: projects.results || [] });
   } catch (e: any) {
-    return c.json({ error: e.message }, 500);
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// RECRUITMENT SYSTEM
+// ---------------------------------------------------------
+
+// Helper to check if user can access recruitment admin (lead+)
+function canAccessRecruitAdmin(c: any) {
+  const user: any = c.get("user");
+  if (user.power_level >= 50) return true;
+  throw new Error("Forbidden: Leads or above only");
+}
+
+// 1. Register a new applicant account
+app.post("/api/recruitment/register", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const body = await c.req.json();
+    const name = sanitizeStr(body.name);
+    const email = validateEmail(body.email);
+    const password = sanitizeStr(body.password);
+    if (!name || !email || !password) {
+      return c.json({ error: "Missing name, email, or password" }, 400);
+    }
+    if (password.length < 6) {
+      return c.json({ error: "Password must be at least 6 characters" }, 400);
+    }
+
+    const existing: any = await c.env.DB.prepare("SELECT id FROM recruitment_applicants WHERE email = ?").bind(email).first();
+    if (existing) {
+      return c.json({ error: "An account with this email already exists" }, 409);
+    }
+
+    const { hash: passwordHash, salt } = await hashPassword(password);
+
+    await c.env.DB.prepare(
+      "INSERT INTO recruitment_applicants (id, email, name, password_hash, salt) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
+    ).bind(email, name, passwordHash, salt).run();
+
+    return c.json({ success: true, message: "Account created. You can now log in." });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 2. Login applicant
+app.post("/api/recruitment/login", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const body = await c.req.json();
+    const email = validateEmail(body.email);
+    const password = sanitizeStr(body.password);
+    if (!email || !password) {
+      return c.json({ error: "Missing email or password" }, 400);
+    }
+
+    const applicant: any = await c.env.DB.prepare(
+      "SELECT id, email, name, password_hash, salt FROM recruitment_applicants WHERE email = ?",
+    ).bind(email).first();
+
+    if (!applicant || !applicant.salt) {
+      return c.json({ error: "Invalid email or password" }, 401);
+    }
+
+    const valid = await verifyPassword(password, applicant.salt, applicant.password_hash);
+    if (!valid) {
+      return c.json({ error: "Invalid email or password" }, 401);
+    }
+
+    // Create session token stored in DB
+    const sessionToken = crypto.randomUUID().replace(/-/g, "");
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    await c.env.DB.prepare(
+      "INSERT INTO recruitment_sessions (id, applicant_id, token, expires_at) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
+    ).bind(applicant.id, sessionToken, expiresAt).run();
+
+    return c.json({
+      success: true,
+      applicant: { id: applicant.id, email: applicant.email, name: applicant.name },
+      token: sessionToken,
+    });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 3. Submit an application (Round 1)
+app.post("/api/recruitment/applications", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const sessionApplicant = await getSessionApplicant(c);
+    if (!sessionApplicant) {
+      return c.json({ error: "Unauthorized: please log in first" }, 401);
+    }
+    const applicantId = sessionApplicant.id;
+
+    const body = await c.req.json();
+    const name = sanitizeStr(body.name);
+    const email = validateEmail(body.email);
+    const year = sanitizeStr(body.year);
+    const course = sanitizeStr(body.course);
+    const primaryDomain = sanitizeStr(body.primaryDomain);
+    const secondaryDomain = sanitizeStr(body.secondaryDomain) || null;
+    const whyJoin = sanitizeStr(body.whyJoin);
+    const whyDomain = sanitizeStr(body.whyDomain);
+    const priorExperience = sanitizeStr(body.priorExperience) || null;
+    const portfolioLink = sanitizeStr(body.portfolioLink) || null;
+
+    if (!name || !email || !year || !course || !primaryDomain || !whyJoin || !whyDomain) {
+      return c.json({ error: "Missing required fields" }, 400);
+    }
+
+    // Validate portfolio link if provided
+    if (portfolioLink && !isValidUrl(portfolioLink)) {
+      return c.json({ error: "Invalid portfolio link URL" }, 400);
+    }
+
+    // Check if the selected domain is open for recruitment
+    const domainRow: any = await c.env.DB.prepare(
+      "SELECT is_open FROM recruitment_domain_settings WHERE domain_name = ?",
+    ).bind(primaryDomain).first();
+    if (!domainRow || !domainRow.is_open) {
+      return c.json({ error: "Applications are not currently open for " + primaryDomain }, 400);
+    }
+
+    // Check if already applied
+    const existing: any = await c.env.DB.prepare(
+      "SELECT id FROM recruitment_applications WHERE applicant_id = ?",
+    ).bind(applicantId).first();
+    if (existing) {
+      return c.json({ error: "You have already submitted an application" }, 409);
+    }
+
+    // Get active round
+    const round: any = await c.env.DB.prepare(
+      "SELECT id FROM recruitment_rounds WHERE is_active = 1",
+    ).first();
+    if (!round) {
+      return c.json({ error: "Recruitments are not currently open" }, 400);
+    }
+
+    await c.env.DB.prepare(
+      "INSERT INTO recruitment_applications (id, applicant_id, round_id, name, email, year, course, primary_domain, secondary_domain, why_join, why_domain, prior_experience, portfolio_link, status) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
+    ).bind(applicantId, round.id, name, email, year, course, primaryDomain, secondaryDomain, whyJoin, whyDomain, priorExperience, portfolioLink).run();
+
+    return c.json({ success: true, message: "Application submitted successfully" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 4. Get applicant's own application status
+app.get("/api/recruitment/my-application", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const sessionApplicant = await getSessionApplicant(c);
+    if (!sessionApplicant) {
+      return c.json({ error: "Unauthorized: please log in first" }, 401);
+    }
+
+    const app: any = await c.env.DB.prepare(
+      "SELECT * FROM recruitment_applications WHERE applicant_id = ? ORDER BY created_at DESC",
+    ).bind(sessionApplicant.id).first();
+
+    if (!app) return c.json({ success: true, application: null });
+
+    return c.json({ success: true, application: app });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 5. ADMIN: List all applications (with optional filters)
+app.get("/api/recruitment/admin/applications", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    canAccessRecruitAdmin(c);
+    const domain = c.req.query("domain");
+    const status = c.req.query("status");
+
+    let sql = "SELECT * FROM recruitment_applications WHERE 1=1";
+    const params: string[] = [];
+
+    if (domain) {
+      sql += " AND (primary_domain = ? OR secondary_domain = ?)";
+      params.push(domain, domain);
+    }
+    if (status) {
+      sql += " AND status = ?";
+      params.push(status);
+    }
+    sql += " ORDER BY created_at DESC";
+
+    const rows = await c.env.DB.prepare(sql).bind(...params).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 6. ADMIN: Get single application with evaluations
+app.get("/api/recruitment/admin/applications/:id", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    canAccessRecruitAdmin(c);
+    const id = c.req.param("id");
+
+    const application: any = await c.env.DB.prepare("SELECT * FROM recruitment_applications WHERE id = ?").bind(id).first();
+    if (!application) return c.json({ error: "Application not found" }, 404);
+
+    const criteria = await c.env.DB.prepare(
+      "SELECT * FROM recruitment_evaluation_criteria WHERE round_id = ? ORDER BY created_at ASC",
+    ).bind(application.round_id).all();
+
+    const evaluations = await c.env.DB.prepare(
+      "SELECT re.*, rec.name as criterion_name, u.name as evaluator_name FROM recruitment_evaluations re JOIN recruitment_evaluation_criteria rec ON re.criterion_id = rec.id JOIN users u ON re.evaluator_id = u.id WHERE re.application_id = ? ORDER BY rec.name ASC",
+    ).bind(id).all();
+
+    return c.json({
+      success: true,
+      application,
+      criteria: criteria.results || [],
+      evaluations: evaluations.results || [],
+    });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 7. ADMIN: Add evaluation criteria for a round
+app.post("/api/recruitment/admin/evaluation-criteria", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    canAccessRecruitAdmin(c);
+    const body = await c.req.json();
+    const roundId = sanitizeStr(body.roundId);
+    const name = sanitizeStr(body.name);
+    const maxScore = body.maxScore;
+
+    if (!roundId || !name || typeof maxScore !== "number") {
+      return c.json({ error: "Missing roundId, name, or maxScore" }, 400);
+    }
+
+    await c.env.DB.prepare(
+      "INSERT INTO recruitment_evaluation_criteria (id, round_id, name, max_score) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
+    ).bind(roundId, name, maxScore).run();
+
+    return c.json({ success: true, message: "Evaluation criterion added" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 8. ADMIN: List evaluation criteria
+app.get("/api/recruitment/admin/evaluation-criteria", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    canAccessRecruitAdmin(c);
+    const roundId = c.req.query("roundId");
+    if (!roundId) return c.json({ error: "Missing roundId" }, 400);
+
+    const rows = await c.env.DB.prepare(
+      "SELECT * FROM recruitment_evaluation_criteria WHERE round_id = ? ORDER BY created_at ASC",
+    ).bind(roundId).all();
+
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 9. ADMIN: Add/update evaluation score for an applicant
+app.post("/api/recruitment/admin/evaluations", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    canAccessRecruitAdmin(c);
+    const user: any = c.get("user");
+    const body = await c.req.json();
+    const applicationId = sanitizeStr(body.applicationId);
+    const criterionId = sanitizeStr(body.criterionId);
+    const score = body.score;
+    const comment = sanitizeStr(body.comment) || null;
+
+    if (!applicationId || !criterionId || typeof score !== "number") {
+      return c.json({ error: "Missing applicationId, criterionId, or score" }, 400);
+    }
+
+    // Check if evaluation already exists
+    const existing: any = await c.env.DB.prepare(
+      "SELECT id FROM recruitment_evaluations WHERE application_id = ? AND criterion_id = ? AND evaluator_id = ?",
+    ).bind(applicationId, criterionId, user.id).first();
+
+    if (existing) {
+      await c.env.DB.prepare(
+        "UPDATE recruitment_evaluations SET score = ?, comment = ? WHERE id = ?",
+      ).bind(score, comment, existing.id).run();
+    } else {
+      await c.env.DB.prepare(
+        "INSERT INTO recruitment_evaluations (id, application_id, criterion_id, evaluator_id, score, comment) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
+      ).bind(applicationId, criterionId, user.id, score, comment).run();
+    }
+
+    return c.json({ success: true, message: "Evaluation saved" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 10. ADMIN: Update application status (shortlist/reject/select)
+app.put("/api/recruitment/admin/applications/:id/status", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    canAccessRecruitAdmin(c);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    const status = sanitizeStr(body.status);
+
+    if (!status || !["pending", "shortlisted", "selected", "rejected"].includes(status)) {
+      return c.json({ error: "Invalid status" }, 400);
+    }
+
+    await c.env.DB.prepare("UPDATE recruitment_applications SET status = ? WHERE id = ?").bind(status, id).run();
+    return c.json({ success: true, message: "Status updated to " + status });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 11. ADMIN: Bulk shortlist — auto-shortlist top N applicants by total score
+app.post("/api/recruitment/admin/bulk-shortlist", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    canAccessRecruitAdmin(c);
+    const body = await c.req.json();
+    const count = body.count;
+    const roundId = sanitizeStr(body.roundId);
+    if (!roundId || typeof count !== "number" || count < 1) {
+      return c.json({ error: "Missing roundId or invalid count" }, 400);
+    }
+
+    // Get all pending applications with their total evaluation scores
+    const rows: any = await c.env.DB.prepare(
+      `SELECT ra.id, COALESCE(SUM(re.score), 0) as total_score
+       FROM recruitment_applications ra
+       LEFT JOIN recruitment_evaluations re ON ra.id = re.application_id
+       WHERE ra.round_id = ? AND ra.status = 'pending'
+       GROUP BY ra.id
+       ORDER BY total_score DESC`,
+    ).bind(roundId).all();
+
+    const applicants = rows.results || [];
+    const toShortlist = applicants.slice(0, count);
+
+    for (const app of toShortlist) {
+      await c.env.DB.prepare("UPDATE recruitment_applications SET status = 'shortlisted' WHERE id = ?").bind(app.id).run();
+    }
+
+    return c.json({
+      success: true,
+      message: `Shortlisted ${toShortlist.length} applicants`,
+      shortlisted: toShortlist,
+    });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 12. ADMIN: Get recruitment domain settings
+app.get("/api/recruitment/admin/settings", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    canAccessRecruitAdmin(c);
+    const rows = await c.env.DB.prepare("SELECT * FROM recruitment_domain_settings ORDER BY domain_name ASC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 13. ADMIN: Update recruitment domain settings (President/VP only)
+app.put("/api/recruitment/admin/settings", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const body = await c.req.json();
+    const openDomains = body.openDomains;
+    if (!Array.isArray(openDomains)) {
+      return c.json({ error: "openDomains must be an array of domain names" }, 400);
+    }
+    const user: any = c.get("user");
+    await c.env.DB.prepare("UPDATE recruitment_domain_settings SET is_open = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP").bind(user.id).run();
+    if (openDomains.length > 0) {
+      const placeholders = openDomains.map(() => "?").join(",");
+      await c.env.DB.prepare(
+        `UPDATE recruitment_domain_settings SET is_open = 1, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE domain_name IN (${placeholders})`,
+      ).bind(user.id, ...openDomains).run();
+    }
+    return c.json({ success: true, message: "Recruitment settings updated" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 14. PUBLIC: Get list of domains currently open for applications
+app.get("/api/recruitment/open-domains", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rows = await c.env.DB.prepare("SELECT domain_name FROM recruitment_domain_settings WHERE is_open = 1 ORDER BY domain_name ASC").all();
+    return c.json({ success: true, data: (rows.results || []).map((r: any) => r.domain_name) });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
   }
 });
 
