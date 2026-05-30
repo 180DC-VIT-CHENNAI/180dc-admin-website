@@ -1062,7 +1062,7 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
               return (
                 <div key={p.id} className="card-doodle" style={{ gridColumn: "1 / -1" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <h3 style={{ margin: 0 }}>{p.name}</h3>
                       <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 2 }}>
                         Status: {p.status}
@@ -1071,7 +1071,7 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
                         {p.deadline && ` · Deadline: ${p.deadline.slice(0, 10)}`}
                       </div>
                       {p.description && (
-                        <div style={{ marginTop: 6, color: "var(--text-secondary)", fontSize: 14 }}>{p.description}</div>
+                        <div style={{ maxHeight: 80, overflowY: "auto", marginTop: 6, color: "var(--text-secondary)", fontSize: 14 }}>{p.description}</div>
                       )}
                       <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
                         {p.departments?.map((d: any) => (
@@ -1081,7 +1081,7 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
                         ))}
                       </div>
                     </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
                       {showCompleted && powerLevel >= 100 && (
                         <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
                           const res = await fetch(apiUrl(`/api/projects/${p.id}/reopen`), {
@@ -1097,8 +1097,10 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
                       {isBoard && (
                         <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
                           if (!confirm(`Delete project "${p.name}"?`)) return;
-                          await fetch(apiUrl(`/api/projects/${p.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
-                          setProjects(projects.filter((x: any) => x.id !== p.id));
+                          const res = await fetch(apiUrl(`/api/projects/${p.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                          const data = await res.json();
+                          if (data.success) setProjects(projects.filter((x: any) => x.id !== p.id));
+                          else alert("Delete failed: " + (data.error || "unknown"));
                         }}>Delete</button>
                       )}
                     </div>

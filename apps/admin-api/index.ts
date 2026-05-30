@@ -16,6 +16,7 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_STR_LEN = 255;
 const MAX_MSG_LEN = 2000;
+const MAX_PROJECT_DESC_LEN = 5000;
 
 function sanitizeStr(val: unknown, maxLen = MAX_STR_LEN): string | null {
   if (typeof val !== "string") return null;
@@ -1679,7 +1680,7 @@ app.post("/api/projects", async (c) => {
     }
     const body = await c.req.json();
     const name = sanitizeStr(body.name);
-    const description = sanitizeStr(body.description);
+    const description = sanitizeStr(body.description, MAX_PROJECT_DESC_LEN);
     const companyOrg = sanitizeStr(body.companyOrg);
     const yearInput = sanitizeStr(body.year) || null;
     const deadline = body.deadline || null;
@@ -1730,6 +1731,7 @@ app.delete("/api/projects/:id", async (c) => {
     const id = c.req.param("id");
     await c.env.DB.prepare("DELETE FROM project_departments WHERE project_id = ?").bind(id).run();
     await c.env.DB.prepare("DELETE FROM project_roles WHERE project_id = ?").bind(id).run();
+    await c.env.DB.prepare("DELETE FROM project_tasks WHERE project_id = ?").bind(id).run();
     await c.env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(id).run();
     return c.json({ success: true, message: "Project removed" });
   } catch (e: any) {
