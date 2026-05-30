@@ -1060,22 +1060,21 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
               const canAssign = (isBoard || (canManage && userDeptAssigned));
               const canManageTasks = isBoard || (canManage && userDeptAssigned);
               return (
-                <div key={p.id} className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div key={p.id} className="card-doodle" style={{ gridColumn: "1 / -1", padding: "1rem 1.25rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <h3 style={{ margin: 0 }}>{p.name}</h3>
-                      <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 2 }}>
-                        Status: {p.status}
-                        {p.company_org && ` · ${p.company_org}`}
-                        {p.year && ` · ${p.year}`}
-                        {p.deadline && ` · Deadline: ${p.deadline.slice(0, 10)}`}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <h3 style={{ margin: 0, fontSize: 18 }}>{p.name}</h3>
+                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: p.status === "completed" ? "var(--primary-green)" : "var(--accent)", color: "#fff", fontWeight: 600 }}>{p.status}</span>
                       </div>
-                      {p.description && (
-                        <div style={{ maxHeight: 80, overflowY: "auto", marginTop: 6, color: "var(--text-secondary)", fontSize: 14 }}>{p.description}</div>
-                      )}
-                      <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 4, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                        {p.company_org && <span>{p.company_org}</span>}
+                        {p.year && <span>{p.year}</span>}
+                        {p.deadline && <span>Deadline: {p.deadline.slice(0, 10)}</span>}
+                      </div>
+                      <div style={{ marginTop: 8, display: "flex", gap: 4, flexWrap: "wrap" }}>
                         {p.departments?.map((d: any) => (
-                          <span key={d.id} className="floating-note" style={{ fontSize: 11, padding: "0.2rem 0.6rem", transform: "none" }}>
+                          <span key={d.id} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 8, background: "var(--bg-secondary)", border: "1px solid var(--border-light)", color: "var(--text-secondary)" }}>
                             {d.name}
                           </span>
                         ))}
@@ -1083,7 +1082,7 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
                       {showCompleted && powerLevel >= 100 && (
-                        <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
+                        <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={async () => {
                           const res = await fetch(apiUrl(`/api/projects/${p.id}/reopen`), {
                             method: "POST", headers: { Authorization: `Bearer ${authToken}` },
                           });
@@ -1095,7 +1094,7 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
                         }}>Reopen</button>
                       )}
                       {isBoard && (
-                        <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
+                        <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={async () => {
                           if (!confirm(`Delete project "${p.name}"?`)) return;
                           const res = await fetch(apiUrl(`/api/projects/${p.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
                           const data = await res.json();
@@ -1106,21 +1105,23 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
                     </div>
                   </div>
 
+                  {p.description && (
+                    <div style={{ marginTop: 10, padding: "0.6rem 0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", maxHeight: 100, overflowY: "auto", color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.5 }}>{p.description}</div>
+                  )}
+
                   {p.roles?.length > 0 && (
                     <div style={{ marginTop: 12 }}>
-                      <strong style={{ fontSize: 14 }}>Roles</strong>
-                      <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+                      <strong style={{ fontSize: 13, color: "var(--text-secondary)" }}>Team Roles</strong>
+                      <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                         {p.roles.map((r: any) => (
-                          <div key={r.id} className="card-doodle" style={{ padding: "0.5rem 0.8rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div>
-                              <strong style={{ fontSize: 13 }}>{r.user_name}</strong>
-                              <span style={{ marginLeft: 8, fontSize: 12, color: "var(--primary-green)" }}>{r.role_name}</span>
-                            </div>
+                          <div key={r.id} style={{ padding: "0.3rem 0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", display: "flex", alignItems: "center", gap: 6 }}>
+                            <strong style={{ fontSize: 13 }}>{r.user_name}</strong>
+                            <span style={{ fontSize: 12, color: "var(--primary-green)" }}>({r.role_name})</span>
                             {canAssign && (
-                              <button className="btn outline" style={{ padding: "0.2rem 0.6rem", fontSize: 11 }} onClick={async () => {
+                              <button style={{ border: "none", background: "none", color: "var(--text-light)", cursor: "pointer", fontSize: 14, padding: "0 2px" }} onClick={async () => {
                                 await fetch(apiUrl(`/api/projects/${p.id}/roles/${r.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
                                 load();
-                              }}>Remove</button>
+                              }}>×</button>
                             )}
                           </div>
                         ))}
@@ -1130,7 +1131,7 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
 
                   {canAssign && (
                     <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", borderTop: "1px solid var(--border-light)", paddingTop: 12 }}>
-                      <select className="input" style={{ flex: 1, minWidth: 120 }} value={assignProjectId === p.id ? assignUserId : ""} onChange={(e) => { setAssignProjectId(p.id); setAssignUserId(e.target.value); }}>
+                      <select className="input" style={{ flex: 1, minWidth: 140 }} value={assignProjectId === p.id ? assignUserId : ""} onChange={(e) => { setAssignProjectId(p.id); setAssignUserId(e.target.value); }}>
                         <option value="">Select member</option>
                         {availableMembers.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
                       </select>
@@ -1279,39 +1280,29 @@ function ProjectTasksSection({ authToken, projectId, projectStatus, canManageTas
         )}
       </div>
 
-      {tasks.length === 0 && <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>No tasks yet.</p>}
+      {tasks.length === 0 && <p style={{ color: "var(--text-secondary)", fontSize: 13, margin: "4px 0" }}>No tasks yet.</p>}
 
-      <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
+      <div style={{ display: "grid", gap: 4 }}>
         {tasks.map((t: any) => (
-          <div key={t.id} className="card-doodle" style={{ padding: "0.5rem 0.8rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div key={t.id} style={{ padding: "0.4rem 0.7rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 16, color: t.status === "completed" ? "var(--primary-green)" : "var(--text-light)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 14, color: t.status === "completed" ? "var(--primary-green)" : "var(--text-light)" }}>
                   {t.status === "completed" ? "✓" : "○"}
                 </span>
-                <strong style={{ fontSize: 13, textDecoration: t.status === "completed" ? "line-through" : "none" }}>{t.title}</strong>
+                <strong style={{ fontSize: 13 }}>{t.title}</strong>
               </div>
-              {t.description && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginLeft: 24 }}>{t.description}</div>}
-              {t.assigned_name && <div style={{ fontSize: 11, color: "var(--text-light)", marginLeft: 24 }}>Assigned to: {t.assigned_name}</div>}
+              {t.description && <p style={{ margin: "2px 0 0 20px", fontSize: 12, color: "var(--text-secondary)" }}>{t.description}</p>}
             </div>
-            {canManageTasks && projectStatus !== "completed" && (
-              t.status === "pending" ? (
-                <button className="btn outline" style={{ padding: "0.2rem 0.6rem", fontSize: 11 }} onClick={async () => {
-                  await fetch(apiUrl(`/api/projects/${projectId}/tasks/${t.id}`), {
-                    method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-                    body: JSON.stringify({ status: "completed" }),
-                  });
-                  loadTasks();
-                }}>Complete</button>
-              ) : (
-                <button className="btn outline" style={{ padding: "0.2rem 0.6rem", fontSize: 11 }} onClick={async () => {
-                  await fetch(apiUrl(`/api/projects/${projectId}/tasks/${t.id}`), {
-                    method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-                    body: JSON.stringify({ status: "pending" }),
-                  });
-                  loadTasks();
-                }}>Reopen</button>
-              )
+            {canManageTasks && t.status !== "completed" && (
+              <button className="btn outline" style={{ padding: "0.2rem 0.5rem", fontSize: 11 }} onClick={async () => {
+                const res = await fetch(apiUrl(`/api/projects/${projectId}/tasks/${t.id}`), {
+                  method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                  body: JSON.stringify({ status: "completed" }),
+                });
+                const data = await res.json();
+                if (data.success) loadTasks();
+              }}>Complete</button>
             )}
           </div>
         ))}
