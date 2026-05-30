@@ -564,6 +564,11 @@ export default function MembersLayout() {
                 )}
               </div>
 
+              {/* RECRUITMENT SETTINGS */}
+              <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                <RecruitmentSettingsSection authToken={authToken!} />
+              </div>
+
               {/* DANGER ZONE */}
               <div className="card-doodle" style={{ gridColumn: "1 / -1", border: "2px solid #e74c3c" }}>
                 <h3 style={{ color: "#e74c3c" }}>Danger Zone</h3>
@@ -919,6 +924,9 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
   const [assignRoleName, setAssignRoleName] = useState("");
   const [assignBusy, setAssignBusy] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const [yearFilter, setYearFilter] = useState("");
 
   const canManage = powerLevel >= 50 && departmentId;
   const isBoard = powerLevel >= 100;
@@ -945,6 +953,49 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
 
   const availableMembers = isBoard ? allUsers : deptMembers;
 
+  const statusFiltered = showCompleted
+    ? projects.filter((p: any) => p.status === "completed")
+    : projects.filter((p: any) => p.status !== "completed");
+
+  const query = searchQuery.toLowerCase();
+  const searched = query
+    ? statusFiltered.filter((p: any) =>
+        (p.name || "").toLowerCase().includes(query) ||
+        (p.description || "").toLowerCase().includes(query) ||
+        (p.company_org || "").toLowerCase().includes(query)
+      )
+    : statusFiltered;
+
+  const yearFiltered = yearFilter
+    ? searched.filter((p: any) => (p.year || "Unspecified") === yearFilter)
+    : searched;
+
+  const sorted = [...yearFiltered].sort((a: any, b: any) => {
+    const da = new Date(a.created_at).getTime();
+    const db = new Date(b.created_at).getTime();
+    return sortOrder === "newest" ? db - da : da - db;
+  });
+
+  const yearSet = new Set<string>();
+  statusFiltered.forEach((p: any) => yearSet.add(p.year || "Unspecified"));
+  const availableYears = Array.from(yearSet).sort((a, b) => {
+    if (a === "Unspecified") return 1;
+    if (b === "Unspecified") return -1;
+    return b.localeCompare(a);
+  });
+
+  const grouped: Record<string, any[]> = {};
+  for (const p of sorted) {
+    const key = p.year || "Unspecified";
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(p);
+  }
+  const groupKeys = Object.keys(grouped).sort((a, b) => {
+    if (a === "Unspecified") return 1;
+    if (b === "Unspecified") return -1;
+    return b.localeCompare(a);
+  });
+
   return (
     <div className="members-grid">
       {isBoard && (
@@ -956,7 +1007,8 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
           <CreateProjectSection authToken={authToken} departments={departments} onCreated={load} />
         </div>
       )}
-      <div className="card-doodle" style={{ gridColumn: "1 / -1", padding: "0.6rem 1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+
+      <div className="card-doodle" style={{ gridColumn: "1 / -1", padding: "0.6rem 1rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontSize: 14, fontWeight: 600 }}>
           {showCompleted ? "Completed Projects" : "Active Projects"}
         </span>
@@ -964,118 +1016,140 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
           {showCompleted ? "Show Active" : "Completed Projects"}
         </button>
       </div>
-      {(() => {
-        const filtered = showCompleted ? projects.filter((p: any) => p.status === "completed") : projects.filter((p: any) => p.status !== "completed");
-        if (filtered.length === 0) {
-          return <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-            <p style={{ color: "var(--text-secondary)" }}>No {showCompleted ? "completed" : "active"} projects.</p>
-          </div>;
-        }
-        return filtered.map((p: any) => {
-        const userDeptAssigned = departmentId && p.departments?.some((d: any) => d.id === departmentId);
-        const canAssign = (isBoard || (canManage && userDeptAssigned));
-        const canManageTasks = isBoard || (canManage && userDeptAssigned);
 
-        return (
-          <div key={p.id} className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={{ flex: 1 }}>
-                <h3 style={{ margin: 0 }}>{p.name}</h3>
-                <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 2 }}>
-                  Status: {p.status}
-                  {p.company_org && ` · ${p.company_org}`}
-                  {p.deadline && ` · Deadline: ${p.deadline.slice(0, 10)}`}
-                </div>
-                {p.description && (
-                  <div style={{ marginTop: 6, color: "var(--text-secondary)", fontSize: 14 }}>{p.description}</div>
-                )}
-                <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
-                  {p.departments?.map((d: any) => (
-                    <span key={d.id} className="floating-note" style={{ fontSize: 11, padding: "0.2rem 0.6rem", transform: "none" }}>
-                      {d.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                {showCompleted && powerLevel >= 50 && (
-                  <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
-                    const res = await fetch(apiUrl(`/api/projects/${p.id}/reopen`), {
-                      method: "POST", headers: { Authorization: `Bearer ${authToken}` },
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                      setProjects(projects.filter((x: any) => x.id !== p.id));
-                      alert("Project reopened");
-                    } else alert(data.error);
-                  }}>Reopen</button>
-                )}
-                {isBoard && (
-                  <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
-                    if (!confirm(`Delete project "${p.name}"?`)) return;
-                    await fetch(apiUrl(`/api/projects/${p.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
-                    setProjects(projects.filter((x: any) => x.id !== p.id));
-                  }}>Delete</button>
-                )}
-              </div>
-            </div>
+      <div className="card-doodle" style={{ gridColumn: "1 / -1", padding: "0.6rem 1rem", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input className="input" style={{ flex: 2, minWidth: 160 }} placeholder="Search projects..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+        <select className="input" style={{ width: "auto", minWidth: 100 }} value={sortOrder} onChange={(e) => setSortOrder(e.target.value as "newest" | "oldest")}>
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+        </select>
+        <select className="input" style={{ width: "auto", minWidth: 100 }} value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
+          <option value="">All Years</option>
+          {availableYears.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
 
-            {p.roles?.length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <strong style={{ fontSize: 14 }}>Roles</strong>
-                <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
-                  {p.roles.map((r: any) => (
-                    <div key={r.id} className="card-doodle" style={{ padding: "0.5rem 0.8rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <strong style={{ fontSize: 13 }}>{r.user_name}</strong>
-                        <span style={{ marginLeft: 8, fontSize: 12, color: "var(--primary-green)" }}>{r.role_name}</span>
+      {sorted.length === 0 && (
+        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+          <p style={{ color: "var(--text-secondary)" }}>No {showCompleted ? "completed" : "active"} projects match your filters.</p>
+        </div>
+      )}
+
+      {groupKeys.map((yearKey) => (
+        <div key={yearKey} style={{ gridColumn: "1 / -1" }}>
+          {yearKey !== "Unspecified" && (
+            <h3 style={{ margin: "0 0 8px", color: "var(--text-secondary)", fontSize: 16 }}>
+              {yearKey}
+            </h3>
+          )}
+          <div className="members-grid" style={{ gap: 12 }}>
+            {grouped[yearKey].map((p: any) => {
+              const userDeptAssigned = departmentId && p.departments?.some((d: any) => d.id === departmentId);
+              const canAssign = (isBoard || (canManage && userDeptAssigned));
+              const canManageTasks = isBoard || (canManage && userDeptAssigned);
+              return (
+                <div key={p.id} className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div style={{ flex: 1 }}>
+                      <h3 style={{ margin: 0 }}>{p.name}</h3>
+                      <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 2 }}>
+                        Status: {p.status}
+                        {p.company_org && ` · ${p.company_org}`}
+                        {p.year && ` · ${p.year}`}
+                        {p.deadline && ` · Deadline: ${p.deadline.slice(0, 10)}`}
                       </div>
-                      {canAssign && (
-                        <button className="btn outline" style={{ padding: "0.2rem 0.6rem", fontSize: 11 }} onClick={async () => {
-                          await fetch(apiUrl(`/api/projects/${p.id}/roles/${r.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
-                          load();
-                        }}>Remove</button>
+                      {p.description && (
+                        <div style={{ marginTop: 6, color: "var(--text-secondary)", fontSize: 14 }}>{p.description}</div>
+                      )}
+                      <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {p.departments?.map((d: any) => (
+                          <span key={d.id} className="floating-note" style={{ fontSize: 11, padding: "0.2rem 0.6rem", transform: "none" }}>
+                            {d.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      {showCompleted && powerLevel >= 100 && (
+                        <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
+                          const res = await fetch(apiUrl(`/api/projects/${p.id}/reopen`), {
+                            method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            setProjects(projects.filter((x: any) => x.id !== p.id));
+                            alert("Project reopened");
+                          } else alert(data.error);
+                        }}>Reopen</button>
+                      )}
+                      {isBoard && (
+                        <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
+                          if (!confirm(`Delete project "${p.name}"?`)) return;
+                          await fetch(apiUrl(`/api/projects/${p.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                          setProjects(projects.filter((x: any) => x.id !== p.id));
+                        }}>Delete</button>
                       )}
                     </div>
-                  ))}
+                  </div>
+
+                  {p.roles?.length > 0 && (
+                    <div style={{ marginTop: 12 }}>
+                      <strong style={{ fontSize: 14 }}>Roles</strong>
+                      <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+                        {p.roles.map((r: any) => (
+                          <div key={r.id} className="card-doodle" style={{ padding: "0.5rem 0.8rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                              <strong style={{ fontSize: 13 }}>{r.user_name}</strong>
+                              <span style={{ marginLeft: 8, fontSize: 12, color: "var(--primary-green)" }}>{r.role_name}</span>
+                            </div>
+                            {canAssign && (
+                              <button className="btn outline" style={{ padding: "0.2rem 0.6rem", fontSize: 11 }} onClick={async () => {
+                                await fetch(apiUrl(`/api/projects/${p.id}/roles/${r.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                                load();
+                              }}>Remove</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {canAssign && (
+                    <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", borderTop: "1px solid var(--border-light)", paddingTop: 12 }}>
+                      <select className="input" style={{ flex: 1, minWidth: 120 }} value={assignProjectId === p.id ? assignUserId : ""} onChange={(e) => { setAssignProjectId(p.id); setAssignUserId(e.target.value); }}>
+                        <option value="">Select member</option>
+                        {availableMembers.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+                      </select>
+                      <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Role name" value={assignProjectId === p.id ? assignRoleName : ""} onChange={(e) => { setAssignProjectId(p.id); setAssignRoleName(e.target.value); }} />
+                      <button className="btn" disabled={assignBusy} onClick={async () => {
+                        if (!assignUserId || !assignRoleName) return alert("Select member and enter role name");
+                        setAssignBusy(true);
+                        try {
+                          const res = await fetch(apiUrl(`/api/projects/${p.id}/roles`), {
+                            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                            body: JSON.stringify({ userId: assignUserId, roleName: assignRoleName }),
+                          });
+                          const data = await res.json();
+                          if (data.success) { setAssignUserId(""); setAssignRoleName(""); setAssignProjectId(""); load(); }
+                          else alert(data.error);
+                        } finally { setAssignBusy(false); }
+                      }}>{assignBusy ? "Assigning..." : "Assign Role"}</button>
+                    </div>
+                  )}
+
+                  <ProjectTasksSection
+                    authToken={authToken}
+                    projectId={p.id}
+                    projectStatus={p.status}
+                    canManageTasks={canManageTasks}
+                    isBoard={isBoard}
+                  />
                 </div>
-              </div>
-            )}
-
-            {canAssign && (
-              <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", borderTop: "1px solid var(--border-light)", paddingTop: 12 }}>
-                <select className="input" style={{ flex: 1, minWidth: 120 }} value={assignProjectId === p.id ? assignUserId : ""} onChange={(e) => { setAssignProjectId(p.id); setAssignUserId(e.target.value); }}>
-                  <option value="">Select member</option>
-                  {availableMembers.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
-                </select>
-                <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Role name" value={assignProjectId === p.id ? assignRoleName : ""} onChange={(e) => { setAssignProjectId(p.id); setAssignRoleName(e.target.value); }} />
-                <button className="btn" disabled={assignBusy} onClick={async () => {
-                  if (!assignUserId || !assignRoleName) return alert("Select member and enter role name");
-                  setAssignBusy(true);
-                  try {
-                    const res = await fetch(apiUrl(`/api/projects/${p.id}/roles`), {
-                      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-                      body: JSON.stringify({ userId: assignUserId, roleName: assignRoleName }),
-                    });
-                    const data = await res.json();
-                    if (data.success) { setAssignUserId(""); setAssignRoleName(""); setAssignProjectId(""); load(); }
-                    else alert(data.error);
-                  } finally { setAssignBusy(false); }
-                }}>{assignBusy ? "Assigning..." : "Assign Role"}</button>
-              </div>
-            )}
-
-            <ProjectTasksSection
-              authToken={authToken}
-              projectId={p.id}
-              projectStatus={p.status}
-              canManageTasks={canManageTasks}
-              isBoard={isBoard}
-            />
+              );
+            })}
           </div>
-        );
-      });
-    })()}
+        </div>
+      ))}
     </div>
   );
 }
@@ -1084,6 +1158,7 @@ function CreateProjectSection({ authToken, departments, onCreated }: { authToken
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [companyOrg, setCompanyOrg] = useState("");
+  const [projectYear, setProjectYear] = useState("");
   const [deadline, setDeadline] = useState("");
   const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -1100,6 +1175,7 @@ function CreateProjectSection({ authToken, departments, onCreated }: { authToken
         <input className="input" placeholder="Company / Org" value={companyOrg} onChange={(e) => setCompanyOrg(e.target.value)} />
       </div>
       <div className="admin-grid-2">
+        <input className="input" placeholder="Year (e.g. 2025-2026)" value={projectYear} onChange={(e) => setProjectYear(e.target.value)} />
         <input className="input" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1118,10 +1194,10 @@ function CreateProjectSection({ authToken, departments, onCreated }: { authToken
           try {
             const res = await fetch(apiUrl("/api/projects"), {
               method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-              body: JSON.stringify({ name: name.trim(), description: description.trim() || null, companyOrg: companyOrg.trim() || null, deadline: deadline || null, departmentIds: selectedDepts }),
+              body: JSON.stringify({ name: name.trim(), description: description.trim() || null, companyOrg: companyOrg.trim() || null, year: projectYear.trim() || null, deadline: deadline || null, departmentIds: selectedDepts }),
             });
             const data = await res.json();
-            if (data.success) { setName(""); setDescription(""); setCompanyOrg(""); setDeadline(""); setSelectedDepts([]); if (onCreated) onCreated(); alert("Project created"); }
+            if (data.success) { setName(""); setDescription(""); setCompanyOrg(""); setProjectYear(""); setDeadline(""); setSelectedDepts([]); if (onCreated) onCreated(); alert("Project created"); }
             else alert(data.error);
           } finally { setBusy(false); }
         }}>{busy ? "Creating..." : "Create Project"}</button>
@@ -1270,6 +1346,87 @@ function InstructionsSection({ authToken, departmentId }: { authToken: string; d
             <div style={{ color: "var(--text-secondary)", whiteSpace: "pre-wrap", fontSize: 14 }}>{inst.content}</div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+const RECRUITMENT_DOMAINS = ["Technical", "R&D", "Operations", "PR & Outreach", "Design & Creative", "Content & Editorial", "HR & Logistics", "Finance"];
+
+function RecruitmentSettingsSection({ authToken }: { authToken: string }) {
+  const [settings, setSettings] = useState<any[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    const res = await fetch(apiUrl("/api/recruitment/admin/settings"), { headers: { Authorization: `Bearer ${authToken}` } });
+    const d = await res.json();
+    if (d.success) setSettings(d.data || []);
+  }
+
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function toggleDomain(domainName: string) {
+    const newSettings = settings.map(s => s.domain_name === domainName ? { ...s, is_open: s.is_open ? 0 : 1 } : s);
+    setSettings(newSettings);
+    const openDomains = newSettings.filter((s: any) => s.is_open).map((s: any) => s.domain_name);
+    setBusy(true);
+    try {
+      await fetch(apiUrl("/api/recruitment/admin/settings"), {
+        method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ openDomains }),
+      });
+    } finally { setBusy(false); }
+  }
+
+  async function selectAll() {
+    setSettings(RECRUITMENT_DOMAINS.map(d => ({ domain_name: d, is_open: 1 })));
+    setBusy(true);
+    try {
+      await fetch(apiUrl("/api/recruitment/admin/settings"), {
+        method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ openDomains: RECRUITMENT_DOMAINS }),
+      });
+    } finally { setBusy(false); }
+  }
+
+  async function deselectAll() {
+    setSettings(RECRUITMENT_DOMAINS.map(d => ({ domain_name: d, is_open: 0 })));
+    setBusy(true);
+    try {
+      await fetch(apiUrl("/api/recruitment/admin/settings"), {
+        method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ openDomains: [] }),
+      });
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div>
+      <h3>Recruitment Domain Settings</h3>
+      <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+        Open or close recruitment for each domain. Closed domains won't appear on the application form.
+      </p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {(settings.length > 0 ? settings : RECRUITMENT_DOMAINS.map(d => ({ domain_name: d, is_open: 1 }))).map((ds: any) => (
+          <button
+            key={ds.domain_name}
+            onClick={() => toggleDomain(ds.domain_name)}
+            disabled={busy}
+            className="btn"
+            style={{
+              padding: "0.4rem 1rem", fontSize: 13,
+              background: ds.is_open ? "var(--primary-green)" : "var(--bg-secondary)",
+              color: ds.is_open ? "#fff" : "var(--text-secondary)",
+              border: ds.is_open ? "none" : "1px solid var(--border-light)",
+            }}
+          >
+            {ds.is_open ? "✓ " : "✕ "}{ds.domain_name}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button className="btn outline" style={{ fontSize: 13, padding: "0.4rem 1rem" }} disabled={busy} onClick={selectAll}>Select All</button>
+        <button className="btn outline" style={{ fontSize: 13, padding: "0.4rem 1rem" }} disabled={busy} onClick={deselectAll}>Deselect All</button>
       </div>
     </div>
   );

@@ -135,6 +135,7 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE role_transfers ADD COLUMN to_user_accepted INTEGER DEFAULT 0"); } catch { console.warn("Migration: to_user_accepted may already exist"); }
   try { await db.exec("ALTER TABLE signup_requests ADD COLUMN department_id TEXT"); } catch { console.warn("Migration: department_id may already exist"); }
   try { await db.exec("ALTER TABLE projects ADD COLUMN company_org TEXT"); } catch { console.warn("Migration: company_org may already exist"); }
+  try { await db.exec("ALTER TABLE projects ADD COLUMN year TEXT"); } catch { console.warn("Migration: year may already exist"); }
   try { await db.exec("ALTER TABLE recruitment_evaluations ADD COLUMN comment TEXT"); } catch { console.warn("Migration: recruitment_evaluations.comment may already exist"); }
   try { await db.exec("ALTER TABLE recruitment_applicants ADD COLUMN salt TEXT"); } catch { console.warn("Migration: salt may already exist"); }
   try {
@@ -1587,6 +1588,7 @@ app.post("/api/projects", async (c) => {
     const name = sanitizeStr(body.name);
     const description = sanitizeStr(body.description);
     const companyOrg = sanitizeStr(body.companyOrg);
+    const year = sanitizeStr(body.year) || null;
     const deadline = body.deadline || null;
     const departmentIds = body.departmentIds;
     if (!name) return c.json({ error: "Missing project name" }, 400);
@@ -1596,8 +1598,8 @@ app.post("/api/projects", async (c) => {
 
     const projectId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
-      "INSERT INTO projects (id, name, description, company_org, deadline, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-    ).bind(projectId, name, description || null, companyOrg || null, deadline, user.id).run();
+      "INSERT INTO projects (id, name, description, company_org, year, deadline, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(projectId, name, description || null, companyOrg || null, year, deadline, user.id).run();
 
     for (const deptId of departmentIds) {
       await c.env.DB.prepare(
@@ -1790,8 +1792,8 @@ app.post("/api/projects/:id/reopen", async (c) => {
     await ensureTables(c.env.DB);
     const projectId = c.req.param("id");
     const user: any = c.get("user");
-    if (user.power_level < 50) {
-      return c.json({ error: "Forbidden: Leads or above only" }, 403);
+    if (user.power_level < 100) {
+      return c.json({ error: "Forbidden: President or VP only" }, 403);
     }
     await c.env.DB.prepare("UPDATE projects SET status = 'upcoming' WHERE id = ?").bind(projectId).run();
     return c.json({ success: true, message: "Project reopened" });
