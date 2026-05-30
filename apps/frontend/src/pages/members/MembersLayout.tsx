@@ -991,13 +991,27 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
                   ))}
                 </div>
               </div>
-              {isBoard && (
-                <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13, marginLeft: 12 }} onClick={async () => {
-                  if (!confirm(`Delete project "${p.name}"?`)) return;
-                  await fetch(apiUrl(`/api/projects/${p.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
-                  setProjects(projects.filter((x: any) => x.id !== p.id));
-                }}>Delete</button>
-              )}
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                {showCompleted && powerLevel >= 50 && (
+                  <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
+                    const res = await fetch(apiUrl(`/api/projects/${p.id}/reopen`), {
+                      method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      setProjects(projects.filter((x: any) => x.id !== p.id));
+                      alert("Project reopened");
+                    } else alert(data.error);
+                  }}>Reopen</button>
+                )}
+                {isBoard && (
+                  <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
+                    if (!confirm(`Delete project "${p.name}"?`)) return;
+                    await fetch(apiUrl(`/api/projects/${p.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                    setProjects(projects.filter((x: any) => x.id !== p.id));
+                  }}>Delete</button>
+                )}
+              </div>
             </div>
 
             {p.roles?.length > 0 && (
