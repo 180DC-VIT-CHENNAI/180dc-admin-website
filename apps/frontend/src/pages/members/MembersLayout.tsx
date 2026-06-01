@@ -66,7 +66,7 @@ export default function MembersLayout() {
   const [transferBusy, setTransferBusy] = useState(false);
 
   const maskToken = (token: string) =>
-    token.length <= 12 ? token : `${token.slice(0, 6)}…${token.slice(-4)}`;
+    token.length <= 8 ? `${token.slice(0, 3)}…` : `${token.slice(0, 6)}…${token.slice(-4)}`;
 
   const handleLogin = (
     token: string,
@@ -120,6 +120,7 @@ export default function MembersLayout() {
   type NavItem = { id: string; label: string; minPower: number; deptId?: string };
   const baseNav: NavItem[] = [
     { id: "dashboard", label: "Dashboard", minPower: 0 },
+    { id: "members", label: "Members", minPower: 0 },
     { id: "profile", label: "Profile", minPower: 0 },
     { id: "meets", label: "Meets", minPower: 0 },
     { id: "projects", label: "Projects", minPower: 0 },
@@ -256,6 +257,10 @@ export default function MembersLayout() {
               )}
             </div>
           </>
+        )}
+
+        {activePanel === "members" && (
+          <MembersSection authToken={authToken!} />
         )}
 
         {activePanel === "profile" && (
@@ -717,6 +722,144 @@ export default function MembersLayout() {
   );
 }
 
+function MembersSection({ authToken }: { authToken: string }) {
+  const [members, setMembers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch(apiUrl("/api/members-directory"), {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        const data = await res.json();
+        if (data.success) setMembers(data.data || []);
+      } catch {
+        /* ignore */
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [authToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const testAccounts = new Set(["kevindaniel.2025@vitstudent.ac.in", "admin@vitstudent.ac.in"]);
+
+  const roleOrder: Record<string, number> = {
+    president: 0,
+    vice_president: 1,
+    secretary: 2,
+    lead: 3,
+    member: 4,
+  };
+
+  const q = query.toLowerCase();
+  const filtered = members.filter((m: any) => {
+    if (!q) return true;
+    const deptName = m.department_id ? (DEPT_NAMES[m.department_id] || m.department_id) : "";
+    return (
+      (m.name || "").toLowerCase().includes(q) ||
+      (m.email || "").toLowerCase().includes(q) ||
+      (m.role_name || "").toLowerCase().includes(q) ||
+      deptName.toLowerCase().includes(q)
+    );
+  });
+
+  const deptGroups: Record<string, any[]> = {};
+  for (const m of filtered) {
+    const key = m.department_id || "__none";
+    if (!deptGroups[key]) deptGroups[key] = [];
+    deptGroups[key].push(m);
+  }
+
+  const deptKeys = Object.keys(deptGroups).sort((a, b) => {
+    if (a === "__none") return 1;
+    if (b === "__none") return -1;
+    return (DEPT_NAMES[a] || a).localeCompare(DEPT_NAMES[b] || b);
+  });
+
+  for (const key of deptKeys) {
+    deptGroups[key].sort((a: any, b: any) => {
+      const orderA = roleOrder[a.role_id] ?? 99;
+      const orderB = roleOrder[b.role_id] ?? 99;
+      if (orderA !== orderB) return orderA - orderB;
+      return (a.name || "").localeCompare(b.name || "");
+    });
+  }
+
+  if (loading) {
+    return (
+      <div className="members-grid">
+        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+          <p style={{ color: "var(--text-secondary)" }}>Loading members...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h2 style={{ marginTop: 0 }}>Members</h2>
+      <div className="card-doodle" style={{ marginBottom: 16, padding: "0.75rem 1rem" }}>
+        <input
+          className="input"
+          placeholder="Search by name, email, role, or department..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          style={{ width: "100%" }}
+        />
+        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 8 }}>
+          Showing {filtered.length} member{filtered.length !== 1 ? "s" : ""}
+          {filtered.length !== members.length && ` (filtered from ${members.length})`}
+        </div>
+      </div>
+      <div className="members-grid" style={{ gap: 16 }}>
+        {deptKeys.length === 0 && (
+          <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+            <p style={{ color: "var(--text-secondary)" }}>No members match your search.</p>
+          </div>
+        )}
+        {deptKeys.map((key) => (
+          <div key={key} className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+            <h3 style={{ margin: 0 }}>
+              {key === "__none" ? "No Department" : (DEPT_NAMES[key] || key)}
+              <span style={{ fontSize: 13, fontWeight: 400, color: "var(--text-secondary)", marginLeft: 8 }}>
+                {deptGroups[key].length} member{deptGroups[key].length !== 1 ? "s" : ""}
+              </span>
+            </h3>
+            <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+              {deptGroups[key].map((m: any) => (
+                <div
+                  key={m.id}
+                  style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "0.6rem 0.8rem", background: "var(--bg-secondary)",
+                    borderRadius: 8, border: "1px solid var(--border-light)",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <strong style={{ fontSize: 14 }}>{m.name}</strong>
+                      {testAccounts.has(m.email) && (
+                        <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 6, background: "var(--accent)", color: "#fff", fontWeight: 600 }}>test account</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>{m.email}</div>
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--primary-green)", textAlign: "right" }}>
+                    {m.role_name}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AdminDataLoader({ authToken, setAllUsers, setAllRoles }: { authToken: string; setAllUsers: any; setAllRoles: any }) {
   useEffect(() => {
     async function load() {
@@ -760,7 +903,7 @@ function ClubMeetsSection({ authToken, powerLevel }: { authToken: string; powerL
             <div>
               <strong>{m.title}</strong>
               <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{m.scheduled_at?.slice(0, 16).replace("T", " ")}</div>
-              {m.meet_link && <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={() => window.open(m.meet_link, "_blank")}>Open Link</button>}
+              {m.meet_link && <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={() => { try { const u = new URL(m.meet_link); if (["meet.google.com", "zoom.us", "teams.microsoft.com"].some(d => u.hostname.endsWith(d))) window.open(m.meet_link, "_blank", "noopener,noreferrer"); else alert("External link blocked for security."); } catch { alert("Invalid meet link."); } }}>Open Link</button>}
             </div>
             {canManage && (
               <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={async () => {
@@ -820,7 +963,7 @@ function DepartmentMeetsSection({ authToken, departments, powerLevel, department
               <strong>{m.title}</strong>
               <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{m.scheduled_at?.slice(0, 16).replace("T", " ")}</div>
               <div style={{ fontSize: 12, color: "var(--primary-green)" }}>{m.department_name}</div>
-              {m.meet_link && <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={() => window.open(m.meet_link, "_blank")}>Open Link</button>}
+              {m.meet_link && <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={() => { try { const u = new URL(m.meet_link); if (["meet.google.com", "zoom.us", "teams.microsoft.com"].some(d => u.hostname.endsWith(d))) window.open(m.meet_link, "_blank", "noopener,noreferrer"); else alert("External link blocked for security."); } catch { alert("Invalid meet link."); } }}>Open Link</button>}
             </div>
             {isLead && m.department_id === departmentId && (
               <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={async () => {
@@ -886,7 +1029,7 @@ function InterDeptMeetsSection({ authToken, departments, powerLevel }: { authTok
               <strong>{m.title}</strong>
               <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{m.scheduled_at?.slice(0, 16).replace("T", " ")}</div>
               <div style={{ fontSize: 12, color: "var(--text-light)" }}>Depts: {(m.departments || "").split(",").join(", ")}</div>
-              {m.meet_link && <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={() => window.open(m.meet_link, "_blank")}>Open Link</button>}
+              {m.meet_link && <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={() => { try { const u = new URL(m.meet_link); if (["meet.google.com", "zoom.us", "teams.microsoft.com"].some(d => u.hostname.endsWith(d))) window.open(m.meet_link, "_blank", "noopener,noreferrer"); else alert("External link blocked for security."); } catch { alert("Invalid meet link."); } }}>Open Link</button>}
             </div>
             {canManage && (
               <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={async () => {

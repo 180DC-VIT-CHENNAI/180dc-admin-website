@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { csrf } from "hono/csrf";
 
 type Bindings = {
   DB: any;
@@ -63,7 +64,7 @@ function isValidUrl(val: unknown): boolean {
 }
 
 function getClientIp(c: any): string {
-  return c.req.header("CF-Connecting-IP") || c.req.header("X-Forwarded-For") || "unknown";
+  return c.req.header("CF-Connecting-IP") || "unknown";
 }
 
 async function checkRateLimit(c: any, endpoint: string, maxRequests: number, windowSeconds = 60): Promise<{ allowed: boolean; retryAfter: number }> {
@@ -87,7 +88,10 @@ async function checkRateLimit(c: any, endpoint: string, maxRequests: number, win
     }
     await c.env.DB.prepare("UPDATE rate_limits SET count = count + 1 WHERE ip = ? AND endpoint = ?").bind(ip, endpoint).run();
     return { allowed: true, retryAfter: 0 };
-  } catch { return { allowed: true, retryAfter: 0 }; }
+  } catch {
+    console.error("checkRateLimit failed for endpoint: " + endpoint);
+    return { allowed: false, retryAfter: 60 };
+  }
 }
 
 async function addAuditLog(c: any, action: string, targetType: string | null, targetId: string | null, details: string | null) {
@@ -96,7 +100,7 @@ async function addAuditLog(c: any, action: string, targetType: string | null, ta
     await c.env.DB.prepare(
       "INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
     ).bind(action, actorEmail, targetType, targetId, details).run();
-  } catch { /* audit log silently */ }
+  } catch (e) { console.error("audit_log_write_failed:", e); }
 }
 
 function maskToken(token: string): string {
@@ -113,7 +117,7 @@ async function hashPassword(password: string): Promise<{ hash: string; salt: str
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const derivedBits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: encoder.encode(salt), iterations: 100000, hash: "SHA-256" },
+    { name: "PBKDF2", salt: encoder.encode(salt), iterations: 600000, hash: "SHA-256" },
     keyMaterial, 256,
   );
   const hashArray = Array.from(new Uint8Array(derivedBits));
@@ -125,12 +129,17 @@ async function verifyPassword(password: string, salt: string, storedHash: string
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const derivedBits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: encoder.encode(salt), iterations: 100000, hash: "SHA-256" },
+    { name: "PBKDF2", salt: encoder.encode(salt), iterations: 600000, hash: "SHA-256" },
     keyMaterial, 256,
   );
   const hashArray = Array.from(new Uint8Array(derivedBits));
   const hash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-  return hash === storedHash;
+  if (hash.length !== storedHash.length) return false;
+  let result = 0;
+  for (let i = 0; i < hash.length; i++) {
+    result |= hash.charCodeAt(i) ^ storedHash.charCodeAt(i);
+  }
+  return result === 0;
 }
 
 let tablesEnsured = false;
@@ -186,9 +195,12 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE recruitment_evaluations ADD COLUMN comment TEXT"); } catch { console.warn("Migration: recruitment_evaluations.comment may already exist"); }
   try { await db.exec("ALTER TABLE recruitment_applicants ADD COLUMN salt TEXT"); } catch { console.warn("Migration: salt may already exist"); }
   try { await db.exec("ALTER TABLE admin_tokens ADD COLUMN expires_at DATETIME"); } catch { console.warn("Migration: expires_at may already exist"); }
+  try { await db.exec("ALTER TABLE recruitment_sessions ADD COLUMN token_hash TEXT"); } catch { console.warn("Migration: token_hash may already exist"); }
+  try { await db.exec("ALTER TABLE recruitment_sessions RENAME COLUMN token TO token_old"); } catch { console.warn("Migration: token column rename"); }
+  try { await db.exec("UPDATE recruitment_sessions SET token_hash = token_old WHERE token_hash IS NULL"); } catch { console.warn("Migration: token_hash backfill"); }
   try {
     await db.exec(`CREATE TABLE IF NOT EXISTS recruitment_sessions (
-      id TEXT PRIMARY KEY, applicant_id TEXT NOT NULL, token TEXT UNIQUE NOT NULL,
+      id TEXT PRIMARY KEY, applicant_id TEXT NOT NULL, token_hash TEXT NOT NULL,
       expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (applicant_id) REFERENCES recruitment_applicants(id)
     )`);
@@ -286,6 +298,13 @@ async function seedData(db: any, env?: any) {
  * (In production, this decodes the Google/Clerk JWT token mapped to the VIT email)
  */
 // CORS — runs first, handles preflight OPTIONS automatically
+app.use("*", async (c, next) => {
+  await next();
+  c.res.headers.set("X-Content-Type-Options", "nosniff");
+  c.res.headers.set("X-Frame-Options", "DENY");
+  c.res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+});
+
 const ALLOWED_ORIGINS = [
   "https://180dc-admin.pages.dev",
   "https://admin.180dc.org",
@@ -310,6 +329,13 @@ app.use(
     allowHeaders: ["Content-Type", "Authorization"],
   }),
 );
+
+app.use("*", csrf({
+  origin: (origin) => {
+    if (!origin || isDevOrigin(origin) || ALLOWED_ORIGINS.includes(origin)) return origin;
+    return origin;
+  },
+}));
 
 // Auth middleware
 app.use("*", async (c, next) => {
@@ -409,12 +435,17 @@ const requireBoard = (c: any) => {
 async function getSessionApplicant(c: any): Promise<any | null> {
   const token = c.req.header("X-Session-Token") || "";
   if (!token) return null;
-  // Clean up expired sessions
+  const tokenHash = await sha256Hex(token);
   await c.env.DB.prepare("DELETE FROM recruitment_sessions WHERE expires_at <= datetime('now')").run();
   const session: any = await c.env.DB.prepare(
-    "SELECT sa.* FROM recruitment_sessions rs JOIN recruitment_applicants sa ON rs.applicant_id = sa.id WHERE rs.token = ? AND rs.expires_at > datetime('now')",
-  ).bind(token).first();
+    "SELECT sa.* FROM recruitment_sessions rs JOIN recruitment_applicants sa ON rs.applicant_id = sa.id WHERE rs.token_hash = ? AND rs.expires_at > datetime('now')",
+  ).bind(tokenHash).first();
   return session || null;
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 // ---------------------------------------------------------
@@ -484,6 +515,11 @@ app.post("/api/members", async (c) => {
       .bind(name, email, departmentId)
       .run();
 
+    const rl = await checkRateLimit(c, "create_member", 10, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many member creation requests.", retryAfter: rl.retryAfter }, 429);
+    }
+
     const token = crypto.randomUUID().replace(/-/g, "");
     const user: any = c.get("user");
     await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?").bind(email).run();
@@ -497,7 +533,7 @@ app.post("/api/members", async (c) => {
       success: true,
       message: "Added " + email + " as a General Member.",
       token,
-    });
+    }, 200, { "Cache-Control": "private, no-store" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -516,6 +552,12 @@ app.post("/api/dev-login", async (c) => {
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
     }
+
+    const rl = await checkRateLimit(c, "dev_login", 10, 60);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many login attempts. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
+
     const token = body.token;
     if (!token) return c.json({ error: "Missing token" }, 400);
 
@@ -584,7 +626,7 @@ app.post("/api/auth/rotate-token", async (c) => {
       "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
     ).bind(newToken, user.email, user.name, user.role_id, user.id).run();
     await addAuditLog(c, "token_rotated", "admin_token", user.email, "Token rotated for " + user.email);
-    return c.json({ success: true, token: newToken });
+    return c.json({ success: true, token: newToken }, 200, { "Cache-Control": "private, no-store" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -670,6 +712,10 @@ app.post("/api/admin-tokens", async (c) => {
   try {
     await ensureTables(c.env.DB);
     requireBoard(c);
+    const rl = await checkRateLimit(c, "create_admin_token", 20, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many token creation requests.", retryAfter: rl.retryAfter }, 429);
+    }
     const body = await c.req.json();
     const email = validateEmail(body.email);
     const roleId = sanitizeStr(body.roleId) || "member";
@@ -695,7 +741,7 @@ app.post("/api/admin-tokens", async (c) => {
 
     await addAuditLog(c, "token_created", "admin_token", null, "Token created for " + email);
 
-    return c.json({ success: true, token, email, roleId, name });
+    return c.json({ success: true, token, email, roleId, name }, 200, { "Cache-Control": "private, no-store" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -727,6 +773,10 @@ app.post("/api/board-users", async (c) => {
   try {
     await ensureTables(c.env.DB);
     requireBoard(c);
+    const rl = await checkRateLimit(c, "create_board_user", 10, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many board user creation requests.", retryAfter: rl.retryAfter }, 429);
+    }
 
     const body = await c.req.json();
     const email = validateEmail(body.email);
@@ -797,9 +847,8 @@ app.post("/api/board-users", async (c) => {
       email,
       name,
       roleId,
-      token,
-      message: "Board user created and token issued.",
-    });
+      token: newToken,
+    }, 200, { "Cache-Control": "private, no-store" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -889,6 +938,18 @@ app.get("/api/users", async (c) => {
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
+  }
+});
+
+app.get("/api/members-directory", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rows = await c.env.DB.prepare(
+      "SELECT u.id, u.name, u.email, u.role_id, u.department_id, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id ORDER BY r.power_level DESC, u.name ASC",
+    ).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -1117,6 +1178,10 @@ app.delete("/api/members/:id", async (c) => {
 app.post("/api/signup-requests", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "signup_request", 5, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many signup requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
     const body = await c.req.json();
     const name = sanitizeStr(body.name);
     const email = validateEmail(body.email);
@@ -1204,7 +1269,7 @@ app.post("/api/signup-requests/:id/approve", async (c) => {
       success: true,
       message: "Signup request approved. Token created.",
       token: newToken,
-    });
+    }, 200, { "Cache-Control": "private, no-store" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -1954,14 +2019,13 @@ app.post("/api/recruitment/register", async (c) => {
     if (password.length < 8) {
       return c.json({ error: "Password must be at least 8 characters" }, 400);
     }
-    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
-      return c.json({ error: "Password must contain uppercase, lowercase, and a digit" }, 400);
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password)) {
+      return c.json({ error: "Password must contain uppercase, lowercase, a digit, and a special character" }, 400);
     }
 
     const existing: any = await c.env.DB.prepare("SELECT id FROM recruitment_applicants WHERE email = ?").bind(email).first();
     if (existing) {
-      return c.json({ error: "An account with this email already exists" }, 409);
-    }
+      return c.json({ success: true, message: "Account created. You can now log in." });
 
     const { hash: passwordHash, salt } = await hashPassword(password);
 
@@ -2003,12 +2067,16 @@ app.post("/api/recruitment/login", async (c) => {
       return c.json({ error: "Invalid email or password" }, 401);
     }
 
-    // Create session token stored in DB
+    // Delete old sessions for this applicant
+    await c.env.DB.prepare("DELETE FROM recruitment_sessions WHERE applicant_id = ?").bind(applicant.id).run();
+
+    // Create session token stored in DB (store SHA-256 hash, return raw token)
     const sessionToken = crypto.randomUUID().replace(/-/g, "");
+    const tokenHash = await sha256Hex(sessionToken);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     await c.env.DB.prepare(
-      "INSERT INTO recruitment_sessions (id, applicant_id, token, expires_at) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
-    ).bind(applicant.id, sessionToken, expiresAt).run();
+      "INSERT INTO recruitment_sessions (id, applicant_id, token_hash, expires_at) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
+    ).bind(applicant.id, tokenHash, expiresAt).run();
 
     return c.json({
       success: true,
