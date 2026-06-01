@@ -6,6 +6,7 @@ type Bindings = {
   DB: any;
   AUTH_SESSIONS: any;
   ENVIRONMENT?: string;
+  RESEND_API_KEY?: string;
 };
 
 type Variables = {
@@ -108,7 +109,315 @@ function maskToken(token: string): string {
   return token.substring(0, 8) + "...";
 }
 
+function tokenEmailHtml(token: string, name: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#8dc63f;padding:28px 24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="56" style="margin-bottom:8px">
+<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:28px;margin:0;font-weight:600;text-shadow:2px 2px 0 rgba(0,0,0,0.15)">180 Degrees Consulting</h1>
+<p style="color:#1a1a1a;font-size:13px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
+</td></tr>
+<tr><td style="padding:28px 28px 20px">
+<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Hey ${name}!</p>
+<p style="font-size:14px;color:#555555;margin:0 0 20px;line-height:1.6">Your admin access token for the 180DC Admin Portal is here. Pop it in the login screen to get started.</p>
+<div style="background:#f5f3ee;border:3px solid #1a1a1a;border-radius:12px;padding:16px 20px;margin:0 0 20px;text-align:center">
+<p style="font-size:11px;color:#777777;margin:0 0 8px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">Your Access Token</p>
+<code style="font-size:16px;font-weight:800;color:#1a1a1a;letter-spacing:2px;word-break:break-all;font-family:monospace">${token}</code>
+</div>
+<table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto 20px">
+<tr><td style="padding:10px 28px;text-align:center">
+<a href="https://180dc.shop" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Open Admin Portal</a>
+</td></tr>
+</table>
+<p style="font-size:12px;color:#777777;margin:0;line-height:1.5">This is the only time this token will be shown in full. Keep it safe and don't share it with anyone.</p>
+</td></tr>
+<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:16px 28px;text-align:center">
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai<br><span style="color:#777777;font-weight:400">Didn't request this? Contact your club admin immediately.</span></p>
+</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>`;
+}
 
+async function sendTokenEmail(c: any, email: string, token: string, name: string) {
+  const apiKey = c.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn("RESEND_API_KEY not configured — skipping email to " + email);
+    return;
+  }
+  const from = "180DC Admin <noreply@180dc.shop>";
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from,
+        to: email,
+        subject: "Your 180DC Admin Access Token",
+        html: tokenEmailHtml(token, name),
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      console.error("Resend email failed (" + res.status + "): " + body);
+    }
+  } catch (e: any) {
+    console.error("Resend email error: " + e.message);
+  }
+}
+
+function meetEmailHtml(title: string, description: string | null, meetLink: string | null, scheduledAt: string, meetType: string): string {
+  const dateStr = scheduledAt.slice(0, 16).replace("T", " ");
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">New Meet Scheduled</h1>
+<p style="color:#1a1a1a;font-size:12px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">${meetType.replace(/_/g, " ").toUpperCase()}</p>
+</td></tr>
+<tr><td style="padding:28px">
+<p style="font-size:16px;color:#1a1a1a;margin:0 0 16px;font-weight:700">${title}</p>
+${description ? `<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.6">${description}</p>` : ""}
+<div style="background:#f5f3ee;border:3px solid #1a1a1a;border-radius:12px;padding:14px 18px;margin:0 0 16px">
+<p style="font-size:12px;color:#777777;margin:0 0 4px;font-weight:700;text-transform:uppercase;letter-spacing:1px">Scheduled</p>
+<p style="font-size:15px;color:#1a1a1a;margin:0;font-weight:600">${dateStr}</p>
+</div>
+${meetLink ? `<table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto 16px"><tr><td style="padding:10px 24px;text-align:center"><a href="${meetLink}" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Join Meet</a></td></tr></table>` : `<p style="font-size:13px;color:#777777;margin:0 0 16px;text-align:center;font-style:italic">Venue to be announced</p>`}
+</td></tr>
+<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>`;
+}
+
+const DEV_ADMIN_EMAIL = "admin@vitstudent.ac.in";
+
+async function getTodayEmailCount(db: any): Promise<number> {
+  const today = new Date().toISOString().slice(0, 10);
+  const row: any = await db.prepare("SELECT count FROM daily_email_count WHERE date = ?").bind(today).first();
+  return row ? row.count : 0;
+}
+
+async function incrementEmailCount(db: any) {
+  const today = new Date().toISOString().slice(0, 10);
+  await db.prepare("INSERT INTO daily_email_count (date, count) VALUES (?, 1) ON CONFLICT(date) DO UPDATE SET count = count + 1").bind(today).run();
+}
+
+async function sendMeetEmail(c: any, to: string, name: string, title: string, description: string | null, meetLink: string | null, scheduledAt: string, meetType: string) {
+  const apiKey = c.env.RESEND_API_KEY;
+  if (!apiKey) return;
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "180DC Admin <noreply@180dc.shop>",
+        to,
+        subject: "New Meet: " + title,
+        html: meetEmailHtml(title, description, meetLink, scheduledAt, meetType),
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      console.error("Meet email failed (" + res.status + "): " + body);
+    }
+  } catch (e: any) {
+    console.error("Meet email error: " + e.message);
+  }
+}
+
+async function queueOrSendMeetEmails(c: any, recipients: { email: string; name: string }[], meetId: string, meetType: string, title: string, description: string | null, meetLink: string | null, scheduledAt: string) {
+  const apiKey = c.env.RESEND_API_KEY;
+  if (!apiKey) { console.warn("RESEND_API_KEY not configured — skipping meet emails"); return { sent: 0, queued: 0 }; }
+
+  let count = await getTodayEmailCount(c.env.DB);
+  const MAX_DAILY = 100;
+  let sent = 0;
+  let queued = 0;
+
+  for (const r of recipients) {
+    if (r.email === DEV_ADMIN_EMAIL) continue;
+    if (count < MAX_DAILY) {
+      await sendMeetEmail(c, r.email, r.name, title, description, meetLink, scheduledAt, meetType);
+      await incrementEmailCount(c.env.DB);
+      count++;
+      sent++;
+    } else {
+      await c.env.DB.prepare(
+        "INSERT INTO pending_emails (id, meet_id, meet_type, recipient_email, recipient_name, meet_title, meet_description, meet_link, scheduled_at) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).bind(meetId, meetType, r.email, r.name, title, description, meetLink, scheduledAt).run();
+      queued++;
+    }
+  }
+  return { sent, queued };
+}
+
+async function getMeetRecipients(db: any, meetType: string, departmentId?: string, departments?: string[]): Promise<{ email: string; name: string }[]> {
+  if (meetType === "department_meet" && departmentId) {
+    const rows: any = await db.prepare("SELECT email, name FROM users WHERE department_id = ? AND email != ?").bind(departmentId, DEV_ADMIN_EMAIL).all();
+    return rows.results || [];
+  }
+  if (meetType === "club_meet") {
+    const rows: any = await db.prepare("SELECT email, name FROM users WHERE email != ?").bind(DEV_ADMIN_EMAIL).all();
+    return rows.results || [];
+  }
+  if (meetType === "inter_dept_meet" && departments && departments.length > 0) {
+    const placeholders = departments.map(() => "?").join(",");
+    const rows: any = await db.prepare(`SELECT email, name FROM users WHERE department_id IN (${placeholders}) AND email != ?`).bind(...departments, DEV_ADMIN_EMAIL).all();
+    return rows.results || [];
+  }
+  return [];
+}
+
+async function sendProjectAssignmentEmail(c: any, projectName: string, departmentIds: string[]) {
+  const apiKey = c.env.RESEND_API_KEY;
+  if (!apiKey) return;
+  const rows: any = await c.env.DB.prepare(
+    `SELECT u.email, u.name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id IN (${departmentIds.map(() => "?").join(",")}) AND r.power_level >= 50 AND u.email != ?`
+  ).bind(...departmentIds, DEV_ADMIN_EMAIL).all();
+  const leads = rows.results || [];
+  let count = await getTodayEmailCount(c.env.DB);
+  const MAX_DAILY = 100;
+  for (const lead of leads) {
+    if (count >= MAX_DAILY) break;
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "180DC Admin <noreply@180dc.shop>",
+          to: lead.email,
+          subject: "New Project Assigned: " + projectName,
+          html: `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">New Project Assigned</h1>
+</td></tr>
+<tr><td style="padding:28px">
+<p style="font-size:16px;color:#1a1a1a;margin:0 0 16px;font-weight:700">${projectName}</p>
+<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.6">A new project has been assigned to your department. Please review the details and begin planning your team's approach.</p>
+<p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Check the 180DC Admin Portal for more information.</p>
+</td></tr>
+<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`,
+        }),
+      });
+      if (!res.ok) { const body = await res.text(); console.error("Project email failed (" + res.status + "): " + body); }
+    } catch (e: any) { console.error("Project email error: " + e.message); }
+    await incrementEmailCount(c.env.DB);
+    count++;
+  }
+}
+
+async function sendRoleAssignmentEmail(c: any, email: string, name: string, roleName: string, projectName: string) {
+  const apiKey = c.env.RESEND_API_KEY;
+  if (!apiKey) return;
+  const count = await getTodayEmailCount(c.env.DB);
+  if (count >= 100) return;
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "180DC Admin <noreply@180dc.shop>",
+        to: email,
+        subject: "Role Assigned: " + roleName + " for " + projectName,
+        html: `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">New Role Assigned</h1>
+</td></tr>
+<tr><td style="padding:28px">
+<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Hey ${name}!</p>
+<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.6">You have been assigned the role of <strong>${roleName}</strong> for the project <strong>${projectName}</strong>.</p>
+<p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Log in to the 180DC Admin Portal to view your project dashboard and tasks.</p>
+</td></tr>
+<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`,
+      }),
+    });
+    if (!res.ok) { const body = await res.text(); console.error("Role email failed (" + res.status + "): " + body); }
+  } catch (e: any) { console.error("Role email error: " + e.message); }
+  await incrementEmailCount(c.env.DB);
+}
+
+async function sendRoleChangeEmail(c: any, email: string, name: string, roleName: string) {
+  const apiKey = c.env.RESEND_API_KEY;
+  if (!apiKey) return;
+  const count = await getTodayEmailCount(c.env.DB);
+  if (count >= 100) return;
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "180DC Admin <noreply@180dc.shop>",
+        to: email,
+        subject: "Your Role Has Been Updated",
+        html: `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">Role Updated</h1>
+</td></tr>
+<tr><td style="padding:28px">
+<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Hey ${name}!</p>
+<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.6">Your role in 180 Degrees Consulting has been updated to <strong>${roleName}</strong>.</p>
+<p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Log in to the 180DC Admin Portal to view your updated access and responsibilities.</p>
+</td></tr>
+<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`,
+      }),
+    });
+    if (!res.ok) { const body = await res.text(); console.error("Role change email failed (" + res.status + "): " + body); }
+  } catch (e: any) { console.error("Role change email error: " + e.message); }
+  await incrementEmailCount(c.env.DB);
+}
 
 async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
   const saltBytes = new Uint8Array(16);
@@ -181,6 +490,8 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS recruitment_domain_settings (domain_name TEXT PRIMARY KEY, is_open INTEGER DEFAULT 0, updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS rate_limits (ip TEXT NOT NULL, endpoint TEXT NOT NULL, count INTEGER DEFAULT 1, window_start DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (ip, endpoint));
     CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, action TEXT NOT NULL, actor_email TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS daily_email_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS pending_emails (id TEXT PRIMARY KEY, meet_id TEXT NOT NULL, meet_type TEXT NOT NULL, recipient_email TEXT NOT NULL, recipient_name TEXT NOT NULL, meet_title TEXT NOT NULL, meet_description TEXT, meet_link TEXT, scheduled_at TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
   `);
   await runMigrations(db);
   tablesEnsured = true;
@@ -353,6 +664,7 @@ app.use("*", async (c, next) => {
   if (
     (url.pathname === "/api/signup-requests" && c.req.method === "POST") ||
     url.pathname === "/api/dev-login" ||
+    url.pathname === "/api/auth/forgot-token" ||
     url.pathname === "/api/departments" ||
     url.pathname === "/api/projects/completed" ||
     (url.pathname.startsWith("/api/content") && c.req.method === "GET") ||
@@ -530,6 +842,8 @@ app.post("/api/members", async (c) => {
 
     await addAuditLog(c, "member_added", "user", null, "Added " + email + " as member");
 
+    await sendTokenEmail(c, email, token, name);
+
     return c.json({
       success: true,
       message: "Added " + email + " as a General Member.",
@@ -611,6 +925,43 @@ app.post("/api/dev-login", async (c) => {
 });
 
 // ---------------------------------------------------------
+// FORGOT TOKEN (public — sends token to email if registered)
+// ---------------------------------------------------------
+app.post("/api/auth/forgot-token", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "forgot_token", 3, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
+    const body = await c.req.json();
+    const email = validateEmail(body.email);
+    if (!email) {
+      return c.json({ error: "Valid email is required" }, 400);
+    }
+
+    // Check quota before lookup to prevent email enumeration
+    const count = await getTodayEmailCount(c.env.DB);
+    if (count >= 100) {
+      return c.json({ error: "Daily email quota reached. Please contact the administrator or try again after 24 hours." }, 429);
+    }
+
+    const row: any = await c.env.DB.prepare(
+      "SELECT token, name, email, revoked_at, expires_at FROM admin_tokens WHERE email = ?",
+    ).bind(email).first();
+
+    if (row && !row.revoked_at && (!row.expires_at || new Date(row.expires_at + "Z") > new Date())) {
+      await sendTokenEmail(c, email, row.token, row.name || email.split("@")[0]);
+      await incrementEmailCount(c.env.DB);
+    }
+
+    return c.json({ success: true, message: "If the email is registered, your token has been sent." });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
 // TOKEN ROTATION (any authenticated user can rotate their own token)
 // ---------------------------------------------------------
 app.post("/api/auth/rotate-token", async (c) => {
@@ -627,6 +978,7 @@ app.post("/api/auth/rotate-token", async (c) => {
       "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
     ).bind(newToken, user.email, user.name, user.role_id, user.id).run();
     await addAuditLog(c, "token_rotated", "admin_token", user.email, "Token rotated for " + user.email);
+    await sendTokenEmail(c, user.email, newToken, user.name);
     return c.json({ success: true, token: newToken }, 200, { "Cache-Control": "private, no-store" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -742,6 +1094,8 @@ app.post("/api/admin-tokens", async (c) => {
 
     await addAuditLog(c, "token_created", "admin_token", null, "Token created for " + email);
 
+    await sendTokenEmail(c, email, token, name);
+
     return c.json({ success: true, token, email, roleId, name }, 200, { "Cache-Control": "private, no-store" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -843,12 +1197,14 @@ app.post("/api/board-users", async (c) => {
 
     await addAuditLog(c, "board_user_created", "user", null, "Board user created: " + email + " as " + roleId);
 
+    await sendTokenEmail(c, email, token, name);
+
     return c.json({
       success: true,
       email,
       name,
       roleId,
-      token: newToken,
+      token,
     }, 200, { "Cache-Control": "private, no-store" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -874,6 +1230,12 @@ app.put("/api/members/:id/role", async (c) => {
     )
       .bind(newRoleId, departmentId || null, targetUserId)
       .run();
+
+    // Send role change email
+    const targetUser: any = await c.env.DB.prepare("SELECT u.email, u.name, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?").bind(targetUserId).first();
+    if (targetUser) {
+      await sendRoleChangeEmail(c, targetUser.email, targetUser.name, targetUser.role_name);
+    }
 
     return c.json({ success: true, message: "Role updated successfully." });
   } catch (e: any) {
@@ -1266,6 +1628,8 @@ app.post("/api/signup-requests/:id/approve", async (c) => {
 
     await addAuditLog(c, "signup_approved", "signup_request", id, "Approved signup for " + reqRow.email);
 
+    await sendTokenEmail(c, reqRow.email, newToken, reqRow.name);
+
     return c.json({
       success: true,
       message: "Signup request approved. Token created.",
@@ -1351,10 +1715,15 @@ app.post("/api/departments/:id/meets", async (c) => {
     if (!title || !scheduledAt) return c.json({ error: "Missing title or scheduledAt" }, 400);
     if (meetLink && !isValidUrl(meetLink)) return c.json({ error: "Invalid meet link URL" }, 400);
     const user: any = c.get("user");
+    const meetId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
-      "INSERT INTO department_meets (id, department_id, title, meet_link, description, scheduled_at, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?)",
-    ).bind(deptId, title, meetLink || null, description || null, scheduledAt, user.id).run();
-    return c.json({ success: true, message: "Meet scheduled" });
+      "INSERT INTO department_meets (id, department_id, title, meet_link, description, scheduled_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(meetId, deptId, title, meetLink || null, description || null, scheduledAt, user.id).run();
+
+    const recipients = await getMeetRecipients(c.env.DB, "department_meet", deptId);
+    const { sent, queued } = await queueOrSendMeetEmails(c, recipients, meetId, "department_meet", title, description, meetLink, scheduledAt);
+
+    return c.json({ success: true, message: "Meet scheduled", meetId, emailsSent: sent, emailsQueued: queued });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -1546,10 +1915,15 @@ app.post("/api/club-meets", async (c) => {
     const scheduledAt = body.scheduledAt;
     if (!title || !scheduledAt) return c.json({ error: "Missing title or scheduledAt" }, 400);
     if (meetLink && !isValidUrl(meetLink)) return c.json({ error: "Invalid meet link URL" }, 400);
+    const meetId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
-      "INSERT INTO club_meets (id, title, meet_link, description, scheduled_at, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
-    ).bind(title, meetLink || null, description || null, scheduledAt, user.id).run();
-    return c.json({ success: true, message: "Club-wide meet scheduled" });
+      "INSERT INTO club_meets (id, title, meet_link, description, scheduled_at, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+    ).bind(meetId, title, meetLink || null, description || null, scheduledAt, user.id).run();
+
+    const recipients = await getMeetRecipients(c.env.DB, "club_meet");
+    const { sent, queued } = await queueOrSendMeetEmails(c, recipients, meetId, "club_meet", title, description, meetLink, scheduledAt);
+
+    return c.json({ success: true, message: "Club-wide meet scheduled", meetId, emailsSent: sent, emailsQueued: queued });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -1601,10 +1975,16 @@ app.post("/api/inter-dept-meets", async (c) => {
     }
     if (meetLink && !isValidUrl(meetLink)) return c.json({ error: "Invalid meet link URL" }, 400);
     const deptsStr = Array.isArray(departments) ? departments.join(",") : String(departments);
+    const deptArray = Array.isArray(departments) ? departments : departments.split(",");
+    const meetId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
-      "INSERT INTO inter_dept_meets (id, title, meet_link, description, scheduled_at, departments, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?)",
-    ).bind(title, meetLink || null, description || null, scheduledAt, deptsStr, user.id).run();
-    return c.json({ success: true, message: "Inter-department meet scheduled" });
+      "INSERT INTO inter_dept_meets (id, title, meet_link, description, scheduled_at, departments, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(meetId, title, meetLink || null, description || null, scheduledAt, deptsStr, user.id).run();
+
+    const recipients = await getMeetRecipients(c.env.DB, "inter_dept_meet", undefined, deptArray);
+    const { sent, queued } = await queueOrSendMeetEmails(c, recipients, meetId, "inter_dept_meet", title, description, meetLink, scheduledAt);
+
+    return c.json({ success: true, message: "Inter-department meet scheduled", meetId, emailsSent: sent, emailsQueued: queued });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -1620,6 +2000,72 @@ app.delete("/api/inter-dept-meets/:id", async (c) => {
     const meetId = c.req.param("id");
     await c.env.DB.prepare("DELETE FROM inter_dept_meets WHERE id = ?").bind(meetId).run();
     return c.json({ success: true, message: "Inter-department meet removed" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// ---------------------------------------------------------
+// MEET NOTIFICATIONS (manual send + queue processing)
+// ---------------------------------------------------------
+app.post("/api/meets/:type/:id/send-notification", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (user.power_level < 50) return c.json({ error: "Forbidden: Lead or above only" }, 403);
+    const meetType = c.req.param("type");
+    const meetId = c.req.param("id");
+
+    let row: any;
+    if (meetType === "club_meet") {
+      row = await c.env.DB.prepare("SELECT * FROM club_meets WHERE id = ?").bind(meetId).first();
+    } else if (meetType === "department_meet") {
+      row = await c.env.DB.prepare("SELECT dm.*, d.name as department_name FROM department_meets dm JOIN departments d ON dm.department_id = d.id WHERE dm.id = ?").bind(meetId).first();
+    } else if (meetType === "inter_dept_meet") {
+      row = await c.env.DB.prepare("SELECT * FROM inter_dept_meets WHERE id = ?").bind(meetId).first();
+    } else {
+      return c.json({ error: "Invalid meet type" }, 400);
+    }
+    if (!row) return c.json({ error: "Meet not found" }, 404);
+
+    let recipients: { email: string; name: string }[] = [];
+    if (meetType === "department_meet") {
+      recipients = await getMeetRecipients(c.env.DB, "department_meet", row.department_id);
+    } else if (meetType === "club_meet") {
+      recipients = await getMeetRecipients(c.env.DB, "club_meet");
+    } else if (meetType === "inter_dept_meet") {
+      const depts = (row.departments || "").split(",").filter(Boolean);
+      recipients = await getMeetRecipients(c.env.DB, "inter_dept_meet", undefined, depts);
+    }
+
+    const { sent, queued } = await queueOrSendMeetEmails(c, recipients, meetId, meetType, row.title, row.description, row.meet_link, row.scheduled_at);
+    return c.json({ success: true, emailsSent: sent, emailsQueued: queued });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+app.post("/api/meets/process-queue", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (user.power_level < 100) return c.json({ error: "Forbidden: President or VP only" }, 403);
+
+    let count = await getTodayEmailCount(c.env.DB);
+    const MAX_DAILY = 100;
+    let sent = 0;
+
+    const pending: any = await c.env.DB.prepare("SELECT * FROM pending_emails ORDER BY created_at ASC LIMIT ?").bind(MAX_DAILY - count).all();
+    for (const p of (pending.results || [])) {
+      if (count >= MAX_DAILY) break;
+      await sendMeetEmail(c, p.recipient_email, p.recipient_name, p.meet_title, p.meet_description, p.meet_link, p.scheduled_at, p.meet_type);
+      await incrementEmailCount(c.env.DB);
+      await c.env.DB.prepare("DELETE FROM pending_emails WHERE id = ?").bind(p.id).run();
+      count++;
+      sent++;
+    }
+
+    return c.json({ success: true, emailsSent: sent });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -1781,7 +2227,9 @@ app.post("/api/projects", async (c) => {
       ).bind(projectId, deptId).run();
     }
 
-    return c.json({ success: true, message: "Project created" });
+    await sendProjectAssignmentEmail(c, name, departmentIds);
+
+    return c.json({ success: true, message: "Project created", projectId });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -1834,6 +2282,13 @@ app.post("/api/projects/:id/roles", async (c) => {
     await c.env.DB.prepare(
       "INSERT INTO project_roles (id, project_id, user_id, role_name, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
     ).bind(projectId, userId, roleName, user.id).run();
+
+    // Send role assignment email
+    const assignedUser: any = await c.env.DB.prepare("SELECT email, name FROM users WHERE id = ?").bind(userId).first();
+    const proj: any = await c.env.DB.prepare("SELECT name FROM projects WHERE id = ?").bind(projectId).first();
+    if (assignedUser && proj) {
+      await sendRoleAssignmentEmail(c, assignedUser.email, assignedUser.name, roleName, proj.name);
+    }
 
     return c.json({ success: true, message: "Role assigned" });
   } catch (e: any) {

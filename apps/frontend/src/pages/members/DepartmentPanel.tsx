@@ -19,6 +19,8 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
   const [newMeetLink, setNewMeetLink] = useState("");
   const [newMeetTitle, setNewMeetTitle] = useState("");
   const [newMeetWhen, setNewMeetWhen] = useState("");
+  const [sendingEmail, setSendingEmail] = useState<string | null>(null);
+  const [scheduling, setScheduling] = useState(false);
 
   const [newDocTitle, setNewDocTitle] = useState("");
   const [newDocDesc, setNewDocDesc] = useState("");
@@ -110,26 +112,47 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
                     </button>
                   )}
                 </div>
-                <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
-                  await fetch(apiUrl(`/api/departments/${departmentId}/meets/${m.id}`), { method: "DELETE", headers });
-                  setMeets(meets.filter((x) => x.id !== m.id));
-                }}>Delete</button>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={async () => {
+                    setSendingEmail(m.id);
+                    const res = await fetch(apiUrl(`/api/meets/department_meet/${m.id}/send-notification`), { method: "POST", headers });
+                    const data = await res.json();
+                    setSendingEmail(null);
+                    if (data.success) alert(`Email sent to ${data.emailsSent} members${data.emailsQueued > 0 ? ` (${data.emailsQueued} queued for tomorrow)` : ""}`);
+                    else alert(data.error);
+                  }} disabled={sendingEmail === m.id}>{sendingEmail === m.id ? "Sending..." : "Send Email"}</button>
+                  <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
+                    await fetch(apiUrl(`/api/departments/${departmentId}/meets/${m.id}`), { method: "DELETE", headers });
+                    setMeets(meets.filter((x) => x.id !== m.id));
+                  }}>Delete</button>
+                </div>
               </div>
             ))}
           </div>
           <div className="admin-grid-4" style={{ marginTop: 0 }}>
             <input className="input" placeholder="Meet title" value={newMeetTitle} onChange={(e) => setNewMeetTitle(e.target.value)} />
-            <input className="input" placeholder="Google Meet link" value={newMeetLink} onChange={(e) => setNewMeetLink(e.target.value)} />
+            <input className="input" placeholder="Meet link (optional)" value={newMeetLink} onChange={(e) => setNewMeetLink(e.target.value)} />
             <input className="input" type="datetime-local" value={newMeetWhen} onChange={(e) => setNewMeetWhen(e.target.value)} />
-            <button className="btn" onClick={async () => {
+            <button className="btn" disabled={scheduling} onClick={async () => {
               if (!newMeetTitle || !newMeetWhen) return alert("Title and date required");
-              const res = await fetch(apiUrl(`/api/departments/${departmentId}/meets`), {
-                method: "POST", headers, body: JSON.stringify({ title: newMeetTitle, meetLink: newMeetLink, scheduledAt: newMeetWhen }),
-              });
-              const data = await res.json();
-              if (data.success) { setNewMeetTitle(""); setNewMeetLink(""); setNewMeetWhen(""); loadOverview(); }
-              else alert(data.error);
-            }}>Add Meet</button>
+              setScheduling(true);
+              try {
+                const res = await fetch(apiUrl(`/api/departments/${departmentId}/meets`), {
+                  method: "POST", headers, body: JSON.stringify({ title: newMeetTitle, meetLink: newMeetLink, scheduledAt: newMeetWhen }),
+                });
+                const data = await res.json();
+                if (data.success) { setNewMeetTitle(""); setNewMeetLink(""); setNewMeetWhen(""); loadOverview(); alert("Meet created. Emails sent."); }
+                else alert(data.error);
+              } finally { setScheduling(false); }
+            }}>{scheduling ? "Adding..." : "Add Meet"}</button>
+            {scheduling && (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+                <div className="card-doodle" style={{ padding: 24, textAlign: "center" }}>
+                  <p style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>Creating meet and sending emails...</p>
+                  <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Please wait, this may take a moment.</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
