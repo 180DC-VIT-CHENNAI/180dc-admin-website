@@ -104,7 +104,7 @@ function maskToken(token: string): string {
   return token.substring(0, 8) + "...";
 }
 
-const TOKEN_EXPIRY_DAYS = 90;
+
 
 async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
   const saltBytes = new Uint8Array(16);
@@ -218,7 +218,7 @@ async function seedData(db: any, env?: any) {
 
     if (!currentEnv || (currentEnv.ENVIRONMENT || "").toLowerCase() !== "production") {
       const devToken = crypto.randomUUID().replace(/-/g, "");
-      await db.prepare("INSERT OR REPLACE INTO admin_tokens (token, email, name, role_id, created_by, expires_at) VALUES (?, ?, ?, ?, ?, datetime('now', '+90 days'))").bind(devToken, "admin@vitstudent.ac.in", "Dev Admin", "president", "system").run();
+      await db.prepare("INSERT OR REPLACE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)").bind(devToken, "admin@vitstudent.ac.in", "Dev Admin", "president", "system").run();
       console.info("Dev token generated (visible only in dev mode)");
     }
 
@@ -488,7 +488,7 @@ app.post("/api/members", async (c) => {
     const user: any = c.get("user");
     await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?").bind(email).run();
     await c.env.DB.prepare(
-      "INSERT INTO admin_tokens (token, email, name, role_id, created_by, expires_at) VALUES (?, ?, ?, 'member', ?, datetime('now', '+90 days'))",
+      "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, 'member', ?)",
     ).bind(token, email, name, user.id).run();
 
     await addAuditLog(c, "member_added", "user", null, "Added " + email + " as member");
@@ -581,7 +581,7 @@ app.post("/api/auth/rotate-token", async (c) => {
     await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?").bind(user.email).run();
     const newToken = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
-      "INSERT INTO admin_tokens (token, email, name, role_id, created_by, expires_at) VALUES (?, ?, ?, ?, ?, datetime('now', '+90 days'))",
+      "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
     ).bind(newToken, user.email, user.name, user.role_id, user.id).run();
     await addAuditLog(c, "token_rotated", "admin_token", user.email, "Token rotated for " + user.email);
     return c.json({ success: true, token: newToken });
@@ -688,7 +688,7 @@ app.post("/api/admin-tokens", async (c) => {
     const user: any = c.get("user");
 
     await c.env.DB.prepare(
-      "INSERT INTO admin_tokens (token, email, name, role_id, created_by, expires_at) VALUES (?, ?, ?, ?, ?, datetime('now', '+90 days'))",
+      "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
     )
       .bind(token, email, name, roleId, user.id)
       .run();
@@ -785,7 +785,7 @@ app.post("/api/board-users", async (c) => {
     const creator: any = c.get("user");
 
     await c.env.DB.prepare(
-      "INSERT INTO admin_tokens (token, email, name, role_id, created_by, expires_at) VALUES (?, ?, ?, ?, ?, datetime('now', '+90 days'))",
+      "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
     )
       .bind(token, email, name, roleId, creator.id)
       .run();
@@ -1189,7 +1189,7 @@ app.post("/api/signup-requests/:id/approve", async (c) => {
       .run();
     const newToken = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
-      "INSERT INTO admin_tokens (token, email, name, role_id, created_by, expires_at) VALUES (?, ?, ?, 'member', ?, datetime('now', '+90 days'))",
+      "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, 'member', ?)",
     )
       .bind(newToken, reqRow.email, reqRow.name, c.get("user").id)
       .run();
