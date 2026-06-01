@@ -1,5 +1,22 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { apiUrl } from "../../lib/api";
+
+function FullPageLoader({ message }: { message: string }) {
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+      <div className="card-doodle" style={{ padding: 24, textAlign: "center", transition: "none", transform: "none" }}>
+        <p style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>{message}</p>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Please wait, this may take a moment.</p>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 interface Props {
   authToken: string;
@@ -145,14 +162,7 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
                 else alert(data.error);
               } finally { setScheduling(false); }
             }}>{scheduling ? "Adding..." : "Add Meet"}</button>
-            {scheduling && (
-              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-                <div className="card-doodle" style={{ padding: 24, textAlign: "center" }}>
-                  <p style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>Creating meet and sending emails...</p>
-                  <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Please wait, this may take a moment.</p>
-                </div>
-              </div>
-            )}
+            {scheduling && <FullPageLoader message="Creating meet and sending emails..." />}
           </div>
         </div>
 

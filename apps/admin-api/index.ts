@@ -95,6 +95,51 @@ async function checkRateLimit(c: any, endpoint: string, maxRequests: number, win
   }
 }
 
+async function checkLoginRateLimit(c: any, endpoint: string, maxRequests: number, windowSeconds = 60): Promise<{ allowed: boolean; retryAfter: number }> {
+  const ip = getClientIp(c);
+  try {
+    const row: any = await c.env.DB.prepare(
+      "SELECT count, window_start FROM rate_limits WHERE ip = ? AND endpoint = ?",
+    ).bind(ip, endpoint).first();
+    const now = new Date();
+    if (!row) return { allowed: true, retryAfter: 0 };
+    const elapsed = (now.getTime() - new Date(row.window_start + "Z").getTime()) / 1000;
+    if (elapsed > windowSeconds) {
+      await c.env.DB.prepare("DELETE FROM rate_limits WHERE ip = ? AND endpoint = ?").bind(ip, endpoint).run();
+      return { allowed: true, retryAfter: 0 };
+    }
+    if (row.count >= maxRequests) {
+      return { allowed: false, retryAfter: Math.ceil(windowSeconds - elapsed) };
+    }
+    return { allowed: true, retryAfter: 0 };
+  } catch {
+    console.error("checkLoginRateLimit failed for endpoint: " + endpoint);
+    return { allowed: false, retryAfter: 60 };
+  }
+}
+
+async function incrementLoginRateLimit(c: any, endpoint: string) {
+  const ip = getClientIp(c);
+  const now = new Date();
+  try {
+    const row: any = await c.env.DB.prepare(
+      "SELECT count FROM rate_limits WHERE ip = ? AND endpoint = ?",
+    ).bind(ip, endpoint).first();
+    if (!row) {
+      await c.env.DB.prepare("INSERT INTO rate_limits (ip, endpoint, count, window_start) VALUES (?, ?, 1, ?)").bind(ip, endpoint, now.toISOString()).run();
+    } else {
+      await c.env.DB.prepare("UPDATE rate_limits SET count = count + 1 WHERE ip = ? AND endpoint = ?").bind(ip, endpoint).run();
+    }
+  } catch { console.error("incrementLoginRateLimit failed"); }
+}
+
+async function resetLoginRateLimit(c: any, endpoint: string) {
+  const ip = getClientIp(c);
+  try {
+    await c.env.DB.prepare("DELETE FROM rate_limits WHERE ip = ? AND endpoint = ?").bind(ip, endpoint).run();
+  } catch { /* ignore cleanup errors */ }
+}
+
 async function addAuditLog(c: any, action: string, targetType: string | null, targetId: string | null, details: string | null) {
   try {
     const actorEmail = (c.get("user") as any)?.email || "system";
@@ -492,7 +537,7 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, action TEXT NOT NULL, actor_email TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS daily_email_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS pending_emails (id TEXT PRIMARY KEY, meet_id TEXT NOT NULL, meet_type TEXT NOT NULL, recipient_email TEXT NOT NULL, recipient_name TEXT NOT NULL, meet_title TEXT NOT NULL, meet_description TEXT, meet_link TEXT, scheduled_at TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
-  `);
+    `);
   await runMigrations(db);
   tablesEnsured = true;
 }
@@ -516,6 +561,7 @@ async function runMigrations(db: any) {
       FOREIGN KEY (applicant_id) REFERENCES recruitment_applicants(id)
     )`);
   } catch (e: any) { logError("Migration: recruitment_sessions table", e); }
+  try { await db.exec("DELETE FROM rate_limits WHERE endpoint IN ('dev_login', 'recruitment_login', 'recruitment_register')"); } catch (e: any) { console.warn("Migration: clear login rate limits"); }
 }
 
 let currentEnv: any = null;
@@ -860,6 +906,7 @@ app.post("/api/members", async (c) => {
 // This returns the mapped email so the frontend can use it as the dev identity.
 app.post("/api/dev-login", async (c) => {
   try {
+    await ensureTables(c.env.DB);
     if (c.env.ENVIRONMENT === "production") {
       return c.json({ error: "Not available in production" }, 403);
     }
@@ -868,13 +915,16 @@ app.post("/api/dev-login", async (c) => {
       return c.json({ error: "Invalid request body" }, 400);
     }
 
-    const rl = await checkRateLimit(c, "dev_login", 10, 60);
+    const rl = await checkLoginRateLimit(c, "dev_login", 10, 60);
     if (!rl.allowed) {
       return c.json({ error: "Too many login attempts. Try again later.", retryAfter: rl.retryAfter }, 429);
     }
 
     const token = body.token;
-    if (!token) return c.json({ error: "Missing token" }, 400);
+    if (!token) {
+      await incrementLoginRateLimit(c, "dev_login");
+      return c.json({ error: "Missing token" }, 400);
+    }
 
     const entry: any = await c.env.DB.prepare(
       "SELECT token, email, name, role_id, revoked_at, expires_at FROM admin_tokens WHERE token = ?",
@@ -882,8 +932,10 @@ app.post("/api/dev-login", async (c) => {
       .bind(token)
       .first();
 
-    if (!entry || entry.revoked_at || (entry.expires_at && new Date(entry.expires_at + "Z") <= new Date()))
+    if (!entry || entry.revoked_at || (entry.expires_at && new Date(entry.expires_at + "Z") <= new Date())) {
+      await incrementLoginRateLimit(c, "dev_login");
       return c.json({ error: "Invalid token" }, 401);
+    }
 
     const existing: any = await c.env.DB.prepare(
       "SELECT id FROM users WHERE email = ?",
@@ -909,6 +961,8 @@ app.post("/api/dev-login", async (c) => {
     if (!user) {
       return c.json({ error: "User role misconfigured: role not found" }, 500);
     }
+
+    await resetLoginRateLimit(c, "dev_login");
 
     return c.json({
       success: true,
@@ -2461,7 +2515,7 @@ function canAccessRecruitAdmin(c: any) {
 app.post("/api/recruitment/register", async (c) => {
   try {
     await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "recruitment_register", 5, 60);
+    const rl = await checkLoginRateLimit(c, "recruitment_register", 5, 60);
     if (!rl.allowed) {
       return c.json({ error: "Too many requests. Please try again later.", retryAfter: rl.retryAfter }, 429);
     }
@@ -2470,17 +2524,21 @@ app.post("/api/recruitment/register", async (c) => {
     const email = validateEmail(body.email);
     const password = sanitizeStr(body.password);
     if (!name || !email || !password) {
+      await incrementLoginRateLimit(c, "recruitment_register");
       return c.json({ error: "Missing name, email, or password" }, 400);
     }
     if (password.length < 8) {
+      await incrementLoginRateLimit(c, "recruitment_register");
       return c.json({ error: "Password must be at least 8 characters" }, 400);
     }
     if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password)) {
+      await incrementLoginRateLimit(c, "recruitment_register");
       return c.json({ error: "Password must contain uppercase, lowercase, a digit, and a special character" }, 400);
     }
 
     const existing: any = await c.env.DB.prepare("SELECT id FROM recruitment_applicants WHERE email = ?").bind(email).first();
     if (existing) {
+      await resetLoginRateLimit(c, "recruitment_register");
       return c.json({ success: true, message: "Account created. You can now log in." });
     }
 
@@ -2490,6 +2548,7 @@ app.post("/api/recruitment/register", async (c) => {
       "INSERT INTO recruitment_applicants (id, email, name, password_hash, salt) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
     ).bind(email, name, passwordHash, salt).run();
 
+    await resetLoginRateLimit(c, "recruitment_register");
     return c.json({ success: true, message: "Account created. You can now log in." });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -2500,7 +2559,7 @@ app.post("/api/recruitment/register", async (c) => {
 app.post("/api/recruitment/login", async (c) => {
   try {
     await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "recruitment_login", 10, 60);
+    const rl = await checkLoginRateLimit(c, "recruitment_login", 10, 60);
     if (!rl.allowed) {
       return c.json({ error: "Too many requests. Please try again later.", retryAfter: rl.retryAfter }, 429);
     }
@@ -2508,6 +2567,7 @@ app.post("/api/recruitment/login", async (c) => {
     const email = validateEmail(body.email);
     const password = sanitizeStr(body.password);
     if (!email || !password) {
+      await incrementLoginRateLimit(c, "recruitment_login");
       return c.json({ error: "Missing email or password" }, 400);
     }
 
@@ -2516,11 +2576,13 @@ app.post("/api/recruitment/login", async (c) => {
     ).bind(email).first();
 
     if (!applicant || !applicant.salt) {
+      await incrementLoginRateLimit(c, "recruitment_login");
       return c.json({ error: "Invalid email or password" }, 401);
     }
 
     const valid = await verifyPassword(password, applicant.salt, applicant.password_hash);
     if (!valid) {
+      await incrementLoginRateLimit(c, "recruitment_login");
       return c.json({ error: "Invalid email or password" }, 401);
     }
 
@@ -2534,6 +2596,8 @@ app.post("/api/recruitment/login", async (c) => {
     await c.env.DB.prepare(
       "INSERT INTO recruitment_sessions (id, applicant_id, token_hash, expires_at) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
     ).bind(applicant.id, tokenHash, expiresAt).run();
+
+    await resetLoginRateLimit(c, "recruitment_login");
 
     return c.json({
       success: true,

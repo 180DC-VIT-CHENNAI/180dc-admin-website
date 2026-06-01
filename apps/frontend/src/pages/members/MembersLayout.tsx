@@ -1,11 +1,28 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import MembersLogin from "./MembersLogin";
 import DepartmentPanel from "./DepartmentPanel";
 import RecruitmentsPanel from "./RecruitmentsPanel";
 import ProfileSection from "./ProfileSection";
 import { apiUrl } from "../../lib/api";
 import "./MembersLayout.css";
+
+function FullPageLoader({ message }: { message: string }) {
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+      <div className="card-doodle" style={{ padding: 24, textAlign: "center", transition: "none", transform: "none" }}>
+        <p style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>{message}</p>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Please wait, this may take a moment.</p>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 const DEPT_NAMES: Record<string, string> = {
   tech: "Technical",
@@ -621,14 +638,7 @@ export default function MembersLayout() {
                           else alert(data.error);
                         } finally { setDangerBusy(false); }
                       }}>{dangerBusy ? "Updating..." : "Update Role"}</button>
-                      {dangerBusy && (
-                        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-                          <div className="card-doodle" style={{ padding: 24, textAlign: "center" }}>
-                            <p style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>Updating role and sending email...</p>
-                            <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Please wait.</p>
-                          </div>
-                        </div>
-                      )}
+                      {dangerBusy && <FullPageLoader message="Updating role and sending email..." />}
                     </div>
                   </div>
                   <div className="card-doodle" style={{ padding: 14, border: "1px solid var(--border-light)" }}>
@@ -906,15 +916,7 @@ function ClubMeetsSection({ authToken, powerLevel }: { authToken: string; powerL
 
   return (
     <div>
-      {scheduling && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div className="card-doodle" style={{ padding: 24, textAlign: "center" }}>
-            <p style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>Creating meet and sending emails...</p>
-            <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Please wait, this may take a moment.</p>
-          </div>
-        </div>
-      )}
-      {meets.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No club-wide meets scheduled.</p>}
+      {scheduling && <FullPageLoader message="Creating meet and sending emails..." />}
       <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
         {meets.map((m) => (
           <div key={m.id} className="card-doodle" style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -990,14 +992,7 @@ function DepartmentMeetsSection({ authToken, departments, powerLevel, department
 
   return (
     <div>
-      {scheduling && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div className="card-doodle" style={{ padding: 24, textAlign: "center" }}>
-            <p style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>Creating meet and sending emails...</p>
-            <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Please wait, this may take a moment.</p>
-          </div>
-        </div>
-      )}
+      {scheduling && <FullPageLoader message="Creating meet and sending emails..." />}
       {meets.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No department meets scheduled.</p>}
       <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
         {meets.map((m) => (
@@ -1081,14 +1076,7 @@ function InterDeptMeetsSection({ authToken, departments, powerLevel }: { authTok
 
   return (
     <div>
-      {scheduling && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div className="card-doodle" style={{ padding: 24, textAlign: "center" }}>
-            <p style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>Creating meet and sending emails...</p>
-            <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Please wait, this may take a moment.</p>
-          </div>
-        </div>
-      )}
+      {scheduling && <FullPageLoader message="Creating meet and sending emails..." />}
       {meets.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No inter-department meets scheduled.</p>}
       <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
         {meets.map((m) => (
@@ -1375,14 +1363,7 @@ function ProjectsSection({ authToken, departments, allUsers, powerLevel, departm
                           else alert(data.error);
                         } finally { setAssignBusy(false); }
                       }}>{assignBusy ? "Assigning..." : "Assign Role"}</button>
-                      {assignBusy && (
-                        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-                          <div className="card-doodle" style={{ padding: 24, textAlign: "center" }}>
-                            <p style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>Assigning role and sending email...</p>
-                            <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Please wait.</p>
-                          </div>
-                        </div>
-                      )}
+                      {assignBusy && <FullPageLoader message="Assigning role and sending email..." />}
                     </div>
                   )}
 
@@ -1439,14 +1420,7 @@ function CreateProjectSection({ authToken, departments, onCreated }: { authToken
         ))}
       </div>
       <div>
-        {busy && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-            <div className="card-doodle" style={{ padding: 24, textAlign: "center" }}>
-              <p style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>Creating project and sending emails...</p>
-              <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Please wait, this may take a moment.</p>
-            </div>
-          </div>
-        )}
+        {busy && <FullPageLoader message="Creating project and sending emails..." />}
         <button className="btn" disabled={busy} onClick={async () => {
           if (!name.trim()) return alert("Project name required");
           if (selectedDepts.length === 0) return alert("Select at least one department");
