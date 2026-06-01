@@ -306,6 +306,7 @@ app.use("*", async (c, next) => {
 });
 
 const ALLOWED_ORIGINS = [
+  "https://180dc.shop",
   "https://180dc-admin.pages.dev",
   "https://admin.180dc.org",
   "https://180dc-admin-frontend.pages.dev",
@@ -2026,6 +2027,7 @@ app.post("/api/recruitment/register", async (c) => {
     const existing: any = await c.env.DB.prepare("SELECT id FROM recruitment_applicants WHERE email = ?").bind(email).first();
     if (existing) {
       return c.json({ success: true, message: "Account created. You can now log in." });
+    }
 
     const { hash: passwordHash, salt } = await hashPassword(password);
 

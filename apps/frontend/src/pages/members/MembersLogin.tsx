@@ -15,6 +15,28 @@ export default function MembersLogin({ onLogin }: MembersLoginProps) {
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const handleTokenLogin = async () => {
+    if (!token) return alert("Enter token");
+    setLoading(true);
+    try {
+      const res = await fetch(apiUrl("/api/dev-login"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        onLogin(token, data.email, data.powerLevel, data.departmentId);
+      } else {
+        alert("Login failed: " + (data.error || "unknown"));
+      }
+    } catch (e) {
+      alert("Login error: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Dev superuser shortcut — calls onLogin with a dummy token when creds match
 
   return (
@@ -65,35 +87,7 @@ export default function MembersLogin({ onLogin }: MembersLoginProps) {
 
             <div className="login-actions">
               <button
-                onClick={async () => {
-                  if (!token) return alert("Enter token");
-                  setLoading(true);
-                  try {
-                    const res = await fetch(apiUrl("/api/dev-login"), {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ token }),
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                      onLogin(
-                        token,
-                        data.email,
-                        data.powerLevel,
-                        data.departmentId,
-                      );
-                    } else {
-                      alert("Login failed: " + (data.error || "unknown"));
-                    }
-                  } catch (e) {
-                    alert(
-                      "Login error: " +
-                        (e instanceof Error ? e.message : String(e)),
-                    );
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
+                onClick={handleTokenLogin}
                 className="btn"
                 disabled={loading}
               >
