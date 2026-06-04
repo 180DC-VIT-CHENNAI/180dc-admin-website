@@ -36,6 +36,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const reconnectRef = useRef<number>(0);
+  const heartbeatRef = useRef<number>(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +68,12 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
           retries = 0;
           setConnected(true);
           setError("");
+          // Send heartbeat every 12s to keep WebSocket alive through proxies
+          heartbeatRef.current = window.setInterval(() => {
+            if (wsRef.current?.readyState === WebSocket.OPEN) {
+              wsRef.current.send(JSON.stringify({ type: "ping" }));
+            }
+          }, 12000);
         };
 
         socket.onmessage = (event) => {
@@ -107,6 +114,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
           if (cancelled) return;
           setConnected(false);
           setOnlineUsers([]);
+          if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = 0; }
           // Auto-reconnect with exponential backoff
           if (retries < 10) {
             const delay = Math.min(1000 * Math.pow(1.5, retries), 15000);
@@ -137,6 +145,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
     return () => {
       cancelled = true;
       if (reconnectRef.current) clearTimeout(reconnectRef.current);
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       if (wsRef.current) wsRef.current.close();
       if (typingTimer.current) clearTimeout(typingTimer.current);
     };
