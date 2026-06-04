@@ -3421,6 +3421,7 @@ app.post("/api/chat/init", async (c) => {
         userInfo: {
           userId: user.id,
           userName: user.name,
+          userEmail: user.email,
           userRole: user.role_id,
         },
       }),
@@ -3488,12 +3489,12 @@ export class ChatRoomDO {
         type: "history",
         messages: this.messages.slice(-50),
         onlineUsers: Array.from(this.connections.values()).map((c: any) => ({
-          userId: c.userId, userName: c.userName, userRole: c.userRole,
+          userId: c.userId, userName: c.userName, userEmail: c.userEmail, userRole: c.userRole,
         })),
       }));
 
       // Broadcast user joined
-      this.broadcast({ type: "user_joined", userId: userInfo.userId, userName: userInfo.userName, userRole: userInfo.userRole }, server);
+      this.broadcast({ type: "user_joined", userId: userInfo.userId, userName: userInfo.userName, userEmail: userInfo.userEmail, userRole: userInfo.userRole }, server);
 
       return new Response(null, { status: 101, webSocket: client });
     }
@@ -3516,6 +3517,7 @@ export class ChatRoomDO {
         id: crypto.randomUUID().replace(/-/g, ""),
         userId: sender.userId,
         userName: sender.userName,
+        userEmail: sender.userEmail,
         userRole: sender.userRole,
         content,
         timestamp: Date.now(),

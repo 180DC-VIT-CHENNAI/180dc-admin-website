@@ -8,6 +8,7 @@ interface ChatSectionProps {
 interface ChatUser {
   userId: string;
   userName: string;
+  userEmail: string;
   userRole: string;
 }
 
@@ -15,10 +16,13 @@ interface ChatMessage {
   id: string;
   userId: string;
   userName: string;
+  userEmail: string;
   userRole: string;
   content: string;
   timestamp: number;
 }
+
+const TEST_ACCOUNTS = new Set(["kevindaniel.2025@vitstudent.ac.in", "admin@vitstudent.ac.in"]);
 
 export default function ChatSection({ authToken }: ChatSectionProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -76,7 +80,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
               case "user_joined":
                 setOnlineUsers((prev) => {
                   if (prev.find((u) => u.userId === msg.userId)) return prev;
-                  return [...prev, { userId: msg.userId, userName: msg.userName, userRole: msg.userRole }];
+                  return [...prev, { userId: msg.userId, userName: msg.userName, userEmail: msg.userEmail, userRole: msg.userRole }];
                 });
                 break;
               case "user_left":
@@ -187,7 +191,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
                   maxWidth: "80%",
                 }}>
                   <div style={{ fontSize: 11, color: "var(--text-light)", marginBottom: 2 }}>
-                    <strong>{msg.userName}</strong> ({msg.userRole.replace(/_/g, " ")})
+                    <strong>{msg.userName}</strong> ({TEST_ACCOUNTS.has(msg.userEmail) ? "test acc" : msg.userRole.replace(/_/g, " ")})
                   </div>
                   <div style={{
                     padding: "8px 14px",
