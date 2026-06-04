@@ -228,6 +228,29 @@ export default function MembersLayout() {
       }));
     baseNav.splice(1, 0, ...deptLinks);
   }
+  // Add chat room nav items for non-advisory users
+  if (roleId !== "advisory") {
+    const chatItems: NavItem[] = [
+      { id: "chat_general", label: "General Chat", minPower: 10 },
+      { id: "chat_board", label: "Board Chat", minPower: 100 },
+    ];
+    const deptChatItems: NavItem[] = [];
+    if (powerLevel >= 100) {
+      departments.forEach((d: any) => {
+        deptChatItems.push({ id: `chat_dept_${d.id}`, label: `${d.name} Chat`, minPower: 10 });
+      });
+    } else if (allowedDeptIds.length > 0) {
+      departments
+        .filter((d: any) => allowedDeptIds.includes(d.id))
+        .forEach((d: any) => {
+          deptChatItems.push({ id: `chat_dept_${d.id}`, label: `${d.name} Chat`, minPower: 10 });
+        });
+    }
+    const chatIdx = baseNav.findIndex(n => n.id === "chat");
+    if (chatIdx !== -1) {
+      baseNav.splice(chatIdx + 1, 0, ...chatItems, ...deptChatItems);
+    }
+  }
   const visibleNav = baseNav.filter((n) => powerLevel >= n.minPower);
 
   if (!authToken) return <MembersLogin onLogin={handleLogin} />;
@@ -384,9 +407,23 @@ export default function MembersLayout() {
           />
         )}
 
-        {activePanel === "chat" && (
-          <ChatSection authToken={authToken!} />
-        )}
+        {activePanel.startsWith("chat") && (() => {
+          let room: string;
+          if (activePanel === "chat") room = "advisory";
+          else if (activePanel.startsWith("chat_dept_")) room = "dept-" + activePanel.slice(10);
+          else room = activePanel.replace("chat_", "");
+
+          let roomName: string;
+          if (room === "advisory") roomName = "Advisory Chat Room";
+          else if (room === "general") roomName = "General Chat";
+          else if (room === "board") roomName = "Board Chat Room";
+          else if (room.startsWith("dept-")) {
+            const deptId = room.slice(5);
+            roomName = `${DEPT_NAMES[deptId] || departments.find((d: any) => d.id === deptId)?.name || deptId} Department Chat`;
+          } else roomName = room;
+
+          return <ChatSection authToken={authToken!} room={room} roomName={roomName} />;
+        })()}
 
         {activePanel === "department" && (() => {
           const deptId = activeDeptId || departmentId;

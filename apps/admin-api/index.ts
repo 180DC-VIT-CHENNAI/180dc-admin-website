@@ -3407,11 +3407,26 @@ app.post("/api/chat/init", async (c) => {
     const user: any = c.get("user");
     if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-    const canChat = user.role_id === "advisory" || user.power_level >= 50;
-    if (!canChat) return c.json({ error: "Forbidden" }, 403);
+    const body = await c.req.json();
+    const room = body.room || "advisory";
+
+    // Validate room access
+    const canAccessAdvisory = user.role_id === "advisory" || user.power_level >= 50;
+    const canAccessGeneral = user.power_level >= 10 && user.role_id !== "advisory";
+    const canAccessBoard = user.power_level >= 100;
+    const canAccessDept = room.startsWith("dept-") && user.department_id === room.replace("dept-", "");
+
+    let allowed = false;
+    if (room === "advisory") allowed = canAccessAdvisory;
+    else if (room === "general") allowed = canAccessGeneral;
+    else if (room === "board") allowed = canAccessBoard;
+    else if (room.startsWith("dept-")) allowed = canAccessDept;
+    else allowed = canAccessGeneral;
+
+    if (!allowed) return c.json({ error: "Forbidden" }, 403);
 
     const sessionId = crypto.randomUUID().replace(/-/g, "");
-    const doId = c.env.CHAT_ROOM.idFromName("advisory-board-chat");
+    const doId = c.env.CHAT_ROOM.idFromName("room-" + room);
     const stub = c.env.CHAT_ROOM.get(doId);
 
     await stub.fetch("https://internal/register", {
@@ -3428,7 +3443,7 @@ app.post("/api/chat/init", async (c) => {
       headers: { "Content-Type": "application/json" },
     });
 
-    return c.json({ success: true, sessionId });
+    return c.json({ success: true, sessionId, room });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -3670,10 +3685,12 @@ export default {
 
     // WebSocket upgrade for chat — handle before Hono
     if (url.pathname === "/api/chat/ws") {
-      if (!url.searchParams.get("sessionId")) {
+      const sessionId = url.searchParams.get("sessionId");
+      const room = url.searchParams.get("room") || "advisory";
+      if (!sessionId) {
         return new Response("Missing sessionId", { status: 400 });
       }
-      const doId = env.CHAT_ROOM.idFromName("advisory-board-chat");
+      const doId = env.CHAT_ROOM.idFromName("room-" + room);
       const stub = env.CHAT_ROOM.get(doId);
       return stub.fetch(request);
     }

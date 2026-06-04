@@ -3,6 +3,8 @@ import { apiUrl } from "../../lib/api";
 
 interface ChatSectionProps {
   authToken: string;
+  room: string;
+  roomName: string;
 }
 
 interface ChatUser {
@@ -89,7 +91,7 @@ function renderContent(text: string): (string | ReactNode)[] {
   return parts;
 }
 
-export default function ChatSection({ authToken }: ChatSectionProps) {
+export default function ChatSection({ authToken, room, roomName }: ChatSectionProps) {
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<ChatUser[]>([]);
   const [currentUser, setCurrentUser] = useState<ChatUser | null>(null);
@@ -113,6 +115,13 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
   const heartbeatRef = useRef<number>(0);
   const retriesRef = useRef(0);
 
+  useEffect(() => {
+    setEntries([]);
+    setOnlineUsers([]);
+    setCurrentUser(null);
+    setError("");
+  }, [room]);
+
   const isPoll = (e: ChatEntry): e is PollMessage => "type" in e && e.type === "poll";
 
   useEffect(() => {
@@ -122,7 +131,8 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
       try {
         const res = await fetch(apiUrl("/api/chat/init"), {
           method: "POST",
-          headers: { Authorization: `Bearer ${authToken}` },
+          headers: { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ room }),
         });
         const data = await res.json();
         if (!data.success || !data.sessionId) {
@@ -134,7 +144,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
           import.meta.env.VITE_API_BASE_URL ||
           (import.meta.env.DEV ? "http://127.0.0.1:8787" : window.location.origin);
         const wsBase = apiBase.replace(/^http/, "ws");
-        const wsUrl = `${wsBase}/api/chat/ws?sessionId=${data.sessionId}`;
+        const wsUrl = `${wsBase}/api/chat/ws?sessionId=${data.sessionId}&room=${encodeURIComponent(room)}`;
 
         const socket = new WebSocket(wsUrl);
         wsRef.current = socket;
@@ -235,7 +245,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
       if (wsRef.current) wsRef.current.close();
       if (typingTimer.current) clearTimeout(typingTimer.current);
     };
-  }, [authToken, reconnectKey]);
+  }, [authToken, reconnectKey, room]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -417,7 +427,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 12, borderBottom: "1px solid var(--border-light)" }}>
           <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-            Advisory Chat Room
+            {roomName}
             {mentionedMessageIds.size > 0 && (
               <span style={{ background: "#e74c3c", color: "#fff", fontSize: 11, borderRadius: 10, padding: "1px 7px", fontWeight: 600 }}>
                 {mentionedMessageIds.size}
@@ -436,7 +446,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
         </div>
 
         {error && (
-          <div style={{ padding: 12, background: "#fff0f0", borderRadius: 8, marginTop: 8, fontSize: 13, color: "#c00" }}>{error}</div>
+          <div style={{ padding: 12, background: "var(--bg-secondary)", borderRadius: 8, marginTop: 8, fontSize: 13, color: "#e74c3c", border: "1px solid #e74c3c" }}>{error}</div>
         )}
 
         <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 12, marginTop: 12 }}>
@@ -484,7 +494,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
                                   style={{
                                     width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 8,
                                     padding: "6px 10px", borderRadius: 8, border: isSelected ? "2px solid var(--primary-green)" : "1px solid var(--border-light)",
-                                    background: isSelected ? "rgba(46,204,113,0.08)" : "transparent",
+                                    background: isSelected ? "var(--accent-bg)" : "transparent",
                                     cursor: p.active && votedOption === undefined ? "pointer" : "default",
                                     fontSize: 13, position: "relative", overflow: "hidden",
                                   }}
@@ -527,8 +537,8 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
                         <div style={{
                           padding: "8px 14px",
                           borderRadius: 16,
-                          background: isMentioned ? "rgba(52,152,219,0.08)" : "var(--bg-secondary)",
-                          border: isMentioned ? "1px solid rgba(52,152,219,0.3)" : "1px solid var(--border-light)",
+                          background: isMentioned ? "var(--accent-bg)" : "var(--bg-secondary)",
+                          border: isMentioned ? "1px solid var(--accent-border)" : "1px solid var(--border-light)",
                           fontSize: 14,
                           lineHeight: 1.5,
                           wordBreak: "break-word",
