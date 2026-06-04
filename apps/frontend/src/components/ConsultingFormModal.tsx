@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiUrl } from "../lib/api";
 
@@ -8,23 +8,26 @@ interface Props {
 }
 
 export default function ConsultingFormModal({ isOpen, onClose }: Props) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [organization, setOrganization] = useState("");
-  const [roleInOrg, setRoleInOrg] = useState("");
-  const [requirement, setRequirement] = useState("");
+  const formRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
 
   const handleSubmit = async () => {
+    if (!formRef.current) return;
+    const get = (name: string) => (formRef.current!.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`)?.value || "").trim();
+    const name = get("name");
+    const email = get("email");
+    const phone = get("phone");
+    const organization = get("organization");
+    const roleInOrg = get("roleInOrg");
+    const requirement = get("requirement");
     setError("");
-    if (!name.trim() || !email.trim() || !phone.trim() || !organization.trim() || !requirement.trim()) {
+    if (!name || !email || !phone || !organization || !requirement) {
       setError("Please fill in all required fields.");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError("Please enter a valid email address.");
       return;
     }
@@ -34,23 +37,16 @@ export default function ConsultingFormModal({ isOpen, onClose }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: name.trim(),
-          email: email.trim(),
-          phone: phone.trim(),
-          organization: organization.trim(),
-          roleInOrg: roleInOrg.trim() || null,
-          requirement: requirement.trim(),
+          name, email, phone, organization,
+          roleInOrg: roleInOrg || null, requirement,
         }),
       });
       const data = await res.json();
       if (data.success) {
         setSuccess(true);
-        setName("");
-        setEmail("");
-        setPhone("");
-        setOrganization("");
-        setRoleInOrg("");
-        setRequirement("");
+        if (formRef.current) {
+          formRef.current.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea").forEach(el => el.value = "");
+        }
       } else {
         setError(data.error || "Something went wrong. Please try again.");
       }
@@ -78,6 +74,7 @@ export default function ConsultingFormModal({ isOpen, onClose }: Props) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
+        ref={formRef}
         className="card-doodle"
         style={{
           width: "100%",
@@ -123,43 +120,43 @@ export default function ConsultingFormModal({ isOpen, onClose }: Props) {
           <div style={{ display: "grid", gap: 12 }}>
             <input
               className="input"
+              name="name"
               placeholder="Your Name *"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              defaultValue=""
             />
             <input
               className="input"
+              name="email"
               placeholder="Email Address *"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              defaultValue=""
             />
             <input
               className="input"
+              name="phone"
               placeholder="Phone Number *"
               type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              defaultValue=""
             />
             <input
               className="input"
+              name="organization"
               placeholder="Organization *"
-              value={organization}
-              onChange={(e) => setOrganization(e.target.value)}
+              defaultValue=""
             />
             <input
               className="input"
+              name="roleInOrg"
               placeholder="Role in Organization (optional)"
-              value={roleInOrg}
-              onChange={(e) => setRoleInOrg(e.target.value)}
+              defaultValue=""
             />
             <textarea
               className="input"
+              name="requirement"
               placeholder="Your Requirement *"
               rows={4}
-              value={requirement}
-              onChange={(e) => setRequirement(e.target.value)}
               style={{ resize: "vertical" }}
+              defaultValue=""
             />
 
             {error && (
