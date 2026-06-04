@@ -586,6 +586,7 @@ async function runMigrations(db: any) {
   } catch (e: any) { logError("Migration: recruitment_sessions table", e); }
   try { await db.exec("DELETE FROM rate_limits WHERE endpoint IN ('dev_login', 'recruitment_login', 'recruitment_register')"); } catch (e: any) { console.warn("Migration: clear login rate limits"); }
   try { await db.exec("ALTER TABLE users ADD COLUMN secondary_role_id TEXT"); } catch { console.warn("Migration: secondary_role_id may already exist"); }
+  try { await db.exec("ALTER TABLE admin_tokens ADD COLUMN active_role_id TEXT"); } catch { console.warn("Migration: active_role_id may already exist"); }
 }
 
 let currentEnv: any = null;
@@ -760,12 +761,13 @@ app.use("*", async (c, next) => {
 
   // Validate Bearer token against admin_tokens registry.
   let email = undefined as undefined | string;
+  let tokenRow: any = null;
   try {
     const authHeader = c.req.header("Authorization") || "";
     if (authHeader.startsWith("Bearer ")) {
       const token = authHeader.slice(7).trim();
-      const tokenRow: any = await c.env.DB.prepare(
-        "SELECT token, email, name, role_id, revoked_at, expires_at FROM admin_tokens WHERE token = ?",
+      tokenRow = await c.env.DB.prepare(
+        "SELECT token, email, name, role_id, revoked_at, expires_at, active_role_id FROM admin_tokens WHERE token = ?",
       )
         .bind(token)
         .first();
@@ -802,13 +804,26 @@ app.use("*", async (c, next) => {
 
   const query =
     "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?";
-  const user = await c.env.DB.prepare(query).bind(email).first();
+  let user: any = await c.env.DB.prepare(query).bind(email).first();
 
   if (!user) {
     return c.json(
       { error: "Unauthorized: Email not registered." },
       401,
     );
+  }
+
+  // If token has an active_role_id (dual-role choice), override the user's role
+  const tokenRowActiveRole = tokenRow?.active_role_id;
+  if (tokenRowActiveRole && tokenRowActiveRole !== user.role_id) {
+    const activeRole: any = await c.env.DB.prepare(
+      "SELECT id, name, power_level FROM roles WHERE id = ?",
+    ).bind(tokenRowActiveRole).first();
+    if (activeRole) {
+      user.role_id = activeRole.id;
+      user.role_name = activeRole.name;
+      user.power_level = activeRole.power_level;
+    }
   }
 
   c.set("user", user);
@@ -1010,6 +1025,10 @@ app.post("/api/dev-login", async (c) => {
           "SELECT id, name, power_level FROM roles WHERE id = ?",
         ).bind(user.secondary_role_id).first();
         if (secondaryRole) {
+          // Persist the chosen role on the token for subsequent requests
+          await c.env.DB.prepare(
+            "UPDATE admin_tokens SET active_role_id = ? WHERE token = ?",
+          ).bind(secondaryRole.id, token).run();
           return c.json({
             success: true,
             email: entry.email,
@@ -1034,7 +1053,10 @@ app.post("/api/dev-login", async (c) => {
         secondaryRoleName = sr?.name || null;
       }
 
-      // Default or "director" — primary role
+      // Default or "director" — primary role; clear any active role choice
+      await c.env.DB.prepare(
+        "UPDATE admin_tokens SET active_role_id = NULL WHERE token = ?",
+      ).bind(token).run();
       return c.json({
         success: true,
         email: entry.email,

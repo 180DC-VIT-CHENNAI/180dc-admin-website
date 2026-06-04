@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import MembersLogin from "./MembersLogin";
 import DepartmentPanel from "./DepartmentPanel";
@@ -46,6 +46,11 @@ export default function MembersLayout() {
     return stored ? parseInt(stored, 10) : 0;
   });
   const [departmentId, setDepartmentId] = useState<string | null>(sessionStorage.getItem("authDepartmentId"));
+  const [roleId, setRoleId] = useState<string | null>(sessionStorage.getItem("authRoleId"));
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    const stored = localStorage.getItem("membersSidebarCollapsed");
+    return stored === "true";
+  });
   const [activePanel, setActivePanel] = useState("dashboard");
   const [activeDeptId, setActiveDeptId] = useState<string | null>(null);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
@@ -95,15 +100,18 @@ export default function MembersLayout() {
     userEmail: string,
     serverPowerLevel?: number,
     serverDepartmentId?: string,
+    serverRoleId?: string,
   ) => {
     sessionStorage.setItem("authToken", token);
     sessionStorage.setItem("authEmail", userEmail);
     sessionStorage.setItem("authPowerLevel", String(serverPowerLevel ?? 10));
     if (serverDepartmentId) sessionStorage.setItem("authDepartmentId", serverDepartmentId);
+    if (serverRoleId) sessionStorage.setItem("authRoleId", serverRoleId);
     setAuthToken(token);
     setEmail(userEmail);
     setPowerLevel(serverPowerLevel ?? 10);
     if (serverDepartmentId) setDepartmentId(serverDepartmentId);
+    if (serverRoleId) setRoleId(serverRoleId);
   };
 
   useEffect(() => {
@@ -116,8 +124,15 @@ export default function MembersLayout() {
         const data = await res.json();
         if (data.success) {
           setEmail(data.user?.email || email);
-          setPowerLevel(data.user?.powerLevel ?? powerLevel);
           if (data.user?.departmentId) setDepartmentId(data.user.departmentId);
+          if (data.user?.powerLevel != null) {
+            setPowerLevel(data.user.powerLevel);
+            sessionStorage.setItem("authPowerLevel", String(data.user.powerLevel));
+          }
+          if (data.user?.roleId) {
+            setRoleId(data.user.roleId);
+            sessionStorage.setItem("authRoleId", data.user.roleId);
+          }
           setPendingRequests(data.pendingRequests || []);
           setAdminTokens(data.adminTokens || []);
           setAnnouncements(data.announcements || []);
@@ -154,13 +169,23 @@ export default function MembersLayout() {
     { id: "announcements", label: "Announcements", minPower: 0 },
     { id: "admin", label: "Admin Console", minPower: 100 },
   ];
+  const roleDeptAccess: Record<string, string[]> = {
+    marketing_director: ["marketing", "social_media"],
+  };
+  const multiDeptRoles = roleDeptAccess[roleId || ""];
+  const allowedDeptIds = multiDeptRoles || (hasDepartment && powerLevel >= 50 ? [departmentId!] : []);
   if (powerLevel >= 100) {
     const deptLinks = departments.map((d: any) => ({
       id: `dept-${d.id}`, label: `${d.name} Dept`, minPower: 0, deptId: d.id,
     }));
     baseNav.splice(1, 0, ...deptLinks);
-  } else if (hasDepartment && powerLevel >= 50) {
-    baseNav.splice(1, 0, { id: "department", label: deptName, minPower: 0 });
+  } else if (allowedDeptIds.length > 0) {
+    const deptLinks = departments
+      .filter((d: any) => allowedDeptIds.includes(d.id))
+      .map((d: any) => ({
+        id: `dept-${d.id}`, label: d.name, minPower: 0, deptId: d.id,
+      }));
+    baseNav.splice(1, 0, ...deptLinks);
   }
   const visibleNav = baseNav.filter((n) => powerLevel >= n.minPower);
 
@@ -181,9 +206,16 @@ export default function MembersLayout() {
       {sidebarOpen && <div className="members-sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
 
       {/* SIDEBAR */}
-      <div className={`members-sidebar ${sidebarOpen ? "open" : ""}`}>
+      <div className={`members-sidebar ${sidebarOpen ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`}>
         <button className="mobile-sidebar-close" onClick={() => setSidebarOpen(false)}>✕</button>
-        <div style={{ padding: "1.5rem 1rem", borderBottom: "1px solid var(--border-light)" }}>
+        <button className="sidebar-toggle" onClick={() => {
+          const next = !sidebarCollapsed;
+          setSidebarCollapsed(next);
+          localStorage.setItem("membersSidebarCollapsed", String(next));
+        }} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+          {sidebarCollapsed ? "☰" : "✕"}
+        </button>
+        <div style={{ padding: "1.5rem 1rem", borderBottom: "1px solid var(--border-light)", display: sidebarCollapsed ? "none" : "block" }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>180DC Portal</h2>
           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>{email}</div>
           <div style={{ fontSize: 12, color: "var(--primary-green)", marginTop: 2 }}>Power: {powerLevel}</div>
@@ -197,20 +229,25 @@ export default function MembersLayout() {
                 else setActivePanel(item.id);
               }}
               style={{
-                display: "flex", alignItems: "center", gap: 10, padding: "0.7rem 1.2rem", border: "none",
+                display: "flex", alignItems: "center", gap: 10,
+                padding: sidebarCollapsed ? "0.7rem 0.5rem" : "0.7rem 1.2rem",
+                border: "none", justifyContent: sidebarCollapsed ? "center" : "flex-start",
                 background: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id)
                   ? "var(--primary-green)" : "transparent",
                 color: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id)
                   ? "#fff" : "var(--text-primary)", cursor: "pointer",
-                fontSize: 14, fontWeight: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id) ? 600 : 400, textAlign: "left", width: "100%",
+                fontSize: sidebarCollapsed ? 10 : 14,
+                fontWeight: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id) ? 600 : 400,
+                textAlign: sidebarCollapsed ? "center" : "left", width: "100%",
                 borderRadius: 0, transition: "background 0.15s",
               }}
+              title={sidebarCollapsed ? item.label : undefined}
             >
-              {item.label}
+              {sidebarCollapsed ? item.label.slice(0, 3) : item.label}
             </button>
           ))}
         </nav>
-        <div style={{ padding: "1rem", borderTop: "1px solid var(--border-light)", display: "flex", gap: 8 }}>
+        <div style={{ padding: "1rem", borderTop: "1px solid var(--border-light)", display: sidebarCollapsed ? "none" : "flex", gap: 8 }}>
           <button
             onClick={toggleTheme}
             style={{
@@ -235,8 +272,15 @@ export default function MembersLayout() {
       </div>
 
       {/* MAIN CONTENT */}
-      <div className="members-main">
+      <div className={`members-main ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
         <button className="mobile-sidebar-toggle" onClick={() => setSidebarOpen(true)}>☰</button>
+        <button className="desktop-sidebar-toggle" onClick={() => {
+          const next = !sidebarCollapsed;
+          setSidebarCollapsed(next);
+          localStorage.setItem("membersSidebarCollapsed", String(next));
+        }} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+          {sidebarCollapsed ? "☰" : "✕"}
+        </button>
         {activePanel === "dashboard" && (
           <>
             <h2 style={{ marginTop: 0 }}>Dashboard</h2>
@@ -1705,9 +1749,8 @@ function ConsultingRequestsSection({ authToken }: { authToken: string }) {
   const [loading, setLoading] = useState(true);
   const [acceptModal, setAcceptModal] = useState<any>(null);
   const [rejectModal, setRejectModal] = useState<any>(null);
-  const [emailSubject, setEmailSubject] = useState("");
-  const [emailBody, setEmailBody] = useState("");
   const [sending, setSending] = useState(false);
+  const emailModalRef = useRef<HTMLDivElement>(null);
 
   async function load() {
     try {
@@ -1724,31 +1767,44 @@ function ConsultingRequestsSection({ authToken }: { authToken: string }) {
   function openAcceptModal(req: any) {
     setRejectModal(null);
     setAcceptModal(req);
-    setEmailSubject(`Response to your Consulting Request - 180DC VIT Chennai`);
-    setEmailBody(
-      `Hi ${req.name},\n\nThank you for reaching out to 180 Degrees Consulting VIT Chennai!\n\nWe have reviewed your consulting request regarding "${req.requirement.slice(0, 100)}${req.requirement.length > 100 ? "..." : ""}" and we would be happy to assist you.\n\nOur team will be in touch with you shortly to discuss the next steps.\n\nBest regards,\n180 Degrees Consulting\nVIT Chennai`
-    );
     setSending(false);
+    setTimeout(() => {
+      if (!emailModalRef.current) return;
+      const sub = emailModalRef.current.querySelector<HTMLInputElement>("input[name='emailSubject']");
+      const body = emailModalRef.current.querySelector<HTMLTextAreaElement>("textarea[name='emailBody']");
+      if (sub) sub.value = `Response to your Consulting Request - 180DC VIT Chennai`;
+      if (body) body.value =
+        `Hi ${req.name},\n\nThank you for reaching out to 180 Degrees Consulting VIT Chennai!\n\nWe have reviewed your consulting request regarding "${req.requirement.slice(0, 100)}${req.requirement.length > 100 ? "..." : ""}" and we would be happy to assist you.\n\nOur team will be in touch with you shortly to discuss the next steps.\n\nBest regards,\n180 Degrees Consulting\nVIT Chennai`;
+    }, 0);
   }
 
   function openRejectModal(req: any) {
     setAcceptModal(null);
     setRejectModal(req);
-    setEmailSubject(`Update on your Consulting Request - 180DC VIT Chennai`);
-    setEmailBody(
-      `Hi ${req.name},\n\nThank you for reaching out to 180 Degrees Consulting VIT Chennai.\n\nAfter careful review, we regret to inform you that we are unable to take on your consulting request at this time.\n\nWe appreciate your interest and wish you the best.\n\nBest regards,\n180 Degrees Consulting\nVIT Chennai`
-    );
     setSending(false);
+    setTimeout(() => {
+      if (!emailModalRef.current) return;
+      const sub = emailModalRef.current.querySelector<HTMLInputElement>("input[name='emailSubject']");
+      const body = emailModalRef.current.querySelector<HTMLTextAreaElement>("textarea[name='emailBody']");
+      if (sub) sub.value = `Update on your Consulting Request - 180DC VIT Chennai`;
+      if (body) body.value =
+        `Hi ${req.name},\n\nThank you for reaching out to 180 Degrees Consulting VIT Chennai.\n\nAfter careful review, we regret to inform you that we are unable to take on your consulting request at this time.\n\nWe appreciate your interest and wish you the best.\n\nBest regards,\n180 Degrees Consulting\nVIT Chennai`;
+    }, 0);
   }
 
   async function handleAccept() {
-    if (!emailSubject.trim() || !emailBody.trim()) return alert("Subject and body are required");
+    if (!emailModalRef.current) return;
+    const sub = emailModalRef.current.querySelector<HTMLInputElement>("input[name='emailSubject']");
+    const bodyEl = emailModalRef.current.querySelector<HTMLTextAreaElement>("textarea[name='emailBody']");
+    const emailSubject = (sub?.value || "").trim();
+    const emailBody = (bodyEl?.value || "").trim();
+    if (!emailSubject || !emailBody) return alert("Subject and body are required");
     setSending(true);
     try {
       const res = await fetch(apiUrl(`/api/consulting-requests/${acceptModal.id}/accept`), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ emailSubject: emailSubject.trim(), emailBody: emailBody.trim() }),
+        body: JSON.stringify({ emailSubject, emailBody }),
       });
       const d = await res.json();
       if (d.success) {
@@ -1760,13 +1816,18 @@ function ConsultingRequestsSection({ authToken }: { authToken: string }) {
   }
 
   async function handleReject() {
-    if (!emailSubject.trim() || !emailBody.trim()) return alert("Subject and body are required");
+    if (!emailModalRef.current) return;
+    const sub = emailModalRef.current.querySelector<HTMLInputElement>("input[name='emailSubject']");
+    const bodyEl = emailModalRef.current.querySelector<HTMLTextAreaElement>("textarea[name='emailBody']");
+    const emailSubject = (sub?.value || "").trim();
+    const emailBody = (bodyEl?.value || "").trim();
+    if (!emailSubject || !emailBody) return alert("Subject and body are required");
     setSending(true);
     try {
       const res = await fetch(apiUrl(`/api/consulting-requests/${rejectModal.id}/reject`), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ emailSubject: emailSubject.trim(), emailBody: emailBody.trim() }),
+        body: JSON.stringify({ emailSubject, emailBody }),
       });
       const d = await res.json();
       if (d.success) {
@@ -1784,7 +1845,7 @@ function ConsultingRequestsSection({ authToken }: { authToken: string }) {
         position: "fixed", inset: 0, zIndex: 10000, display: "flex",
         alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)", padding: 20,
       }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        <div className="card-doodle" style={{
+        <div className="card-doodle" ref={emailModalRef} style={{
           width: "100%", maxWidth: 640, maxHeight: "90vh", overflowY: "auto",
           padding: "2rem", cursor: "default",
         }}>
@@ -1808,11 +1869,11 @@ function ConsultingRequestsSection({ authToken }: { authToken: string }) {
           <div style={{ display: "grid", gap: 12 }}>
             <div>
               <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Email Subject</label>
-              <input className="input" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} />
+              <input className="input" name="emailSubject" defaultValue="" />
             </div>
             <div>
               <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Email Body</label>
-              <textarea className="input" rows={10} value={emailBody} onChange={(e) => setEmailBody(e.target.value)}
+              <textarea className="input" name="emailBody" rows={10} defaultValue=""
                 style={{ resize: "vertical", fontFamily: "monospace", fontSize: 13 }} />
             </div>
             <div style={{ display: "flex", gap: 8 }}>

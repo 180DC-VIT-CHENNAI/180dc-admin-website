@@ -9,6 +9,7 @@ interface MembersLoginProps {
     email: string,
     powerLevel?: number,
     departmentId?: string,
+    roleId?: string,
   ) => void;
 }
 
@@ -39,7 +40,7 @@ export default function MembersLogin({ onLogin }: MembersLoginProps) {
           setLoading(false);
           return;
         }
-        onLogin(token, data.email, data.powerLevel, data.departmentId);
+        onLogin(token, data.email, data.powerLevel, data.departmentId, data.roleId);
       } else {
         alert("Login failed: " + (data.error || "unknown"));
       }
