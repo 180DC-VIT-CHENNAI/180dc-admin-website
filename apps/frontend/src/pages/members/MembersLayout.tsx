@@ -143,6 +143,7 @@ export default function MembersLayout() {
     { id: "projects", label: "Projects", minPower: 0 },
     { id: "instructions", label: "Instructions", minPower: 0 },
     { id: "recruitments", label: "Recruitments", minPower: 50 },
+    { id: "consulting", label: "Consulting", minPower: 100 },
     { id: "transfers", label: "Transfers", minPower: 0 },
     { id: "announcements", label: "Announcements", minPower: 0 },
     { id: "admin", label: "Admin Console", minPower: 100 },
@@ -363,6 +364,10 @@ export default function MembersLayout() {
 
         {activePanel === "recruitments" && (
           <RecruitmentsPanel authToken={authToken!} powerLevel={powerLevel} />
+        )}
+
+        {activePanel === "consulting" && powerLevel >= 100 && (
+          <ConsultingRequestsSection authToken={authToken!} />
         )}
 
         {activePanel === "announcements" && (
@@ -1655,6 +1660,186 @@ function RecruitmentSettingsSection({ authToken }: { authToken: string }) {
         <button className="btn outline" style={{ fontSize: 13, padding: "0.4rem 1rem" }} disabled={busy} onClick={deselectAll}>Deselect All</button>
       </div>
     </div>
+  );
+}
+
+function ConsultingRequestsSection({ authToken }: { authToken: string }) {
+  const [requests, setRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [acceptModal, setAcceptModal] = useState<any>(null);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [sending, setSending] = useState(false);
+
+  async function load() {
+    try {
+      const res = await fetch(apiUrl("/api/consulting-requests"), {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const d = await res.json();
+      if (d.success) setRequests(d.data || []);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  }
+
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function openAcceptModal(req: any) {
+    setAcceptModal(req);
+    setEmailSubject(`Response to your Consulting Request - 180DC VIT Chennai`);
+    setEmailBody(
+      `Hi ${req.name},\n\nThank you for reaching out to 180 Degrees Consulting VIT Chennai!\n\nWe have reviewed your consulting request regarding "${req.requirement.slice(0, 100)}${req.requirement.length > 100 ? "..." : ""}" and we would be happy to assist you.\n\nOur team will be in touch with you shortly to discuss the next steps.\n\nBest regards,\n180 Degrees Consulting\nVIT Chennai`
+    );
+    setSending(false);
+  }
+
+  async function handleAccept() {
+    if (!emailSubject.trim() || !emailBody.trim()) return alert("Subject and body are required");
+    setSending(true);
+    try {
+      const res = await fetch(apiUrl(`/api/consulting-requests/${acceptModal.id}/accept`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ emailSubject: emailSubject.trim(), emailBody: emailBody.trim() }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        alert("Request accepted and email sent.");
+        setAcceptModal(null);
+        load();
+      } else alert(d.error);
+    } catch { alert("Failed to send. Please try again."); } finally { setSending(false); }
+  }
+
+  async function handleReject(id: string) {
+    if (!confirm("Reject this consulting request?")) return;
+    try {
+      const res = await fetch(apiUrl(`/api/consulting-requests/${id}/reject`), {
+        method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const d = await res.json();
+      if (d.success) { alert("Request rejected."); load(); }
+      else alert(d.error);
+    } catch { alert("Failed to reject."); }
+  }
+
+  if (loading) return <p>Loading consulting requests...</p>;
+
+  return (
+    <>
+      <h2 style={{ marginTop: 0 }}>Consulting Requests</h2>
+      <div className="members-grid">
+        {requests.length === 0 && (
+          <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+            <p style={{ color: "var(--text-secondary)" }}>No consulting requests yet.</p>
+          </div>
+        )}
+
+        {requests.filter((r: any) => r.status === "pending").length > 0 && (
+          <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+            <h3>Pending Requests</h3>
+            <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+              {requests.filter((r: any) => r.status === "pending").map((req: any) => (
+                <div key={req.id} className="card-doodle" style={{ padding: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <strong style={{ fontSize: 16 }}>{req.name}</strong>
+                      <div style={{ color: "var(--text-secondary)", fontSize: 13, marginTop: 2 }}>{req.email} · {req.phone}</div>
+                      <div style={{ fontSize: 13, color: "var(--primary-green)", marginTop: 2 }}>{req.organization}{req.role_in_org ? ` — ${req.role_in_org}` : ""}</div>
+                      <div style={{ marginTop: 8, padding: "0.6rem 0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", fontSize: 13, color: "var(--text-secondary)", whiteSpace: "pre-wrap" }}>
+                        {req.requirement}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-light)", marginTop: 6 }}>
+                        Submitted: {new Date(req.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+                      <button className="btn" style={{ padding: "0.4rem 1rem", fontSize: 13 }}
+                        onClick={() => openAcceptModal(req)}>
+                        Accept Request
+                      </button>
+                      <button className="btn outline" style={{ padding: "0.4rem 1rem", fontSize: 13 }}
+                        onClick={() => handleReject(req.id)}>
+                        Reject Request
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {requests.filter((r: any) => r.status !== "pending").length > 0 && (
+          <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+            <h3>Processed Requests</h3>
+            <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+              {requests.filter((r: any) => r.status !== "pending").map((req: any) => (
+                <div key={req.id} style={{ padding: "0.6rem 0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <strong style={{ fontSize: 14 }}>{req.name}</strong>
+                    <span style={{ fontSize: 12, color: "var(--text-secondary)", marginLeft: 8 }}>{req.organization}</span>
+                  </div>
+                  <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, fontWeight: 600, background: req.status === "accepted" ? "var(--primary-green)" : "#e74c3c", color: "#fff" }}>
+                    {req.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Accept Modal */}
+      {acceptModal && createPortal(
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 10000, display: "flex",
+          alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)", padding: 20,
+        }} onClick={(e) => { if (e.target === e.currentTarget) setAcceptModal(null); }}>
+          <div className="card-doodle" style={{
+            width: "100%", maxWidth: 640, maxHeight: "90vh", overflowY: "auto",
+            padding: "2rem", cursor: "default",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontFamily: "'Caveat', cursive", fontSize: 24 }}>
+                Accept Request — {acceptModal.name}
+              </h3>
+              <button onClick={() => setAcceptModal(null)}
+                style={{ border: "none", background: "none", fontSize: 24, cursor: "pointer", color: "var(--text-secondary)", padding: "0 4px" }}>
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginBottom: 16, padding: "0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", fontSize: 13, color: "var(--text-secondary)" }}>
+              <strong>Original Request:</strong>
+              <div style={{ marginTop: 4 }}>From: {acceptModal.name} ({acceptModal.email})</div>
+              <div>Organization: {acceptModal.organization}</div>
+              <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{acceptModal.requirement}</div>
+            </div>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Email Subject</label>
+                <input className="input" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Email Body</label>
+                <textarea className="input" rows={10} value={emailBody} onChange={(e) => setEmailBody(e.target.value)}
+                  style={{ resize: "vertical", fontFamily: "monospace", fontSize: 13 }} />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn" disabled={sending} onClick={handleAccept}>
+                  {sending ? "Sending..." : "Send Acceptance Email"}
+                </button>
+                <button className="btn outline" onClick={() => setAcceptModal(null)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 

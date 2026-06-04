@@ -1381,6 +1381,45 @@ html.lenis body {
   }
 }
 
+/* Consulting Boy */
+.consulting-boy-wrapper {
+  pointer-events: none;
+  user-select: none;
+}
+
+.consulting-boy-wrapper .consulting-bubble {
+  pointer-events: auto;
+}
+
+.consulting-boy-wrapper .consulting-bubble .btn {
+  pointer-events: auto;
+}
+
+.consulting-boy-char {
+  filter: drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.15));
+  animation: boyBounce 3s ease-in-out infinite;
+}
+
+@keyframes boyBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+/* Consulting Form Modal */
+@media (max-width: 600px) {
+  .consulting-boy-wrapper {
+    left: 8px !important;
+    bottom: 15px !important;
+  }
+  .consulting-boy-wrapper .consulting-bubble {
+    max-width: 220px !important;
+    left: 60px !important;
+    font-size: 14px !important;
+    padding: 10px 14px !important;
+    bottom: 110px !important;
+  }
+}
+
 @media (max-width: 480px) {
   html {
     font-size: 14px;

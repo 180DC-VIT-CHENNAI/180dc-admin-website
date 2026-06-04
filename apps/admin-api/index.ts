@@ -58,6 +58,15 @@ function errorResponse(c: any, message: string, status: number) {
 
 const URL_RE = /^https?:\/\/.+/;
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
 function isValidUrl(val: unknown): boolean {
   if (typeof val !== "string") return false;
   if (!URL_RE.test(val)) return false;
@@ -155,6 +164,8 @@ function maskToken(token: string): string {
 }
 
 function tokenEmailHtml(token: string, name: string): string {
+  const safeName = escapeHtml(name);
+  const safeToken = escapeHtml(token);
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8">
@@ -171,11 +182,11 @@ function tokenEmailHtml(token: string, name: string): string {
 <p style="color:#1a1a1a;font-size:13px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
 </td></tr>
 <tr><td style="padding:28px 28px 20px">
-<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Hey ${name}!</p>
+<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Hey ${safeName}!</p>
 <p style="font-size:14px;color:#555555;margin:0 0 20px;line-height:1.6">Your admin access token for the 180DC Admin Portal is here. Pop it in the login screen to get started.</p>
 <div style="background:#f5f3ee;border:3px solid #1a1a1a;border-radius:12px;padding:16px 20px;margin:0 0 20px;text-align:center">
 <p style="font-size:11px;color:#777777;margin:0 0 8px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">Your Access Token</p>
-<code style="font-size:16px;font-weight:800;color:#1a1a1a;letter-spacing:2px;word-break:break-all;font-family:monospace">${token}</code>
+<code style="font-size:16px;font-weight:800;color:#1a1a1a;letter-spacing:2px;word-break:break-all;font-family:monospace">${safeToken}</code>
 </div>
 <table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto 20px">
 <tr><td style="padding:10px 28px;text-align:center">
@@ -222,6 +233,10 @@ async function sendTokenEmail(c: any, email: string, token: string, name: string
 
 function meetEmailHtml(title: string, description: string | null, meetLink: string | null, scheduledAt: string, meetType: string): string {
   const dateStr = scheduledAt.slice(0, 16).replace("T", " ");
+  const safeTitle = escapeHtml(title);
+  const safeDescription = description ? escapeHtml(description) : null;
+  const safeMeetLink = meetLink ? escapeHtml(meetLink) : null;
+  const safeMeetType = escapeHtml(meetType);
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8">
@@ -234,16 +249,16 @@ function meetEmailHtml(title: string, description: string | null, meetLink: stri
 <tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
 <img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">New Meet Scheduled</h1>
-<p style="color:#1a1a1a;font-size:12px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">${meetType.replace(/_/g, " ").toUpperCase()}</p>
+<p style="color:#1a1a1a;font-size:12px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">${safeMeetType.replace(/_/g, " ").toUpperCase()}</p>
 </td></tr>
 <tr><td style="padding:28px">
-<p style="font-size:16px;color:#1a1a1a;margin:0 0 16px;font-weight:700">${title}</p>
-${description ? `<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.6">${description}</p>` : ""}
+<p style="font-size:16px;color:#1a1a1a;margin:0 0 16px;font-weight:700">${safeTitle}</p>
+${safeDescription ? `<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.6">${safeDescription}</p>` : ""}
 <div style="background:#f5f3ee;border:3px solid #1a1a1a;border-radius:12px;padding:14px 18px;margin:0 0 16px">
 <p style="font-size:12px;color:#777777;margin:0 0 4px;font-weight:700;text-transform:uppercase;letter-spacing:1px">Scheduled</p>
 <p style="font-size:15px;color:#1a1a1a;margin:0;font-weight:600">${dateStr}</p>
 </div>
-${meetLink ? `<table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto 16px"><tr><td style="padding:10px 24px;text-align:center"><a href="${meetLink}" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Join Meet</a></td></tr></table>` : `<p style="font-size:13px;color:#777777;margin:0 0 16px;text-align:center;font-style:italic">Venue to be announced</p>`}
+${safeMeetLink ? `<table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto 16px"><tr><td style="padding:10px 24px;text-align:center"><a href="${safeMeetLink}" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Join Meet</a></td></tr></table>` : `<p style="font-size:13px;color:#777777;margin:0 0 16px;text-align:center;font-style:italic">Venue to be announced</p>`}
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
 <p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
@@ -336,6 +351,7 @@ async function getMeetRecipients(db: any, meetType: string, departmentId?: strin
 async function sendProjectAssignmentEmail(c: any, projectName: string, departmentIds: string[]) {
   const apiKey = c.env.RESEND_API_KEY;
   if (!apiKey) return;
+  const safeProjectName = escapeHtml(projectName);
   const rows: any = await c.env.DB.prepare(
     `SELECT u.email, u.name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id IN (${departmentIds.map(() => "?").join(",")}) AND r.power_level >= 50 AND u.email != ?`
   ).bind(...departmentIds, DEV_ADMIN_EMAIL).all();
@@ -364,7 +380,7 @@ async function sendProjectAssignmentEmail(c: any, projectName: string, departmen
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">New Project Assigned</h1>
 </td></tr>
 <tr><td style="padding:28px">
-<p style="font-size:16px;color:#1a1a1a;margin:0 0 16px;font-weight:700">${projectName}</p>
+<p style="font-size:16px;color:#1a1a1a;margin:0 0 16px;font-weight:700">${safeProjectName}</p>
 <p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.6">A new project has been assigned to your department. Please review the details and begin planning your team's approach.</p>
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Check the 180DC Admin Portal for more information.</p>
 </td></tr>
@@ -387,6 +403,9 @@ async function sendRoleAssignmentEmail(c: any, email: string, name: string, role
   if (!apiKey) return;
   const count = await getTodayEmailCount(c.env.DB);
   if (count >= 100) return;
+  const safeName = escapeHtml(name);
+  const safeRoleName = escapeHtml(roleName);
+  const safeProjectName = escapeHtml(projectName);
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -407,8 +426,8 @@ async function sendRoleAssignmentEmail(c: any, email: string, name: string, role
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">New Role Assigned</h1>
 </td></tr>
 <tr><td style="padding:28px">
-<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Hey ${name}!</p>
-<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.6">You have been assigned the role of <strong>${roleName}</strong> for the project <strong>${projectName}</strong>.</p>
+<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Hey ${safeName}!</p>
+<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.6">You have been assigned the role of <strong>${safeRoleName}</strong> for the project <strong>${safeProjectName}</strong>.</p>
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Log in to the 180DC Admin Portal to view your project dashboard and tasks.</p>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
@@ -428,6 +447,8 @@ async function sendRoleChangeEmail(c: any, email: string, name: string, roleName
   if (!apiKey) return;
   const count = await getTodayEmailCount(c.env.DB);
   if (count >= 100) return;
+  const safeName = escapeHtml(name);
+  const safeRoleName = escapeHtml(roleName);
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -448,8 +469,8 @@ async function sendRoleChangeEmail(c: any, email: string, name: string, roleName
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">Role Updated</h1>
 </td></tr>
 <tr><td style="padding:28px">
-<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Hey ${name}!</p>
-<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.6">Your role in 180 Degrees Consulting has been updated to <strong>${roleName}</strong>.</p>
+<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Hey ${safeName}!</p>
+<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.6">Your role in 180 Degrees Consulting has been updated to <strong>${safeRoleName}</strong>.</p>
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Log in to the 180DC Admin Portal to view your updated access and responsibilities.</p>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
@@ -537,6 +558,8 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, action TEXT NOT NULL, actor_email TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS daily_email_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS pending_emails (id TEXT PRIMARY KEY, meet_id TEXT NOT NULL, meet_type TEXT NOT NULL, recipient_email TEXT NOT NULL, recipient_name TEXT NOT NULL, meet_title TEXT NOT NULL, meet_description TEXT, meet_link TEXT, scheduled_at TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
     `);
   await runMigrations(db);
   tablesEnsured = true;
@@ -709,6 +732,7 @@ app.use("*", async (c, next) => {
   const url = new URL(c.req.url);
   if (
     (url.pathname === "/api/signup-requests" && c.req.method === "POST") ||
+    url.pathname === "/api/consulting-request" ||
     url.pathname === "/api/dev-login" ||
     url.pathname === "/api/auth/forgot-token" ||
     url.pathname === "/api/departments" ||
@@ -2946,6 +2970,140 @@ app.get("/api/recruitment/open-domains", async (c) => {
     return c.json({ success: true, data: (rows.results || []).map((r: any) => r.domain_name) });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// CONSULTING REQUESTS
+// ---------------------------------------------------------
+
+// 1. Public: Submit a consulting request
+app.post("/api/consulting-request", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "consulting_request", 3, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
+    const body = await c.req.json();
+    const name = sanitizeStr(body.name);
+    const email = validateEmail(body.email);
+    const phone = sanitizeStr(body.phone);
+    const organization = sanitizeStr(body.organization);
+    const roleInOrg = sanitizeStr(body.roleInOrg);
+    const requirement = sanitizeStr(body.requirement, MAX_MSG_LEN);
+
+    if (!name || !email || !phone || !organization || !requirement) {
+      return c.json({ error: "Missing required fields: name, email, phone, organization, requirement" }, 400);
+    }
+
+    await c.env.DB.prepare(
+      "INSERT INTO consulting_requests (id, name, email, phone, organization, role_in_org, requirement, status) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, 'pending')",
+    ).bind(name, email, phone, organization, roleInOrg || null, requirement).run();
+
+    return c.json({ success: true, message: "Consulting request submitted successfully." });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 2. Admin: List all consulting requests (President/VP only)
+app.get("/api/consulting-requests", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const rows = await c.env.DB.prepare(
+      "SELECT * FROM consulting_requests ORDER BY created_at DESC",
+    ).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 3. Admin: Accept a consulting request with custom email (President/VP only)
+app.post("/api/consulting-requests/:id/accept", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const id = c.req.param("id");
+
+    const request: any = await c.env.DB.prepare(
+      "SELECT * FROM consulting_requests WHERE id = ?",
+    ).bind(id).first();
+
+    if (!request) return c.json({ error: "Request not found" }, 404);
+    if (request.status !== "pending") return c.json({ error: "Request already processed" }, 400);
+
+    const body = await c.req.json();
+    const emailSubject = sanitizeStr(body.emailSubject);
+    const emailBody = sanitizeStr(body.emailBody, MAX_MSG_LEN * 2);
+
+    if (!emailSubject || !emailBody) {
+      return c.json({ error: "Missing email subject or body" }, 400);
+    }
+
+    // Send the email
+    const apiKey = c.env.RESEND_API_KEY;
+    if (apiKey) {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "180DC Consulting <noreply@180dc.shop>",
+          to: request.email,
+          subject: emailSubject,
+          html: `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">Consulting Request Update</h1>
+</td></tr>
+<tr><td style="padding:28px">
+<div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${emailBody.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")}</div>
+</td></tr>
+<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`,
+        }),
+      });
+    }
+
+    // Update status and store response
+    await c.env.DB.prepare("UPDATE consulting_requests SET status = 'accepted' WHERE id = ?").bind(id).run();
+    await c.env.DB.prepare(
+      "INSERT INTO consulting_responses (id, request_id, email_subject, email_body) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
+    ).bind(id, emailSubject, emailBody).run();
+
+    return c.json({ success: true, message: "Request accepted and email sent." });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 4. Admin: Reject a consulting request (President/VP only)
+app.post("/api/consulting-requests/:id/reject", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const id = c.req.param("id");
+    const request: any = await c.env.DB.prepare(
+      "SELECT * FROM consulting_requests WHERE id = ?",
+    ).bind(id).first();
+    if (!request) return c.json({ error: "Request not found" }, 404);
+    if (request.status !== "pending") return c.json({ error: "Request already processed" }, 400);
+
+    await c.env.DB.prepare("UPDATE consulting_requests SET status = 'rejected' WHERE id = ?").bind(id).run();
+    return c.json({ success: true, message: "Request rejected." });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
   }
 });
 

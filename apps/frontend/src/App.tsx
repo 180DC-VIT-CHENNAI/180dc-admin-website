@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import "./index.css";
 import Globe from "./components/Globe";
 import MagicRings from "./components/MagicRings";
@@ -6,6 +6,8 @@ import VariableProximity from "./components/VariableProximity";
 import SmoothScroll from "./components/SmoothScroll";
 import PillNav from "./components/PillNav";
 import ColorBends from "./components/ColorBends";
+import ConsultingBoy from "./components/ConsultingBoy";
+import ConsultingFormModal from "./components/ConsultingFormModal";
 import { apiUrl } from "./lib/api";
 import {
   ScribbleArrow,
@@ -24,6 +26,8 @@ function App() {
   const splashRef = useRef<HTMLDivElement>(null);
   const [activeNav, setActiveNav] = useState("#");
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
+  const [showConsultingForm, setShowConsultingForm] = useState(false);
+  const openConsultingForm = useCallback(() => setShowConsultingForm(true), []);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [caseStudies, setCaseStudies] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -368,9 +372,9 @@ function App() {
               <a href="#about" className="btn">
                 Who We Are
               </a>
-              <a href="#contact" className="btn outline">
+              <button className="btn outline" onClick={openConsultingForm}>
                 Work With Us
-              </a>
+              </button>
             </div>
             <ScribbleArrow
               style={{ width: 100, color: "#8dc63f", marginTop: "2rem", transform: "rotate(15deg)" }}
@@ -657,6 +661,9 @@ function App() {
           <p>&copy; 2026 180dc vit chennai. All rights reserved.</p>
         </div>
       </footer>
+
+      <ConsultingBoy onRequestConsulting={openConsultingForm} />
+      <ConsultingFormModal isOpen={showConsultingForm} onClose={() => setShowConsultingForm(false)} />
     </SmoothScroll>
   );
 }
