@@ -318,7 +318,8 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
     if (!mentionQuery) return;
     const before = input.slice(0, mentionQuery.start);
     const after = input.slice(mentionQuery.start + 1 + mentionQuery.text.length);
-    setInput(before + "@" + userName + " " + after);
+    const mentionWord = userName.split(" ")[0];
+    setInput(before + "@" + mentionWord + " " + after);
     setMentionQuery(null);
     inputRef.current?.focus();
   }
@@ -404,7 +405,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
     ? onlineUsers.filter(
         (u) =>
           u.userId !== currentUser?.userId &&
-          u.userName.toLowerCase().startsWith(mentionQuery.text),
+          u.userName.split(" ")[0].toLowerCase().startsWith(mentionQuery.text),
       ).slice(0, 8)
     : [];
 

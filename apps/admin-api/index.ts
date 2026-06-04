@@ -3528,7 +3528,7 @@ export class ChatRoomDO {
       while ((m = mentionRegex.exec(content)) !== null) {
         const name = m[1].toLowerCase();
         for (const [_, c] of this.connections) {
-          if (c.userName && c.userName.toLowerCase() === name && !mentionedUserIds.includes(c.userId)) {
+          if (c.userName && c.userName.split(" ")[0].toLowerCase() === name && !mentionedUserIds.includes(c.userId)) {
             mentionedUserIds.push(c.userId);
           }
         }
