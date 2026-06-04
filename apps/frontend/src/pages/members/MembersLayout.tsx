@@ -1600,7 +1600,7 @@ function InstructionsSection({ authToken, departmentId }: { authToken: string; d
   );
 }
 
-const RECRUITMENT_DOMAINS = ["Technical", "R&D", "Operations", "PR & Outreach", "Design & Creative", "Content & Editorial", "HR & Logistics", "Finance"];
+const RECRUITMENT_DOMAINS = ["Technical", "Research & Development", "Marketing", "Social Media", "Finance", "Events and Initiatives", "Client Partner Sponsor", "Human Resources"];
 
 function RecruitmentSettingsSection({ authToken }: { authToken: string }) {
   const [settings, setSettings] = useState<any[]>([]);

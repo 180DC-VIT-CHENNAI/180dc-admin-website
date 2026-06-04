@@ -669,6 +669,10 @@ async function seedData(db: any, env?: any) {
     for (const domain of knownDomains) {
       await db.prepare("INSERT OR IGNORE INTO recruitment_domain_settings (domain_name, is_open) VALUES (?, ?)").bind(domain, 1).run();
     }
+
+    // Migration: promote existing Technical Lead users to Technical Director
+    await db.prepare("UPDATE users SET role_id = 'technical_director' WHERE role_id = 'lead'").run();
+
     seedDone = true;
   } catch (e: any) {
     logError("Seed failed", e);
@@ -930,6 +934,7 @@ app.post("/api/members", async (c) => {
 // Developer token login (dev only) - maps token -> email via ADMIN_TOKENS
 // ADMIN_TOKENS example: { "token123": { "email": "admin@vitstudent.ac.in", "roleId": "president", "name": "Admin" } }
 // This returns the mapped email so the frontend can use it as the dev identity.
+// Supports dual-role login for Technical Director (can login as lead or director).
 app.post("/api/dev-login", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -989,6 +994,36 @@ app.post("/api/dev-login", async (c) => {
     }
 
     await resetLoginRateLimit(c, "dev_login");
+
+    // Dual-role support: Technical Director can login as Lead (power_level 50) or Director (power_level 100)
+    if (user.role_id === "technical_director") {
+      const loginAs = body.loginAs;
+      if (loginAs === "lead") {
+        return c.json({
+          success: true,
+          email: entry.email,
+          name: user.name || entry.name,
+          roleId: "lead",
+          roleName: "Technical Lead",
+          powerLevel: 50,
+          departmentId: user.department_id || null,
+          dualRole: true,
+          dualRoleChosen: true,
+        });
+      }
+      // Default or "director" — full power
+      return c.json({
+        success: true,
+        email: entry.email,
+        name: user.name || entry.name,
+        roleId: "technical_director",
+        roleName: "Technical Director",
+        powerLevel: 100,
+        departmentId: user.department_id || null,
+        dualRole: true,
+        dualRoleChosen: !!body.loginAs,
+      });
+    }
 
     return c.json({
       success: true,

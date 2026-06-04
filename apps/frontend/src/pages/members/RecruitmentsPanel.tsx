@@ -6,7 +6,7 @@ interface Props {
   powerLevel?: number;
 }
 
-const ALL_DOMAINS = ["Technical", "R&D", "Operations", "PR & Outreach", "Design & Creative", "Content & Editorial", "HR & Logistics", "Finance"];
+const ALL_DOMAINS = ["Technical", "Research & Development", "Marketing", "Social Media", "Finance", "Events and Initiatives", "Client Partner Sponsor", "Human Resources"];
 
 const RecruitmentsPanel = ({ authToken, powerLevel = 0 }: Props) => {
   const [applications, setApplications] = useState<any[]>([]);
@@ -257,14 +257,7 @@ const RecruitmentsPanel = ({ authToken, powerLevel = 0 }: Props) => {
           </select>
           <select className="input" style={{ width: "auto", minWidth: 140 }} value={domainFilter} onChange={e => setDomainFilter(e.target.value)}>
             <option value="">All Domains</option>
-            <option value="Technical">Technical</option>
-            <option value="R&D">R&D</option>
-            <option value="Operations">Operations</option>
-            <option value="PR & Outreach">PR & Outreach</option>
-            <option value="Design & Creative">Design & Creative</option>
-            <option value="Content & Editorial">Content & Editorial</option>
-            <option value="HR & Logistics">HR & Logistics</option>
-            <option value="Finance">Finance</option>
+            {ALL_DOMAINS.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
           <div style={{ flex: 1 }} />
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

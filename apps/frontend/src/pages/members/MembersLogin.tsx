@@ -20,18 +20,25 @@ export default function MembersLogin({ onLogin }: MembersLoginProps) {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [dualRolePending, setDualRolePending] = useState<any>(null);
 
-  const handleTokenLogin = async () => {
-    if (!token) return alert("Enter token");
+  const handleTokenLogin = async (loginAs?: string) => {
+    const t = token;
+    if (!t) return alert("Enter token");
     setLoading(true);
     try {
       const res = await fetch(apiUrl("/api/dev-login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify(loginAs ? { token: t, loginAs } : { token: t }),
       });
       const data = await res.json();
       if (data.success) {
+        if (data.dualRole && !data.dualRoleChosen) {
+          setDualRolePending(data);
+          setLoading(false);
+          return;
+        }
         onLogin(token, data.email, data.powerLevel, data.departmentId);
       } else {
         alert("Login failed: " + (data.error || "unknown"));
@@ -129,7 +136,7 @@ export default function MembersLogin({ onLogin }: MembersLoginProps) {
 
             <div className="login-actions">
               <button
-                onClick={handleTokenLogin}
+                onClick={() => handleTokenLogin()}
                 className="btn"
                 disabled={loading}
               >
@@ -194,6 +201,29 @@ export default function MembersLogin({ onLogin }: MembersLoginProps) {
           </div>
         </div>
       </div>
+
+      {dualRolePending && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 999,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <div className="card-doodle" style={{ maxWidth: 400, width: "90%", textAlign: "center" }}>
+            <h3 style={{ margin: "0 0 8px" }}>Choose Login Role</h3>
+            <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: "0 0 20px" }}>
+              Your token is recognized as <strong>Technical Director</strong>. Which role would you like to use for this session?
+            </p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+              <button className="btn" onClick={() => handleTokenLogin("lead")}>
+                Login as Lead
+              </button>
+              <button className="btn outline" onClick={() => handleTokenLogin("director")}>
+                Login as Director
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
