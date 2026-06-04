@@ -5,6 +5,7 @@ import MembersLogin from "./MembersLogin";
 import DepartmentPanel from "./DepartmentPanel";
 import RecruitmentsPanel from "./RecruitmentsPanel";
 import ProfileSection from "./ProfileSection";
+import ChatSection from "./ChatSection";
 import { apiUrl } from "../../lib/api";
 import { useTheme } from "../../context/ThemeContext";
 import "./MembersLayout.css";
@@ -392,14 +393,7 @@ export default function MembersLayout() {
         )}
 
         {activePanel === "chat" && (
-          <>
-            <h2 style={{ marginTop: 0 }}>Chat</h2>
-            <div className="members-grid">
-              <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-                <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>Coming soon...</p>
-              </div>
-            </div>
-          </>
+          <ChatSection authToken={authToken!} />
         )}
 
         {activePanel === "department" && (() => {

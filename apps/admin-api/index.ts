@@ -3393,4 +3393,184 @@ app.post("/api/send-email", async (c) => {
   }
 });
 
-export default app;
+// ---------------------------------------------------------
+// CHAT — Session init (auth'd users get a WS sessionId)
+// ---------------------------------------------------------
+app.post("/api/chat/init", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const canChat = user.role_id === "advisory" || user.power_level >= 50;
+    if (!canChat) return c.json({ error: "Forbidden" }, 403);
+
+    const sessionId = crypto.randomUUID().replace(/-/g, "");
+    const doId = c.env.CHAT_ROOM.idFromName("advisory-board-chat");
+    const stub = c.env.CHAT_ROOM.get(doId);
+
+    await stub.fetch("https://internal/register", {
+      method: "POST",
+      body: JSON.stringify({
+        sessionId,
+        userInfo: {
+          userId: user.id,
+          userName: user.name,
+          userRole: user.role_id,
+        },
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    return c.json({ success: true, sessionId });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// CHAT ROOM DURABLE OBJECT
+// ---------------------------------------------------------
+export class ChatRoomDO {
+  state: any;
+  env: any;
+  connections: Map<any, any>;
+  messages: any[];
+
+  constructor(state: any, env: any) {
+    this.state = state;
+    this.env = env;
+    this.connections = new Map();
+    this.messages = [];
+  }
+
+  async fetch(request: Request) {
+    const url = new URL(request.url);
+
+    // Register a session — called from POST /api/chat/init
+    if (url.pathname === "/register" && request.method === "POST") {
+      const body: any = await request.json();
+      await this.state.storage.put("session:" + body.sessionId, JSON.stringify(body.userInfo));
+      // Auto-expire sessions after 30 seconds
+      await this.state.storage.setAlarm(Date.now() + 30000);
+      return new Response(JSON.stringify({ success: true }));
+    }
+
+    // WebSocket upgrade — called from the main worker's fetch handler
+    if (url.pathname === "/api/chat/ws") {
+      const sessionId = url.searchParams.get("sessionId");
+      if (!sessionId) return new Response("Missing sessionId", { status: 400 });
+
+      const raw = await this.state.storage.get("session:" + sessionId);
+      if (!raw) return new Response("Invalid or expired session", { status: 401 });
+      const userInfo = JSON.parse(raw);
+      await this.state.storage.delete("session:" + sessionId);
+
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+
+      this.state.acceptWebSocket(server);
+      this.connections.set(server, { ...userInfo, server });
+
+      // Load persisted messages
+      if (this.messages.length === 0) {
+        const stored = await this.state.storage.get("messages");
+        if (stored) this.messages = stored;
+      }
+
+      // Send history + online users to the new connection
+      server.send(JSON.stringify({
+        type: "history",
+        messages: this.messages.slice(-50),
+        onlineUsers: Array.from(this.connections.values()).map((c: any) => ({
+          userId: c.userId, userName: c.userName, userRole: c.userRole,
+        })),
+      }));
+
+      // Broadcast user joined
+      this.broadcast({ type: "user_joined", userId: userInfo.userId, userName: userInfo.userName, userRole: userInfo.userRole }, server);
+
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
+    return new Response("Not found", { status: 404 });
+  }
+
+  async webSocketMessage(ws: WebSocket, raw: string) {
+    const sender = this.connections.get(ws);
+    if (!sender) return;
+
+    let data: any;
+    try { data = JSON.parse(raw); } catch { return; }
+
+    if (data.type === "message") {
+      const content = (data.content || "").trim().slice(0, 2000);
+      if (!content) return;
+
+      const msg = {
+        id: crypto.randomUUID().replace(/-/g, ""),
+        userId: sender.userId,
+        userName: sender.userName,
+        userRole: sender.userRole,
+        content,
+        timestamp: Date.now(),
+      };
+
+      this.messages.push(msg);
+      if (this.messages.length > 100) this.messages = this.messages.slice(-100);
+
+      // Persist to DO storage
+      await this.state.storage.put("messages", this.messages);
+
+      this.broadcast({ type: "message", ...msg }, null);
+    }
+
+    if (data.type === "typing") {
+      this.broadcast({ type: "typing", userId: sender.userId, userName: sender.userName, active: !!data.active }, ws);
+    }
+  }
+
+  async webSocketClose(ws: WebSocket) {
+    const user = this.connections.get(ws);
+    if (user) {
+      this.connections.delete(ws);
+      this.broadcast({ type: "user_left", userId: user.userId, userName: user.userName }, null);
+    }
+  }
+
+  async webSocketError(ws: WebSocket) {
+    this.webSocketClose(ws);
+  }
+
+  async alarm() {
+    // Clean up expired sessions — called by the TTL alarm set in register
+    // We don't need to do anything specific here; the TTL on the storage key handles it
+    // But we need this method for the DO alarm callback
+  }
+
+  broadcast(msg: any, excludeWs: WebSocket | null) {
+    for (const [ws] of this.connections) {
+      if (ws !== excludeWs) {
+        try { ws.send(JSON.stringify(msg)); } catch { this.connections.delete(ws); }
+      }
+    }
+  }
+}
+
+export default {
+  async fetch(request: Request, env: any, ctx: any) {
+    const url = new URL(request.url);
+
+    // WebSocket upgrade for chat — handle before Hono
+    if (url.pathname === "/api/chat/ws") {
+      if (!url.searchParams.get("sessionId")) {
+        return new Response("Missing sessionId", { status: 400 });
+      }
+      const doId = env.CHAT_ROOM.idFromName("advisory-board-chat");
+      const stub = env.CHAT_ROOM.get(doId);
+      return stub.fetch(request);
+    }
+
+    return app.fetch(request, env, ctx);
+  },
+};

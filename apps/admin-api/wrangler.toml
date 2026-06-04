@@ -12,6 +12,14 @@ binding = "AUTH_SESSIONS"
 id = "83ebac816f4b44b7bc4419c2e898cd59"
 preview_id = "15fff5efa3dc4fb495e815f55f819fa2"
 
+[[durable_objects.bindings]]
+name = "CHAT_ROOM"
+class_name = "ChatRoomDO"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ChatRoomDO"]
+
 [[custom_domains]]
 domain = "api.180dc.shop"
 zone_name = "180dc.shop"
