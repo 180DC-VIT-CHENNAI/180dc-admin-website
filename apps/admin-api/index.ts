@@ -3557,9 +3557,9 @@ export class ChatRoomDO {
   }
 
   broadcast(msg: any, excludeWs: WebSocket | null) {
-    for (const [ws] of this.connections) {
-      if (ws !== excludeWs) {
-        try { ws.send(JSON.stringify(msg)); } catch { this.connections.delete(ws); }
+    for (const [ws, data] of this.connections) {
+      if (ws !== excludeWs && !data._dead) {
+        try { ws.send(JSON.stringify(msg)); } catch { data._dead = true; }
       }
     }
   }
