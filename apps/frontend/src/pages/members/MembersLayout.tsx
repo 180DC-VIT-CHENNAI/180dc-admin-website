@@ -144,6 +144,7 @@ export default function MembersLayout() {
     { id: "instructions", label: "Instructions", minPower: 0 },
     { id: "recruitments", label: "Recruitments", minPower: 50 },
     { id: "consulting", label: "Consulting", minPower: 100 },
+    { id: "sendmail", label: "Send Mail", minPower: 100 },
     { id: "transfers", label: "Transfers", minPower: 0 },
     { id: "announcements", label: "Announcements", minPower: 0 },
     { id: "admin", label: "Admin Console", minPower: 100 },
@@ -368,6 +369,10 @@ export default function MembersLayout() {
 
         {activePanel === "consulting" && powerLevel >= 100 && (
           <ConsultingRequestsSection authToken={authToken!} />
+        )}
+
+        {activePanel === "sendmail" && powerLevel >= 100 && (
+          <SendMailSection authToken={authToken!} />
         )}
 
         {activePanel === "announcements" && (
@@ -1667,6 +1672,7 @@ function ConsultingRequestsSection({ authToken }: { authToken: string }) {
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [acceptModal, setAcceptModal] = useState<any>(null);
+  const [rejectModal, setRejectModal] = useState<any>(null);
   const [emailSubject, setEmailSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -1684,10 +1690,21 @@ function ConsultingRequestsSection({ authToken }: { authToken: string }) {
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function openAcceptModal(req: any) {
+    setRejectModal(null);
     setAcceptModal(req);
     setEmailSubject(`Response to your Consulting Request - 180DC VIT Chennai`);
     setEmailBody(
       `Hi ${req.name},\n\nThank you for reaching out to 180 Degrees Consulting VIT Chennai!\n\nWe have reviewed your consulting request regarding "${req.requirement.slice(0, 100)}${req.requirement.length > 100 ? "..." : ""}" and we would be happy to assist you.\n\nOur team will be in touch with you shortly to discuss the next steps.\n\nBest regards,\n180 Degrees Consulting\nVIT Chennai`
+    );
+    setSending(false);
+  }
+
+  function openRejectModal(req: any) {
+    setAcceptModal(null);
+    setRejectModal(req);
+    setEmailSubject(`Update on your Consulting Request - 180DC VIT Chennai`);
+    setEmailBody(
+      `Hi ${req.name},\n\nThank you for reaching out to 180 Degrees Consulting VIT Chennai.\n\nAfter careful review, we regret to inform you that we are unable to take on your consulting request at this time.\n\nWe appreciate your interest and wish you the best.\n\nBest regards,\n180 Degrees Consulting\nVIT Chennai`
     );
     setSending(false);
   }
@@ -1710,35 +1727,99 @@ function ConsultingRequestsSection({ authToken }: { authToken: string }) {
     } catch { alert("Failed to send. Please try again."); } finally { setSending(false); }
   }
 
-  async function handleReject(id: string) {
-    if (!confirm("Reject this consulting request?")) return;
+  async function handleReject() {
+    if (!emailSubject.trim() || !emailBody.trim()) return alert("Subject and body are required");
+    setSending(true);
     try {
-      const res = await fetch(apiUrl(`/api/consulting-requests/${id}/reject`), {
-        method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+      const res = await fetch(apiUrl(`/api/consulting-requests/${rejectModal.id}/reject`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ emailSubject: emailSubject.trim(), emailBody: emailBody.trim() }),
       });
       const d = await res.json();
-      if (d.success) { alert("Request rejected."); load(); }
-      else alert(d.error);
-    } catch { alert("Failed to reject."); }
+      if (d.success) {
+        alert("Request rejected and email sent.");
+        setRejectModal(null);
+        load();
+      } else alert(d.error);
+    } catch { alert("Failed to send. Please try again."); } finally { setSending(false); }
+  }
+
+  function EmailModal({ item, onClose, onSend, title }:
+    { item: any; onClose: () => void; onSend: () => void; title: string }) {
+    return createPortal(
+      <div style={{
+        position: "fixed", inset: 0, zIndex: 10000, display: "flex",
+        alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)", padding: 20,
+      }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="card-doodle" style={{
+          width: "100%", maxWidth: 640, maxHeight: "90vh", overflowY: "auto",
+          padding: "2rem", cursor: "default",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <h3 style={{ margin: 0, fontFamily: "'Caveat', cursive", fontSize: 24 }}>
+              {title} — {item.name}
+            </h3>
+            <button onClick={onClose}
+              style={{ border: "none", background: "none", fontSize: 24, cursor: "pointer", color: "var(--text-secondary)", padding: "0 4px" }}>
+              ✕
+            </button>
+          </div>
+
+          <div style={{ marginBottom: 16, padding: "0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", fontSize: 13, color: "var(--text-secondary)" }}>
+            <strong>Original Request:</strong>
+            <div style={{ marginTop: 4 }}>From: {item.name} ({item.email})</div>
+            <div>Organization: {item.organization}</div>
+            <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{item.requirement}</div>
+          </div>
+
+          <div style={{ display: "grid", gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Email Subject</label>
+              <input className="input" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} />
+            </div>
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Email Body</label>
+              <textarea className="input" rows={10} value={emailBody} onChange={(e) => setEmailBody(e.target.value)}
+                style={{ resize: "vertical", fontFamily: "monospace", fontSize: 13 }} />
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn" disabled={sending} onClick={onSend}>
+                {sending ? "Sending..." : "Send Email"}
+              </button>
+              <button className="btn outline" onClick={onClose}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
   }
 
   if (loading) return <p>Loading consulting requests...</p>;
+
+  const pending = requests.filter((r: any) => r.status === "pending");
+  const accepted = requests.filter((r: any) => r.status === "accepted");
+  const rejected = requests.filter((r: any) => r.status === "rejected");
 
   return (
     <>
       <h2 style={{ marginTop: 0 }}>Consulting Requests</h2>
       <div className="members-grid">
+
         {requests.length === 0 && (
           <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
             <p style={{ color: "var(--text-secondary)" }}>No consulting requests yet.</p>
           </div>
         )}
 
-        {requests.filter((r: any) => r.status === "pending").length > 0 && (
+        {pending.length > 0 && (
           <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-            <h3>Pending Requests</h3>
+            <h3>Pending Requests ({pending.length})</h3>
             <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-              {requests.filter((r: any) => r.status === "pending").map((req: any) => (
+              {pending.map((req: any) => (
                 <div key={req.id} className="card-doodle" style={{ padding: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -1755,11 +1836,11 @@ function ConsultingRequestsSection({ authToken }: { authToken: string }) {
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
                       <button className="btn" style={{ padding: "0.4rem 1rem", fontSize: 13 }}
                         onClick={() => openAcceptModal(req)}>
-                        Accept Request
+                        Accept
                       </button>
                       <button className="btn outline" style={{ padding: "0.4rem 1rem", fontSize: 13 }}
-                        onClick={() => handleReject(req.id)}>
-                        Reject Request
+                        onClick={() => openRejectModal(req)}>
+                        Reject
                       </button>
                     </div>
                   </div>
@@ -1769,18 +1850,37 @@ function ConsultingRequestsSection({ authToken }: { authToken: string }) {
           </div>
         )}
 
-        {requests.filter((r: any) => r.status !== "pending").length > 0 && (
+        {accepted.length > 0 && (
           <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-            <h3>Processed Requests</h3>
+            <h3>Accepted ({accepted.length})</h3>
             <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-              {requests.filter((r: any) => r.status !== "pending").map((req: any) => (
+              {accepted.map((req: any) => (
                 <div key={req.id} style={{ padding: "0.6rem 0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <strong style={{ fontSize: 14 }}>{req.name}</strong>
                     <span style={{ fontSize: 12, color: "var(--text-secondary)", marginLeft: 8 }}>{req.organization}</span>
                   </div>
-                  <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, fontWeight: 600, background: req.status === "accepted" ? "var(--primary-green)" : "#e74c3c", color: "#fff" }}>
-                    {req.status}
+                  <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, fontWeight: 600, background: "var(--primary-green)", color: "#fff" }}>
+                    Accepted
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {rejected.length > 0 && (
+          <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+            <h3>Rejected ({rejected.length})</h3>
+            <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+              {rejected.map((req: any) => (
+                <div key={req.id} style={{ padding: "0.6rem 0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <strong style={{ fontSize: 14 }}>{req.name}</strong>
+                    <span style={{ fontSize: 12, color: "var(--text-secondary)", marginLeft: 8 }}>{req.organization}</span>
+                  </div>
+                  <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, fontWeight: 600, background: "#e74c3c", color: "#fff" }}>
+                    Rejected
                   </span>
                 </div>
               ))}
@@ -1789,56 +1889,183 @@ function ConsultingRequestsSection({ authToken }: { authToken: string }) {
         )}
       </div>
 
-      {/* Accept Modal */}
-      {acceptModal && createPortal(
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 10000, display: "flex",
-          alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)", padding: 20,
-        }} onClick={(e) => { if (e.target === e.currentTarget) setAcceptModal(null); }}>
-          <div className="card-doodle" style={{
-            width: "100%", maxWidth: 640, maxHeight: "90vh", overflowY: "auto",
-            padding: "2rem", cursor: "default",
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontFamily: "'Caveat', cursive", fontSize: 24 }}>
-                Accept Request — {acceptModal.name}
-              </h3>
-              <button onClick={() => setAcceptModal(null)}
-                style={{ border: "none", background: "none", fontSize: 24, cursor: "pointer", color: "var(--text-secondary)", padding: "0 4px" }}>
-                ✕
+      {acceptModal && (
+        <EmailModal
+          item={acceptModal}
+          title="Accept Request"
+          onClose={() => setAcceptModal(null)}
+          onSend={handleAccept}
+        />
+      )}
+
+      {rejectModal && (
+        <EmailModal
+          item={rejectModal}
+          title="Reject Request"
+          onClose={() => setRejectModal(null)}
+          onSend={handleReject}
+        />
+      )}
+    </>
+  );
+}
+
+function SendMailSection({ authToken }: { authToken: string }) {
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [manualEmails, setManualEmails] = useState("");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [sending, setSending] = useState(false);
+  const [roleFilter, setRoleFilter] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(apiUrl("/api/users"), { headers: { Authorization: `Bearer ${authToken}` } });
+        const d = await res.json();
+        if (d.success) setUsers(d.data || []);
+      } catch { /* ignore */ } finally { setLoading(false); }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const roles = [...new Set(users.map((u) => u.role_name).filter(Boolean))].sort();
+
+  const filtered = users.filter((u) => {
+    if (roleFilter && u.role_name !== roleFilter) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.role_name?.toLowerCase().includes(q);
+  });
+
+  function toggleAll() {
+    if (selected.size === filtered.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filtered.map((u) => u.email)));
+    }
+  }
+
+  function toggle(email: string) {
+    const next = new Set(selected);
+    if (next.has(email)) next.delete(email); else next.add(email);
+    setSelected(next);
+  }
+
+  function getToValue() {
+    const parts: string[] = [];
+    selected.forEach((e) => parts.push(e));
+    if (manualEmails.trim()) {
+      manualEmails.split(/[;,]+/).map((e) => e.trim()).filter(Boolean).forEach((e) => parts.push(e));
+    }
+    return parts.join(", ");
+  }
+
+  async function handleSend() {
+    const to = getToValue();
+    if (!to) return alert("Select or enter at least one recipient");
+    if (!subject.trim() || !body.trim()) return alert("Subject and body are required");
+    setSending(true);
+    try {
+      const res = await fetch(apiUrl("/api/send-email"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ to, subject: subject.trim(), body: body.trim() }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        alert(d.message);
+        setSelected(new Set());
+        setManualEmails("");
+        setSubject("");
+        setBody("");
+      } else alert(d.error);
+    } catch { alert("Failed to send. Please try again."); } finally { setSending(false); }
+  }
+
+  if (loading) return <p>Loading members...</p>;
+
+  return (
+    <>
+      <h2 style={{ marginTop: 0 }}>Send Mail</h2>
+      <div className="members-grid">
+        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+          <h3>Select Recipients</h3>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <input className="input" placeholder="Search by name, email, or role..."
+              value={search} onChange={(e) => setSearch(e.target.value)}
+              style={{ flex: 1, minWidth: 180 }} />
+            <select className="input" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}
+              style={{ width: "auto", minWidth: 140 }}>
+              <option value="">All Roles</option>
+              {roles.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 13 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+              <input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length}
+                onChange={toggleAll} />
+              Select All ({filtered.length})
+            </label>
+            <span style={{ color: "var(--text-secondary)" }}>
+              {selected.size} selected
+            </span>
+          </div>
+
+          <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--border-light)", borderRadius: 8, padding: 4 }}>
+            {filtered.map((u) => (
+              <label key={u.email} style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "6px 8px",
+                cursor: "pointer", borderRadius: 4, fontSize: 13,
+              }}>
+                <input type="checkbox" checked={selected.has(u.email)} onChange={() => toggle(u.email)} />
+                <span style={{ fontWeight: 600, minWidth: 140 }}>{u.name}</span>
+                <span style={{ color: "var(--text-secondary)" }}>{u.email}</span>
+                <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--primary-green)" }}>{u.role_name}</span>
+              </label>
+            ))}
+            {filtered.length === 0 && (
+              <p style={{ padding: "1rem", textAlign: "center", color: "var(--text-secondary)", fontSize: 13 }}>No members match your search.</p>
+            )}
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>
+              Additional Recipients (manual email entry, comma/semicolon separated)
+            </label>
+            <input className="input" placeholder="email1@example.com, email2@example.com"
+              value={manualEmails} onChange={(e) => setManualEmails(e.target.value)} />
+          </div>
+
+          <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-secondary)" }}>
+            <strong>To:</strong> {getToValue() || "(none selected)"}
+          </div>
+        </div>
+
+        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+          <h3>Compose Email</h3>
+          <div style={{ display: "grid", gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Subject</label>
+              <input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} />
+            </div>
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Body</label>
+              <textarea className="input" rows={10} value={body} onChange={(e) => setBody(e.target.value)}
+                style={{ resize: "vertical", fontFamily: "monospace", fontSize: 13 }} />
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn" disabled={sending} onClick={handleSend}>
+                {sending ? "Sending..." : "Send Email"}
               </button>
             </div>
-
-            <div style={{ marginBottom: 16, padding: "0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", fontSize: 13, color: "var(--text-secondary)" }}>
-              <strong>Original Request:</strong>
-              <div style={{ marginTop: 4 }}>From: {acceptModal.name} ({acceptModal.email})</div>
-              <div>Organization: {acceptModal.organization}</div>
-              <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{acceptModal.requirement}</div>
-            </div>
-
-            <div style={{ display: "grid", gap: 12 }}>
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Email Subject</label>
-                <input className="input" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} />
-              </div>
-              <div>
-                <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Email Body</label>
-                <textarea className="input" rows={10} value={emailBody} onChange={(e) => setEmailBody(e.target.value)}
-                  style={{ resize: "vertical", fontFamily: "monospace", fontSize: 13 }} />
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn" disabled={sending} onClick={handleAccept}>
-                  {sending ? "Sending..." : "Send Acceptance Email"}
-                </button>
-                <button className="btn outline" onClick={() => setAcceptModal(null)}>
-                  Cancel
-                </button>
-              </div>
-            </div>
           </div>
-        </div>,
-        document.body
-      )}
+        </div>
+      </div>
     </>
   );
 }

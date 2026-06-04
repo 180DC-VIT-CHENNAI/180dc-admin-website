@@ -3088,7 +3088,7 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
   }
 });
 
-// 4. Admin: Reject a consulting request (President/VP only)
+// 4. Admin: Reject a consulting request with custom email (President/VP only)
 app.post("/api/consulting-requests/:id/reject", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -3100,8 +3100,110 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
     if (!request) return c.json({ error: "Request not found" }, 404);
     if (request.status !== "pending") return c.json({ error: "Request already processed" }, 400);
 
+    const body = await c.req.json();
+    const emailSubject = sanitizeStr(body.emailSubject);
+    const emailBody = sanitizeStr(body.emailBody, MAX_MSG_LEN * 2);
+
+    if (!emailSubject || !emailBody) {
+      return c.json({ error: "Missing email subject or body" }, 400);
+    }
+
+    // Send the email
+    const apiKey = c.env.RESEND_API_KEY;
+    if (apiKey) {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "180DC Consulting <noreply@180dc.shop>",
+          to: request.email,
+          subject: emailSubject,
+          html: `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">Consulting Request Update</h1>
+</td></tr>
+<tr><td style="padding:28px">
+<div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${emailBody.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")}</div>
+</td></tr>
+<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`,
+        }),
+      });
+    }
+
     await c.env.DB.prepare("UPDATE consulting_requests SET status = 'rejected' WHERE id = ?").bind(id).run();
-    return c.json({ success: true, message: "Request rejected." });
+    await c.env.DB.prepare(
+      "INSERT INTO consulting_responses (id, request_id, email_subject, email_body) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
+    ).bind(id, emailSubject, emailBody).run();
+
+    return c.json({ success: true, message: "Request rejected and email sent." });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 5. Admin: Send arbitrary email (President/VP only)
+app.post("/api/send-email", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const body = await c.req.json();
+    const to = sanitizeStr(body.to, MAX_MSG_LEN);
+    const subject = sanitizeStr(body.subject);
+    const htmlBody = sanitizeStr(body.body, MAX_MSG_LEN * 2);
+
+    if (!to || !subject || !htmlBody) {
+      return c.json({ error: "Missing recipient, subject, or body" }, 400);
+    }
+
+    const apiKey = c.env.RESEND_API_KEY;
+    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
+
+    // Support multiple recipients separated by comma/semicolon
+    const recipients = to.split(/[;,]+/).map((e: string) => e.trim()).filter(Boolean);
+
+    for (const recipient of recipients) {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "180DC Admin <noreply@180dc.shop>",
+          to: recipient,
+          subject,
+          html: `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">180DC Admin Message</h1>
+</td></tr>
+<tr><td style="padding:28px">
+<div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${htmlBody.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")}</div>
+</td></tr>
+<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`,
+        }),
+      });
+    }
+
+    return c.json({ success: true, message: `Email sent to ${recipients.length} recipient(s)` });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }

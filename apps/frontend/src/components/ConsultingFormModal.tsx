@@ -109,9 +109,8 @@ export default function ConsultingFormModal({ isOpen, onClose }: Props) {
 
         {success ? (
           <div style={{ textAlign: "center", padding: "2rem 0" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
             <h3 style={{ fontFamily: "'Caveat', cursive", fontSize: 24, margin: "0 0 8px" }}>
-              Request Submitted!
+              Request Submitted
             </h3>
             <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
               Thank you! Our team will review your request and get back to you shortly.
