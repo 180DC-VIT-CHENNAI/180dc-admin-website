@@ -3442,12 +3442,14 @@ export class ChatRoomDO {
   env: any;
   connections: Map<any, any>;
   messages: any[];
+  polls: any[];
 
   constructor(state: any, env: any) {
     this.state = state;
     this.env = env;
     this.connections = new Map();
     this.messages = [];
+    this.polls = [];
   }
 
   async fetch(request: Request) {
@@ -3478,19 +3480,25 @@ export class ChatRoomDO {
       this.state.acceptWebSocket(server);
       this.connections.set(server, { ...userInfo, server });
 
-      // Load persisted messages
+      // Load persisted messages and polls
       if (this.messages.length === 0) {
         const stored = await this.state.storage.get("messages");
         if (stored) this.messages = stored;
       }
+      if (this.polls.length === 0) {
+        const stored = await this.state.storage.get("polls");
+        if (stored) this.polls = stored;
+      }
 
-      // Send history + online users to the new connection
+      // Send history + online users + polls to the new connection
       server.send(JSON.stringify({
         type: "history",
         messages: this.messages.slice(-50),
         onlineUsers: Array.from(this.connections.values()).map((c: any) => ({
           userId: c.userId, userName: c.userName, userEmail: c.userEmail, userRole: c.userRole,
         })),
+        currentUser: { userId: userInfo.userId, userName: userInfo.userName, userEmail: userInfo.userEmail, userRole: userInfo.userRole },
+        polls: this.polls,
       }));
 
       // Broadcast user joined
@@ -3513,7 +3521,20 @@ export class ChatRoomDO {
       const content = (data.content || "").trim().slice(0, 2000);
       if (!content) return;
 
-      const msg = {
+      // Parse @mentions
+      const mentionRegex = /@(\w+)/g;
+      let m;
+      const mentionedUserIds: string[] = [];
+      while ((m = mentionRegex.exec(content)) !== null) {
+        const name = m[1].toLowerCase();
+        for (const [_, c] of this.connections) {
+          if (c.userName && c.userName.toLowerCase() === name && !mentionedUserIds.includes(c.userId)) {
+            mentionedUserIds.push(c.userId);
+          }
+        }
+      }
+
+      const msg: any = {
         id: crypto.randomUUID().replace(/-/g, ""),
         userId: sender.userId,
         userName: sender.userName,
@@ -3522,6 +3543,7 @@ export class ChatRoomDO {
         content,
         timestamp: Date.now(),
       };
+      if (mentionedUserIds.length > 0) msg.mentions = mentionedUserIds;
 
       this.messages.push(msg);
       if (this.messages.length > 100) this.messages = this.messages.slice(-100);
@@ -3535,6 +3557,83 @@ export class ChatRoomDO {
 
     if (data.type === "typing") {
       this.broadcast({ type: "typing", userId: sender.userId, userName: sender.userName, active: !!data.active }, ws);
+    }
+
+    if (data.type === "create_poll") {
+      const question = (data.question || "").trim().slice(0, 200);
+      if (!question) return;
+      const options: string[] = (data.options || []).slice(0, 10).map((o: string) => (o || "").trim()).filter(Boolean);
+      if (options.length < 2) return;
+
+      const poll: any = {
+        id: crypto.randomUUID().replace(/-/g, ""),
+        creatorId: sender.userId,
+        creatorName: sender.userName,
+        question,
+        options,
+        votes: {},
+        active: true,
+        timestamp: Date.now(),
+      };
+
+      this.polls.push(poll);
+
+      const pollMsg: any = {
+        id: poll.id,
+        type: "poll",
+        poll,
+        userId: sender.userId,
+        userName: sender.userName,
+        userEmail: sender.userEmail,
+        userRole: sender.userRole,
+        timestamp: poll.timestamp,
+      };
+
+      this.messages.push(pollMsg);
+      if (this.messages.length > 100) this.messages = this.messages.slice(-100);
+
+      this.broadcast({ type: "poll_created", ...pollMsg }, null);
+      this.state.storage.put("messages", this.messages).catch(() => {});
+      this.state.storage.put("polls", this.polls).catch(() => {});
+    }
+
+    if (data.type === "vote") {
+      const pollId = data.pollId;
+      const optionIndex = data.optionIndex;
+      const poll = this.polls.find((p: any) => p.id === pollId);
+      if (!poll || !poll.active) return;
+      if (poll.votes[sender.userId] !== undefined) return;
+
+      if (optionIndex < 0 || optionIndex >= poll.options.length) return;
+
+      poll.votes[sender.userId] = optionIndex;
+
+      const pollMsg = this.messages.find((m: any) => m.id === pollId);
+      if (pollMsg) {
+        pollMsg.poll = poll;
+        this.state.storage.put("messages", this.messages).catch(() => {});
+      }
+
+      this.broadcast({ type: "poll_updated", poll }, null);
+      this.state.storage.put("polls", this.polls).catch(() => {});
+    }
+
+    if (data.type === "close_poll") {
+      const pollId = data.pollId;
+      const poll = this.polls.find((p: any) => p.id === pollId);
+      if (!poll || !poll.active) return;
+      if (poll.creatorId !== sender.userId) return;
+
+      poll.active = false;
+
+      const pollMsg = this.messages.find((m: any) => m.id === pollId);
+      if (pollMsg) {
+        pollMsg.poll = poll;
+        this.state.storage.put("messages", this.messages).catch(() => {});
+      }
+
+      this.broadcast({ type: "poll_updated", poll }, null);
+      this.state.storage.put("polls", this.polls).catch(() => {});
     }
   }
 
