@@ -3595,10 +3595,16 @@ export class ChatRoomDO {
 
   async webSocketMessage(ws: WebSocket, raw: string) {
     const sender = this.connections.get(ws);
-    if (!sender) return;
+    if (!sender) {
+      try { ws.send(JSON.stringify({ type: "_error", message: "sender not found" })); } catch {}
+      return;
+    }
 
     let data: any;
-    try { data = JSON.parse(raw); } catch { return; }
+    try { data = JSON.parse(raw); } catch {
+      try { ws.send(JSON.stringify({ type: "_error", message: "JSON parse failed", raw })); } catch {}
+      return;
+    }
 
     if (data.type === "message") {
       const content = (data.content || "").trim().slice(0, 2000);
@@ -3643,41 +3649,45 @@ export class ChatRoomDO {
     }
 
     if (data.type === "create_poll") {
-      const question = (data.question || "").trim().slice(0, 200);
-      if (!question) return;
-      const options: string[] = (data.options || []).slice(0, 10).map((o: string) => (o || "").trim()).filter(Boolean);
-      if (options.length < 2) return;
+      try {
+        const question = (data.question || "").trim().slice(0, 200);
+        if (!question) return;
+        const options: string[] = (data.options || []).slice(0, 10).map((o: string) => (o || "").trim()).filter(Boolean);
+        if (options.length < 2) return;
 
-      const poll: any = {
-        id: crypto.randomUUID().replace(/-/g, ""),
-        creatorId: sender.userId,
-        creatorName: sender.userName,
-        question,
-        options,
-        votes: {},
-        active: true,
-        timestamp: Date.now(),
-      };
+        const poll: any = {
+          id: crypto.randomUUID().replace(/-/g, ""),
+          creatorId: sender.userId,
+          creatorName: sender.userName,
+          question,
+          options,
+          votes: {},
+          active: true,
+          timestamp: Date.now(),
+        };
 
-      this.polls.push(poll);
+        this.polls.push(poll);
 
-      const pollMsg: any = {
-        id: poll.id,
-        type: "poll",
-        poll,
-        userId: sender.userId,
-        userName: sender.userName,
-        userEmail: sender.userEmail,
-        userRole: sender.userRole,
-        timestamp: poll.timestamp,
-      };
+        const pollMsg: any = {
+          id: poll.id,
+          type: "poll",
+          poll,
+          userId: sender.userId,
+          userName: sender.userName,
+          userEmail: sender.userEmail,
+          userRole: sender.userRole,
+          timestamp: poll.timestamp,
+        };
 
-      this.messages.push(pollMsg);
-      if (this.messages.length > 100) this.messages = this.messages.slice(-100);
+        this.messages.push(pollMsg);
+        if (this.messages.length > 100) this.messages = this.messages.slice(-100);
 
-      this.broadcast({ type: "poll", id: poll.id, poll, userId: sender.userId, userName: sender.userName, userEmail: sender.userEmail, userRole: sender.userRole, timestamp: poll.timestamp }, null);
-      this.state.storage.put("messages", this.messages).catch(() => {});
-      this.state.storage.put("polls", this.polls).catch(() => {});
+        this.broadcast({ type: "poll", id: poll.id, poll, userId: sender.userId, userName: sender.userName, userEmail: sender.userEmail, userRole: sender.userRole, timestamp: poll.timestamp }, null);
+        this.state.storage.put("messages", this.messages).catch(() => {});
+        this.state.storage.put("polls", this.polls).catch(() => {});
+      } catch (e: any) {
+        try { ws.send(JSON.stringify({ type: "_error", message: String(e?.message || e), stack: e?.stack })); } catch {}
+      }
     }
 
     if (data.type === "vote") {
@@ -3717,6 +3727,11 @@ export class ChatRoomDO {
 
       this.broadcast({ type: "poll_updated", poll }, null);
       this.state.storage.put("polls", this.polls).catch(() => {});
+    }
+
+    // Echo any unhandled message back for debugging
+    if (data.type !== "message" && data.type !== "typing" && data.type !== "create_poll" && data.type !== "vote" && data.type !== "close_poll" && data.type !== "ping") {
+      try { ws.send(JSON.stringify({ type: "_echo", received: data, senderId: sender.userId })); } catch {}
     }
   }
 
