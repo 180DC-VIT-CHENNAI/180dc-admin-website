@@ -101,6 +101,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
   const [pollQuestion, setPollQuestion] = useState("");
   const [pollOptions, setPollOptions] = useState(["", ""]);
   const [sending, setSending] = useState(false);
+  const [reconnectKey, setReconnectKey] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const typingTimer = useRef<any>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -144,7 +145,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
             if (wsRef.current?.readyState === WebSocket.OPEN) {
               wsRef.current.send(JSON.stringify({ type: "ping" }));
             }
-          }, 12000);
+          }, 8000);
         };
 
         socket.onmessage = (event) => {
@@ -161,6 +162,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
                 setEntries((prev) => [...prev, msg]);
                 break;
               }
+              case "poll":
               case "poll_created": {
                 setEntries((prev) => [...prev, msg]);
                 break;
@@ -230,7 +232,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
       if (wsRef.current) wsRef.current.close();
       if (typingTimer.current) clearTimeout(typingTimer.current);
     };
-  }, [authToken]);
+  }, [authToken, reconnectKey]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -268,6 +270,19 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
       e.preventDefault();
       sendMessage();
     }
+  }
+
+  function reconnect() {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = 0; }
+    retriesRef.current = 0;
+    setConnected(false);
+    setOnlineUsers([]);
+    setError("Reconnecting...");
+    setReconnectKey((k) => k + 1);
   }
 
   function createPoll() {
@@ -352,6 +367,11 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: connected ? "var(--primary-green)" : "#e74c3c", display: "inline-block" }} />
             <span style={{ color: "var(--text-secondary)" }}>{connected ? `${onlineUsers.length} online` : "Disconnected"}</span>
+            <button
+              onClick={reconnect}
+              title="Reload chat"
+              style={{ background: "none", border: "1px solid var(--border-light)", borderRadius: 4, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "2px 6px", color: "var(--text-secondary)" }}
+            >&#x21bb;</button>
           </div>
         </div>
 
@@ -526,9 +546,9 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
                 onChange={(e) => handleInputChange(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={connected ? "Type a message... (@name to mention)" : "Connecting..."}
-                rows={2}
+                rows={3}
                 disabled={!connected}
-                style={{ flex: 1, resize: "none" }}
+                style={{ flex: 1, resize: "none", fontSize: 14, lineHeight: 1.5 }}
               />
               <button className="btn" onClick={sendMessage} disabled={!connected || !input.trim()} style={{ alignSelf: "flex-end" }}>
                 Send
