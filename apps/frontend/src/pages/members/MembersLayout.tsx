@@ -248,7 +248,6 @@ export default function MembersLayout() {
 
       {/* SIDEBAR */}
       <div className={`members-sidebar ${sidebarOpen ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`}>
-        <button className="mobile-sidebar-close" onClick={() => setSidebarOpen(false)}>✕</button>
         <button className="sidebar-toggle" onClick={() => {
           const next = !sidebarCollapsed;
           setSidebarCollapsed(next);
@@ -314,7 +313,7 @@ export default function MembersLayout() {
 
       {/* MAIN CONTENT */}
       <div className={`members-main ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-        <button className="mobile-sidebar-toggle" onClick={() => setSidebarOpen(true)}>☰</button>
+        <button className="mobile-sidebar-toggle" onClick={() => setSidebarOpen((o) => !o)}>{sidebarOpen ? "✕" : "☰"}</button>
         <button className="desktop-sidebar-toggle" onClick={() => {
           const next = !sidebarCollapsed;
           setSidebarCollapsed(next);
