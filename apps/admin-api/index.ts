@@ -3531,6 +3531,7 @@ export class ChatRoomDO {
     this.state = state;
     this.env = env;
     this.connections = new Map();
+    this.wsMap = new WeakMap();
     this.messages = [];
     this.polls = [];
   }
@@ -3542,7 +3543,7 @@ export class ChatRoomDO {
     if (url.pathname === "/register" && request.method === "POST") {
       const body: any = await request.json();
       await this.state.storage.put("session:" + body.sessionId, JSON.stringify(body.userInfo));
-      // Auto-expire sessions after 30 seconds
+      // Auto-expire sessions after 50 seconds
       await this.state.storage.setAlarm(Date.now() + 50000);
       return new Response(JSON.stringify({ success: true }));
     }
@@ -3560,8 +3561,12 @@ export class ChatRoomDO {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
 
+      // Store in BOTH a regular Map and a WeakMap
+      const entry: any = { ...userInfo, ws: server };
+      this.connections.set(server, entry);
+      this.wsMap.set(server, entry);
+
       this.state.acceptWebSocket(server);
-      this.connections.set(server, { ...userInfo, server });
 
       // Load persisted messages and polls
       if (this.messages.length === 0) {
@@ -3594,9 +3599,11 @@ export class ChatRoomDO {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string) {
-    const sender = this.connections.get(ws);
+    // Try WeakMap first (reliable object identity), fall back to regular Map
+    let sender = this.wsMap.get(ws);
+    if (!sender) sender = this.connections.get(ws);
     if (!sender) {
-      try { ws.send(JSON.stringify({ type: "_error", message: "sender not found" })); } catch {}
+      try { ws.send(JSON.stringify({ type: "_error", message: "sender not found in either map", mapSize: this.connections.size, keyTypes: [...this.connections.keys()].map(k => typeof k).slice(0, 5) })); } catch {}
       return;
     }
 
@@ -3736,9 +3743,11 @@ export class ChatRoomDO {
   }
 
   async webSocketClose(ws: WebSocket) {
-    const user = this.connections.get(ws);
+    let user = this.wsMap.get(ws);
+    if (!user) user = this.connections.get(ws);
     if (user) {
       this.connections.delete(ws);
+      this.wsMap.delete(ws);
       this.broadcast({ type: "user_left", userId: user.userId, userName: user.userName }, null);
     }
   }
