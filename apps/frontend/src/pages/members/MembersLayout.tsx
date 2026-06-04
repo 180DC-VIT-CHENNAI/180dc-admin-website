@@ -1902,9 +1902,20 @@ function ConsultingRequestsSection({ authToken }: { authToken: string }) {
                     <strong style={{ fontSize: 14 }}>{req.name}</strong>
                     <span style={{ fontSize: 12, color: "var(--text-secondary)", marginLeft: 8 }}>{req.organization}</span>
                   </div>
-                  <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, fontWeight: 600, background: "var(--primary-green)", color: "#fff" }}>
-                    Accepted
-                  </span>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, fontWeight: 600, background: "var(--primary-green)", color: "#fff" }}>
+                      Accepted
+                    </span>
+                    <button className="btn outline" style={{ padding: "2px 8px", fontSize: 11, color: "#e74c3c", borderColor: "#e74c3c" }} onClick={async () => {
+                      if (!confirm("Delete this accepted request?")) return;
+                      try {
+                        const res = await fetch(apiUrl(`/api/consulting-requests/${req.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                        const d = await res.json();
+                        if (d.success) load();
+                        else alert(d.error);
+                      } catch { alert("Failed to delete"); }
+                    }}>Delete</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1921,9 +1932,20 @@ function ConsultingRequestsSection({ authToken }: { authToken: string }) {
                     <strong style={{ fontSize: 14 }}>{req.name}</strong>
                     <span style={{ fontSize: 12, color: "var(--text-secondary)", marginLeft: 8 }}>{req.organization}</span>
                   </div>
-                  <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, fontWeight: 600, background: "#e74c3c", color: "#fff" }}>
-                    Rejected
-                  </span>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, fontWeight: 600, background: "#e74c3c", color: "#fff" }}>
+                      Rejected
+                    </span>
+                    <button className="btn outline" style={{ padding: "2px 8px", fontSize: 11, color: "#e74c3c", borderColor: "#e74c3c" }} onClick={async () => {
+                      if (!confirm("Delete this rejected request?")) return;
+                      try {
+                        const res = await fetch(apiUrl(`/api/consulting-requests/${req.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                        const d = await res.json();
+                        if (d.success) load();
+                        else alert(d.error);
+                      } catch { alert("Failed to delete"); }
+                    }}>Delete</button>
+                  </div>
                 </div>
               ))}
             </div>

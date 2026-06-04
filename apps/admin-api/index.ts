@@ -3231,7 +3231,29 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
   }
 });
 
-// 5. Admin: Send arbitrary email (President/VP only)
+// 5. Admin: Delete a consulting request (any status)
+app.delete("/api/consulting-requests/:id", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const id = c.req.param("id");
+
+    const request: any = await c.env.DB.prepare(
+      "SELECT id FROM consulting_requests WHERE id = ?",
+    ).bind(id).first();
+
+    if (!request) return c.json({ error: "Request not found" }, 404);
+
+    await c.env.DB.prepare("DELETE FROM consulting_responses WHERE request_id = ?").bind(id).run();
+    await c.env.DB.prepare("DELETE FROM consulting_requests WHERE id = ?").bind(id).run();
+
+    return c.json({ success: true, message: "Request deleted." });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 6. Admin: Send arbitrary email (President/VP only)
 app.post("/api/send-email", async (c) => {
   try {
     await ensureTables(c.env.DB);
