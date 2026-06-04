@@ -18,7 +18,7 @@ class_name = "ChatRoomDO"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["ChatRoomDO"]
+new_sqlite_classes = ["ChatRoomDO"]
 
 [[custom_domains]]
 domain = "api.180dc.shop"
