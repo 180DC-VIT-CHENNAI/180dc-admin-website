@@ -529,8 +529,16 @@ export default function MembersLayout() {
                     <option value="president">president</option>
                     <option value="vice_president">vice_president</option>
                     <option value="technical_director">technical_director</option>
+                    <option value="marketing_director">marketing_director</option>
                     <option value="secretary">secretary</option>
-                    <option value="lead">lead</option>
+                    <option value="lead">Technical Lead</option>
+                    <option value="lead_rnd">R&D Lead</option>
+                    <option value="lead_marketing">Marketing Lead</option>
+                    <option value="lead_social">Social Media Lead</option>
+                    <option value="lead_finance">Finance Lead</option>
+                    <option value="lead_events">Events Lead</option>
+                    <option value="lead_cps">Client Partner Sponsor Lead</option>
+                    <option value="lead_hr">HR Lead</option>
                   </select>
                   <select className="input" value={boardDepartmentId} onChange={(e) => setBoardDepartmentId(e.target.value)}>
                     <option value="">No department</option>
@@ -649,7 +657,7 @@ export default function MembersLayout() {
                       </select>
                       <select className="input" value={dangerNewRoleId} onChange={(e) => setDangerNewRoleId(e.target.value)}>
                         <option value="">Select new role</option>
-                        {allRoles.filter((r: any) => r.power_level < 100).map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                        {allRoles.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
                       </select>
                       <select className="input" value={dangerNewDeptId} onChange={(e) => setDangerNewDeptId(e.target.value)}>
                         <option value="">No department</option>

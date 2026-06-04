@@ -598,8 +598,16 @@ async function seedData(db: any, env?: any) {
     await db.prepare(roleSql).bind("president", "President", 100, "system").run();
     await db.prepare(roleSql).bind("vice_president", "Vice President", 100, "system").run();
     await db.prepare(roleSql).bind("technical_director", "Technical Director", 100, "system").run();
+    await db.prepare(roleSql).bind("marketing_director", "Marketing Director", 80, "system").run();
     await db.prepare(roleSql).bind("secretary", "Secretary", 80, "system").run();
     await db.prepare(roleSql).bind("lead", "Technical Lead", 50, "system").run();
+    await db.prepare(roleSql).bind("lead_rnd", "R&D Lead", 50, "system").run();
+    await db.prepare(roleSql).bind("lead_marketing", "Marketing Lead", 50, "system").run();
+    await db.prepare(roleSql).bind("lead_social", "Social Media Lead", 50, "system").run();
+    await db.prepare(roleSql).bind("lead_finance", "Finance Lead", 50, "system").run();
+    await db.prepare(roleSql).bind("lead_events", "Events and Initiatives Lead", 50, "system").run();
+    await db.prepare(roleSql).bind("lead_cps", "Client Partner Sponsor Lead", 50, "system").run();
+    await db.prepare(roleSql).bind("lead_hr", "HR Lead", 50, "system").run();
     await db.prepare(roleSql).bind("member", "General Member", 10, "system").run();
 
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("tech", "Technical", "Handles technical infrastructure and UI").run();
@@ -670,11 +678,6 @@ async function seedData(db: any, env?: any) {
     for (const domain of knownDomains) {
       await db.prepare("INSERT OR IGNORE INTO recruitment_domain_settings (domain_name, is_open) VALUES (?, ?)").bind(domain, 1).run();
     }
-
-    // Migration: promote existing Technical Lead users to Technical Director
-    await db.prepare("UPDATE users SET role_id = 'technical_director' WHERE role_id = 'lead'").run();
-    // Set secondary_role_id = 'lead' for the current Technical Director (only if not already set)
-    await db.prepare("UPDATE users SET secondary_role_id = 'lead' WHERE role_id = 'technical_director' AND secondary_role_id IS NULL").run();
 
     seedDone = true;
   } catch (e: any) {
@@ -1782,6 +1785,12 @@ app.post("/api/signup-requests/:id/reject", async (c) => {
 async function canAccessDept(c: any, deptId: string) {
   const user: any = c.get("user");
   if (user.power_level >= 100) return true;
+  // Roles with multi-department access
+  const roleDeptAccess: Record<string, string[]> = {
+    marketing_director: ["marketing", "social_media"],
+  };
+  const allowedDepts = roleDeptAccess[user.role_id];
+  if (allowedDepts && allowedDepts.includes(deptId)) return true;
   if (user.power_level >= 50 && user.department_id === deptId) return true;
   throw new Error("Forbidden: you do not have access to this department");
 }
