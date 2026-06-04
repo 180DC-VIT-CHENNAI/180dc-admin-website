@@ -3611,7 +3611,10 @@ export class ChatRoomDO {
 
   async webSocketMessage(ws: WebSocket, raw: string) {
     let data: any;
-    try { data = JSON.parse(raw); } catch { return; }
+    try { data = JSON.parse(raw); } catch {
+      try { ws.send(JSON.stringify({ type: "_error", message: "JSON parse failed", raw })); } catch {}
+      return;
+    }
 
     // Resolve sender: try direct ws lookup, then connId from client, then _connId on ws
     let sender = this.connections.get(ws);
@@ -3620,9 +3623,9 @@ export class ChatRoomDO {
       if (!sender) {
         // Try storage recovery
         try {
-          const raw = await this.state.storage.get("conn:" + data.connId);
-          if (raw) {
-            const userInfo = JSON.parse(raw);
+          const rawStored = await this.state.storage.get("conn:" + data.connId);
+          if (rawStored) {
+            const userInfo = JSON.parse(rawStored);
             sender = { ...userInfo, ws, connId: data.connId };
             this.connById.set(data.connId, sender);
             this.connections.set(ws, sender);
@@ -3634,9 +3637,9 @@ export class ChatRoomDO {
       sender = this.connById.get((ws as any)._connId);
       if (!sender) {
         try {
-          const raw = await this.state.storage.get("conn:" + (ws as any)._connId);
-          if (raw) {
-            const userInfo = JSON.parse(raw);
+          const rawStored = await this.state.storage.get("conn:" + (ws as any)._connId);
+          if (rawStored) {
+            const userInfo = JSON.parse(rawStored);
             sender = { ...userInfo, ws, connId: (ws as any)._connId };
             this.connById.set((ws as any)._connId, sender);
             this.connections.set(ws, sender);
@@ -3645,12 +3648,6 @@ export class ChatRoomDO {
       }
     }
     if (!sender) return;
-
-    let data: any;
-    try { data = JSON.parse(raw); } catch {
-      try { ws.send(JSON.stringify({ type: "_error", message: "JSON parse failed", raw })); } catch {}
-      return;
-    }
 
     if (data.type === "message") {
       const content = (data.content || "").trim().slice(0, 2000);
