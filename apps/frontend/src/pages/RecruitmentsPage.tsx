@@ -10,13 +10,13 @@ const navItems = [
 
 const domains = [
   "Technical",
-  "R&D",
-  "Operations",
-  "PR & Outreach",
-  "Design & Creative",
-  "Content & Editorial",
-  "HR & Logistics",
+  "Research & Development",
+  "Marketing",
+  "Social Media",
   "Finance",
+  "Events and Initiatives",
+  "Client Partner Sponsor",
+  "Human Resources",
 ];
 
 const years = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
@@ -200,7 +200,7 @@ const RecruitmentsPage = () => {
 
   return (
     <div className="recruitments-page">
-      <PillNav items={navItems} activeHref="/recruitments" logo="/images/180DC.png" />
+      <PillNav items={navItems} activeHref="/recruitments" logo="/images/official-logo.jpg" />
 
       <section className="recruitments-hero">
         <div className={`recruitments-badge ${isRecruitmentOpen ? "" : "closed"}`}>

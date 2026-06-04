@@ -596,6 +596,7 @@ async function seedData(db: any, env?: any) {
     const roleSql = "INSERT OR IGNORE INTO roles (id, name, power_level, created_by) VALUES (?, ?, ?, ?)";
     await db.prepare(roleSql).bind("president", "President", 100, "system").run();
     await db.prepare(roleSql).bind("vice_president", "Vice President", 100, "system").run();
+    await db.prepare(roleSql).bind("technical_director", "Technical Director", 100, "system").run();
     await db.prepare(roleSql).bind("secretary", "Secretary", 80, "system").run();
     await db.prepare(roleSql).bind("lead", "Technical Lead", 50, "system").run();
     await db.prepare(roleSql).bind("member", "General Member", 10, "system").run();
@@ -605,7 +606,8 @@ async function seedData(db: any, env?: any) {
     await db.prepare("INSERT OR REPLACE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("marketing", "Marketing", "Handles marketing, outreach, and communications").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("social_media", "Social Media", "Handles social media presence and content").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("finance", "Finance", "Handles budgeting and financial planning").run();
-    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("legal", "Legal", "Handles legal compliance and documentation").run();
+    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("events-initiatives", "Events and Initiatives", "Plans and executes events and club initiatives").run();
+    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("client-partner-sponsor", "Client Partner Sponsor", "Manages client relationships, partnerships, and sponsorships").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("hr", "Human Resources", "Handles recruitment and people management").run();
 
     if (!currentEnv || (currentEnv.ENVIRONMENT || "").toLowerCase() !== "production") {
@@ -663,7 +665,7 @@ async function seedData(db: any, env?: any) {
       await db.prepare("INSERT OR IGNORE INTO recruitment_rounds (id, name, is_active) VALUES (?, ?, ?)").bind("round2", "Round 2", 0).run();
     }
 
-    const knownDomains = ["Technical", "R&D", "Operations", "PR & Outreach", "Design & Creative", "Content & Editorial", "HR & Logistics", "Finance"];
+    const knownDomains = ["Technical", "Research & Development", "Marketing", "Social Media", "Finance", "Events and Initiatives", "Client Partner Sponsor", "Human Resources"];
     for (const domain of knownDomains) {
       await db.prepare("INSERT OR IGNORE INTO recruitment_domain_settings (domain_name, is_open) VALUES (?, ?)").bind(domain, 1).run();
     }
@@ -1121,7 +1123,7 @@ app.get("/api/dashboard", async (c) => {
 // ---------------------------------------------------------
 // ADMIN TOKENS (Custom auth registry)
 // ---------------------------------------------------------
-app.get("/api/admin-tokens", async (c) => {
+app.post("/api/admin-tokens", async (c) => {
   try {
     await ensureTables(c.env.DB);
     requireBoard(c);
@@ -2088,6 +2090,11 @@ app.post("/api/meets/:type/:id/send-notification", async (c) => {
     }
     if (!row) return c.json({ error: "Meet not found" }, 404);
 
+    // Department-scoped meets: verify user has access to the department
+    if (meetType === "department_meet" && user.power_level < 100 && user.department_id !== row.department_id) {
+      return c.json({ error: "Forbidden: you do not have access to this department's meets" }, 403);
+    }
+
     let recipients: { email: string; name: string }[] = [];
     if (meetType === "department_meet") {
       recipients = await getMeetRecipients(c.env.DB, "department_meet", row.department_id);
@@ -3047,7 +3054,7 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">Consulting Request Update</h1>
 </td></tr>
 <tr><td style="padding:28px">
-<div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${emailBody.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")}</div>
+<div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${escapeHtml(emailBody).replace(/\n/g, "<br>")}</div>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
 <p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
@@ -3112,7 +3119,7 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">Consulting Request Update</h1>
 </td></tr>
 <tr><td style="padding:28px">
-<div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${emailBody.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")}</div>
+<div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${escapeHtml(emailBody).replace(/\n/g, "<br>")}</div>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
 <p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
@@ -3174,7 +3181,7 @@ app.post("/api/send-email", async (c) => {
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">180DC Admin Message</h1>
 </td></tr>
 <tr><td style="padding:28px">
-<div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${htmlBody.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")}</div>
+<div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${escapeHtml(htmlBody).replace(/\n/g, "<br>")}</div>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
 <p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>

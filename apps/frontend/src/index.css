@@ -106,7 +106,7 @@ body {
 .navbar-logo-bg {
   width: 140px;
   height: 40px;
-  background-image: url("/images/180DC.png");
+  background-image: url("/images/official-logo.jpg");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: left center;
@@ -422,7 +422,7 @@ p {
 .splash-logo-white {
   width: 160px;
   height: 160px;
-  background-image: url("/images/180DC.png");
+  background-image: url("/images/official-logo.jpg");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;

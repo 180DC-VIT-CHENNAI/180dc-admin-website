@@ -51,17 +51,19 @@ function App() {
     async function loadContent() {
       try {
         const [csRes, tmRes, bpRes, pRes] = await Promise.all([
-          fetch(apiUrl("/api/content/case-studies")).then(r => r.json()),
-          fetch(apiUrl("/api/content/team-members")).then(r => r.json()),
-          fetch(apiUrl("/api/content/blog-posts")).then(r => r.json()),
-          fetch(apiUrl("/api/content/partners")).then(r => r.json()),
+          fetch(apiUrl("/api/content/case-studies")).then((r) => r.json()),
+          fetch(apiUrl("/api/content/team-members")).then((r) => r.json()),
+          fetch(apiUrl("/api/content/blog-posts")).then((r) => r.json()),
+          fetch(apiUrl("/api/content/partners")).then((r) => r.json()),
         ]);
         if (csRes.success) setCaseStudies(csRes.data);
         if (tmRes.success) setTeamMembers(tmRes.data);
         if (bpRes.success) setBlogPosts(bpRes.data);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (pRes.success) setPartners(pRes.data.map((p: any) => p.name));
-        const completedRes = await fetch(apiUrl("/api/projects/completed")).then(r => r.json());
+        const completedRes = await fetch(
+          apiUrl("/api/projects/completed"),
+        ).then((r) => r.json());
         if (completedRes.success) setCompletedProjects(completedRes.data);
       } catch (e) {
         console.error("Failed to load content", e);
@@ -101,25 +103,25 @@ function App() {
     heroTl.fromTo(
       ".hero-content h1",
       { y: 60, opacity: 0 },
-      { y: 0, opacity: 1, duration: 1.2, ease: "power3.out", delay: 0.2 }
+      { y: 0, opacity: 1, duration: 1.2, ease: "power3.out", delay: 0.2 },
     );
     heroTl.fromTo(
       ".hero-subtitle",
       { y: 40, opacity: 0 },
       { y: 0, opacity: 1, duration: 1, ease: "power3.out" },
-      "-=0.8"
+      "-=0.8",
     );
     heroTl.fromTo(
       ".cta-buttons",
       { y: 30, opacity: 0 },
       { y: 0, opacity: 1, duration: 0.8, ease: "power3.out" },
-      "-=0.6"
+      "-=0.6",
     );
     heroTl.fromTo(
       ".hero-image-wrapper",
       { x: 60, opacity: 0 },
       { x: 0, opacity: 1, duration: 1.2, ease: "power3.out" },
-      "-=1"
+      "-=1",
     );
 
     gsap.utils.toArray<HTMLElement>(".reveal").forEach((el) => {
@@ -136,7 +138,7 @@ function App() {
             start: "top 85%",
             toggleActions: "play none none none",
           },
-        }
+        },
       );
     });
 
@@ -167,7 +169,7 @@ function App() {
             start: "top 80%",
             toggleActions: "play none none none",
           },
-        }
+        },
       );
     });
 
@@ -187,7 +189,7 @@ function App() {
             start: "top 80%",
             toggleActions: "play none none none",
           },
-        }
+        },
       );
     });
 
@@ -207,7 +209,7 @@ function App() {
             start: "top 80%",
             toggleActions: "play none none none",
           },
-        }
+        },
       );
     });
 
@@ -225,7 +227,7 @@ function App() {
             start: "top 85%",
             toggleActions: "play none none none",
           },
-        }
+        },
       );
     });
 
@@ -268,7 +270,7 @@ function App() {
       <PillNav
         items={navItems}
         activeHref={activeNav}
-        logo="/images/180DC.png"
+        logo="/images/official-logo.jpg"
       />
 
       {/* Splash Landing Page */}
@@ -352,7 +354,13 @@ function App() {
         <div className="container hero-split">
           <div className="hero-content">
             <ScribbleStar
-              style={{ width: 30, color: "#8dc63f", position: "absolute", top: "-15px", left: "20px" }}
+              style={{
+                width: 30,
+                color: "#8dc63f",
+                position: "absolute",
+                top: "-15px",
+                left: "20px",
+              }}
             />
             <h1>
               Transforming
@@ -377,7 +385,12 @@ function App() {
               </button>
             </div>
             <ScribbleArrow
-              style={{ width: 100, color: "#8dc63f", marginTop: "2rem", transform: "rotate(15deg)" }}
+              style={{
+                width: 100,
+                color: "#8dc63f",
+                marginTop: "2rem",
+                transform: "rotate(15deg)",
+              }}
             />
           </div>
           <div className="hero-image-wrapper">
@@ -388,7 +401,14 @@ function App() {
               className="hero-image"
             />
             <ScribbleCircle
-              style={{ width: 60, color: "#8dc63f", position: "absolute", bottom: "-20px", right: "-20px", zIndex: 2 }}
+              style={{
+                width: 60,
+                color: "#8dc63f",
+                position: "absolute",
+                bottom: "-20px",
+                right: "-20px",
+                zIndex: 2,
+              }}
             />
           </div>
         </div>
@@ -398,12 +418,15 @@ function App() {
       <section id="global-network" className="global-network-section">
         <div className="container" style={{ textAlign: "center" }}>
           <span className="section-label">Our Reach</span>
-          <h2 className="reveal section-heading">
-            Our Global Network
-          </h2>
+          <h2 className="reveal section-heading">Our Global Network</h2>
           <p
             className="reveal reveal-delay-1"
-            style={{ maxWidth: "600px", margin: "0 auto 3rem auto", fontFamily: "'Patrick Hand', cursive", fontSize: "1.2rem" }}
+            style={{
+              maxWidth: "600px",
+              margin: "0 auto 3rem auto",
+              fontFamily: "'Patrick Hand', cursive",
+              fontSize: "1.2rem",
+            }}
           >
             180 Degrees Consulting spans the globe. Here is where the VIT
             Chennai branch anchors our impact in India.
@@ -412,7 +435,12 @@ function App() {
             <Globe />
           </div>
           <ScribbleSquiggle
-            style={{ width: 150, color: "#8dc63f", margin: "3rem auto 0", display: "block" }}
+            style={{
+              width: 150,
+              color: "#8dc63f",
+              margin: "3rem auto 0",
+              display: "block",
+            }}
           />
         </div>
       </section>
@@ -422,7 +450,13 @@ function App() {
         <div className="container">
           <div className="about-card reveal">
             <ScribbleStar
-              style={{ width: 30, color: "#8dc63f", position: "absolute", top: "-15px", right: "30px" }}
+              style={{
+                width: 30,
+                color: "#8dc63f",
+                position: "absolute",
+                top: "-15px",
+                right: "30px",
+              }}
             />
             <span className="section-label">01 — About</span>
             <h2>About Our Branch</h2>
@@ -455,32 +489,60 @@ function App() {
         <section className="projects-section">
           <div className="container">
             <span className="section-label">Our Work</span>
-            <h2 className="reveal section-heading" style={{ marginBottom: "0.5rem" }}>
+            <h2
+              className="reveal section-heading"
+              style={{ marginBottom: "0.5rem" }}
+            >
               Completed Projects
             </h2>
-            <p style={{ fontFamily: "'Patrick Hand', cursive", fontSize: "1.2rem", textAlign: "center", marginBottom: "3rem", color: "var(--text-secondary)" }}>
+            <p
+              style={{
+                fontFamily: "'Patrick Hand', cursive",
+                fontSize: "1.2rem",
+                textAlign: "center",
+                marginBottom: "3rem",
+                color: "var(--text-secondary)",
+              }}
+            >
               Projects delivered by our consulting teams
             </p>
             <div
               className="projects-grid"
-              style={completedProjects.length > 4 ? { maxHeight: 520, overflowY: "auto", paddingRight: 8 } : undefined}
+              style={
+                completedProjects.length > 4
+                  ? { maxHeight: 520, overflowY: "auto", paddingRight: 8 }
+                  : undefined
+              }
             >
               {completedProjects.map((p: any) => (
                 <div key={p.id} className="card-doodle project-card">
                   <h3 style={{ marginTop: 0 }}>{p.name}</h3>
                   {p.company_org && (
-                    <div style={{ fontSize: 13, color: "var(--primary-green)", marginBottom: 8 }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: "var(--primary-green)",
+                        marginBottom: 8,
+                      }}
+                    >
                       {p.company_org}
                     </div>
                   )}
                   {p.description && (
-                    <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>{p.description}</p>
+                    <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+                      {p.description}
+                    </p>
                   )}
                 </div>
               ))}
             </div>
             <ScribbleSquiggle
-              style={{ width: 150, color: "#8dc63f", margin: "3rem auto 0", display: "block" }}
+              style={{
+                width: 150,
+                color: "#8dc63f",
+                margin: "3rem auto 0",
+                display: "block",
+              }}
             />
           </div>
         </section>
@@ -490,7 +552,10 @@ function App() {
       <section id="case-studies" className="cases-section">
         <div className="container">
           <span className="section-label">02 — Case Studies</span>
-          <h2 className="reveal section-heading" style={{ marginBottom: "3rem" }}>
+          <h2
+            className="reveal section-heading"
+            style={{ marginBottom: "3rem" }}
+          >
             Latest Case Studies
           </h2>
           <div className="cases-grid">
@@ -502,29 +567,54 @@ function App() {
                 style={{ cursor: "pointer" }}
               >
                 <ScribbleStar
-                  style={{ width: 30, color: "#8dc63f", position: "absolute", top: "-15px", left: "20px" }}
+                  style={{
+                    width: 30,
+                    color: "#8dc63f",
+                    position: "absolute",
+                    top: "-15px",
+                    left: "20px",
+                  }}
                 />
                 <span className="case-tag">{cs.tag}</span>
                 <h3>{cs.title}</h3>
                 <p>{cs.description}</p>
                 {expandedCard === i && (
-                  <div className="card-expanded" style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "2px dashed var(--text-black)" }}>
-                    <p style={{ fontSize: "0.9rem", color: "var(--text-gray)" }}>
-                      <strong>Impact:</strong> Delivered measurable results within 3 months. Client retention increased by 40%.
+                  <div
+                    className="card-expanded"
+                    style={{
+                      marginTop: "1rem",
+                      paddingTop: "1rem",
+                      borderTop: "2px dashed var(--text-black)",
+                    }}
+                  >
+                    <p
+                      style={{ fontSize: "0.9rem", color: "var(--text-gray)" }}
+                    >
+                      <strong>Impact:</strong> Delivered measurable results
+                      within 3 months. Client retention increased by 40%.
                     </p>
-                    <p style={{ fontSize: "0.9rem", color: "var(--text-gray)" }}>
+                    <p
+                      style={{ fontSize: "0.9rem", color: "var(--text-gray)" }}
+                    >
                       <strong>Team:</strong> 5 consultants, 2 project managers
                     </p>
                   </div>
                 )}
                 <span className="read-more">
-                  {expandedCard === i ? "Show less \u2191" : "Click to expand \u2192"}
+                  {expandedCard === i
+                    ? "Show less \u2191"
+                    : "Click to expand \u2192"}
                 </span>
               </div>
             ))}
           </div>
           <ScribbleSquiggle
-            style={{ width: 150, color: "#8dc63f", margin: "3rem auto 0", display: "block" }}
+            style={{
+              width: 150,
+              color: "#8dc63f",
+              margin: "3rem auto 0",
+              display: "block",
+            }}
           />
         </div>
       </section>
@@ -549,7 +639,12 @@ function App() {
             ))}
           </div>
           <ScribbleSquiggle
-            style={{ width: 150, color: "#8dc63f", margin: "3rem auto 0", display: "block" }}
+            style={{
+              width: 150,
+              color: "#8dc63f",
+              margin: "3rem auto 0",
+              display: "block",
+            }}
           />
         </div>
       </section>
@@ -563,7 +658,13 @@ function App() {
               <h2 className="section-heading" style={{ margin: 0 }}>
                 Consulting Insights
               </h2>
-              <p style={{ fontFamily: "'Patrick Hand', cursive", fontSize: "1.2rem", margin: 0 }}>
+              <p
+                style={{
+                  fontFamily: "'Patrick Hand', cursive",
+                  fontSize: "1.2rem",
+                  margin: 0,
+                }}
+              >
                 Insights from our consultants and network.
               </p>
             </div>
@@ -584,7 +685,12 @@ function App() {
             ))}
           </div>
           <ScribbleSquiggle
-            style={{ width: 150, color: "#8dc63f", margin: "3rem auto 0", display: "block" }}
+            style={{
+              width: 150,
+              color: "#8dc63f",
+              margin: "3rem auto 0",
+              display: "block",
+            }}
           />
         </div>
       </section>
@@ -663,7 +769,10 @@ function App() {
       </footer>
 
       <ConsultingBoy onRequestConsulting={openConsultingForm} />
-      <ConsultingFormModal isOpen={showConsultingForm} onClose={() => setShowConsultingForm(false)} />
+      <ConsultingFormModal
+        isOpen={showConsultingForm}
+        onClose={() => setShowConsultingForm(false)}
+      />
     </SmoothScroll>
   );
 }
