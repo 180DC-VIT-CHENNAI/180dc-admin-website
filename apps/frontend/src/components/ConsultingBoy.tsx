@@ -20,7 +20,32 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
   const bubble1Ref = useRef<HTMLDivElement>(null);
   const bubble2Ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
+  const dismissedRef = useRef(false);
+  const hasEnteredRef = useRef(false);
+  const visibleRef = useRef(false);
   const [, setStep] = useState(0);
+
+  function slideOut(callback?: () => void) {
+    gsap.to(wrapperRef.current, {
+      x: "-120%",
+      duration: 0.5,
+      ease: "power3.in",
+      onComplete: () => {
+        setVisible(false);
+        callback?.();
+      },
+    });
+  }
+
+  function slideIn() {
+    setVisible(true);
+    gsap.to(wrapperRef.current, { x: 0, duration: 0.6, ease: "power3.out" });
+  }
+
+  function dismiss() {
+    dismissedRef.current = true;
+    slideOut();
+  }
 
   useEffect(() => {
     const sections = document.querySelectorAll("#about, .projects-section");
@@ -28,47 +53,38 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
 
     const tl = gsap.timeline({ paused: true });
 
-    tl.to(wrapperRef.current, {
-      x: 0,
-      duration: 0.8,
-      ease: "power3.out",
-    });
-    tl.to(bubble1Ref.current, {
-      opacity: 1,
-      scale: 1,
-      duration: 0.5,
-      ease: "back.out(2)",
-    });
+    tl.to(wrapperRef.current, { x: 0, duration: 0.8, ease: "power3.out" });
+    tl.to(bubble1Ref.current, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2)" });
     tl.to({}, { duration: 4 });
-    tl.to(bubble1Ref.current, {
-      opacity: 0,
-      scale: 0.8,
-      duration: 0.3,
-    });
-    tl.to(bubble2Ref.current, {
-      opacity: 1,
-      scale: 1,
-      duration: 0.5,
-      ease: "back.out(2)",
-    });
+    tl.to(bubble1Ref.current, { opacity: 0, scale: 0.8, duration: 0.3 });
+    tl.to(bubble2Ref.current, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2)" });
+
+    tl.eventCallback("onStart", () => { setStep(0); });
 
     const st = ScrollTrigger.create({
       trigger: sections[0],
       start: "top 75%",
       onEnter: () => {
-        setVisible(true);
-        tl.play();
+        if (dismissedRef.current) return;
+        visibleRef.current = true;
+        if (!hasEnteredRef.current) {
+          hasEnteredRef.current = true;
+          setVisible(true);
+          tl.play();
+        } else if (!visibleRef.current) {
+          slideIn();
+        }
       },
-      once: true,
+      onLeaveBack: () => {
+        visibleRef.current = false;
+        if (wrapperRef.current && !dismissedRef.current) {
+          gsap.to(wrapperRef.current, { x: "-120%", duration: 0.4, ease: "power3.in", onComplete: () => setVisible(false) });
+        }
+      },
     });
 
-    tl.eventCallback("onStart", () => {
-      setStep(0);
-    });
-
-    // Track speech bubble visibility for step tracking
     const checkInterval = setInterval(() => {
-      if (!visible) return;
+      if (!visibleRef.current) return;
       const b1 = bubble1Ref.current;
       const b2 = bubble2Ref.current;
       if (b1 && b2) {
@@ -84,7 +100,7 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
       tl.kill();
       clearInterval(checkInterval);
     };
-  }, [visible]);
+  }, []);
 
   return (
     <div
@@ -179,7 +195,7 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
           }}
         />
         {SPEECH_BUBBLE_2}
-        <div style={{ marginTop: 10 }}>
+        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
           <button
             className="btn"
             style={{
@@ -187,9 +203,20 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
               fontSize: 13,
               fontFamily: "'Nunito', sans-serif",
             }}
-            onClick={onRequestConsulting}
+            onClick={() => { onRequestConsulting(); dismiss(); }}
           >
             Send Request
+          </button>
+          <button
+            className="btn btn--secondary"
+            style={{
+              padding: "0.5rem 1.2rem",
+              fontSize: 13,
+              fontFamily: "'Nunito', sans-serif",
+            }}
+            onClick={dismiss}
+          >
+            No Thanks
           </button>
         </div>
       </div>
