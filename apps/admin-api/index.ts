@@ -3414,7 +3414,7 @@ app.post("/api/chat/init", async (c) => {
     const canAccessAdvisory = user.role_id === "advisory" || user.power_level >= 50;
     const canAccessGeneral = user.power_level >= 10 && user.role_id !== "advisory";
     const canAccessBoard = user.power_level >= 100;
-    const canAccessDept = room.startsWith("dept-") && user.department_id === room.replace("dept-", "");
+    const canAccessDept = room.startsWith("dept-") && (user.power_level >= 100 || user.department_id === room.replace("dept-", ""));
 
     let allowed = false;
     if (room === "advisory") allowed = canAccessAdvisory;

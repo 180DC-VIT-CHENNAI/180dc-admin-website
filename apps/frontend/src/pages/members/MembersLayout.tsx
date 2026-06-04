@@ -186,72 +186,94 @@ export default function MembersLayout() {
   const deptName = hasDepartment ? DEPT_NAMES[departmentId!] : "";
 
   type NavItem = { id: string; label: string; minPower: number; deptId?: string };
-  const baseNav: NavItem[] = [
-    { id: "dashboard", label: "Dashboard", minPower: 0 },
-    { id: "members", label: "Members", minPower: 0 },
-    { id: "profile", label: "Profile", minPower: 0 },
-    { id: "chat", label: "Advisory Chat", minPower: 30 },
-    { id: "meets", label: "Meets", minPower: 0 },
-    { id: "projects", label: "Projects", minPower: 0 },
-    { id: "instructions", label: "Instructions", minPower: 0 },
-    { id: "recruitments", label: "Recruitments", minPower: 50 },
-    { id: "consulting", label: "Consulting", minPower: 100 },
-    { id: "sendmail", label: "Send Mail", minPower: 100 },
-    { id: "transfers", label: "Transfers", minPower: 0 },
-    { id: "announcements", label: "Announcements", minPower: 0 },
-    { id: "admin", label: "Admin Console", minPower: 100 },
-  ];
-  // Advisory role: only dashboard, profile, chat
-  if (roleId === "advisory") {
-    baseNav.length = 0;
-    baseNav.push(
-      { id: "dashboard", label: "Dashboard", minPower: 0 },
-      { id: "profile", label: "Profile", minPower: 0 },
-      { id: "chat", label: "Advisory Chat", minPower: 30 },
-    );
-  }
+  type NavSection = { label: string; items: NavItem[] };
+
   const roleDeptAccess: Record<string, string[]> = {
     marketing_director: ["marketing", "social_media"],
   };
   const multiDeptRoles = roleDeptAccess[roleId || ""];
   const allowedDeptIds = multiDeptRoles || (hasDepartment && powerLevel >= 50 ? [departmentId!] : []);
-  if (powerLevel >= 100) {
-    const deptLinks = departments.map((d: any) => ({
-      id: `dept-${d.id}`, label: `${d.name} Dept`, minPower: 0, deptId: d.id,
-    }));
-    baseNav.splice(1, 0, ...deptLinks);
-  } else if (allowedDeptIds.length > 0 && roleId !== "advisory") {
-    const deptLinks = departments
-      .filter((d: any) => allowedDeptIds.includes(d.id))
-      .map((d: any) => ({
-        id: `dept-${d.id}`, label: d.name, minPower: 0, deptId: d.id,
-      }));
-    baseNav.splice(1, 0, ...deptLinks);
-  }
-  // Add chat room nav items for non-advisory users
-  if (roleId !== "advisory") {
+
+  const navSections: NavSection[] = [];
+
+  if (roleId === "advisory") {
+    navSections.push({
+      label: "",
+      items: [
+        { id: "dashboard", label: "Dashboard", minPower: 0 },
+        { id: "profile", label: "Profile", minPower: 0 },
+        { id: "chat", label: "Advisory Chat", minPower: 30 },
+      ],
+    });
+  } else {
+    // General
+    navSections.push({
+      label: "General",
+      items: [
+        { id: "dashboard", label: "Dashboard", minPower: 0 },
+        { id: "members", label: "Members", minPower: 0 },
+        { id: "profile", label: "Profile", minPower: 0 },
+      ],
+    });
+
+    // Chats
     const chatItems: NavItem[] = [
       { id: "chat_general", label: "General Chat", minPower: 10 },
       { id: "chat_board", label: "Board Chat", minPower: 100 },
     ];
-    const deptChatItems: NavItem[] = [];
     if (powerLevel >= 100) {
       departments.forEach((d: any) => {
-        deptChatItems.push({ id: `chat_dept_${d.id}`, label: `${d.name} Chat`, minPower: 10 });
+        chatItems.push({ id: `chat_dept_${d.id}`, label: `${d.name} Chat`, minPower: 10 });
       });
     } else if (allowedDeptIds.length > 0) {
       departments
         .filter((d: any) => allowedDeptIds.includes(d.id))
         .forEach((d: any) => {
-          deptChatItems.push({ id: `chat_dept_${d.id}`, label: `${d.name} Chat`, minPower: 10 });
+          chatItems.push({ id: `chat_dept_${d.id}`, label: `${d.name} Chat`, minPower: 10 });
         });
     }
-    const chatIdx = baseNav.findIndex(n => n.id === "chat");
-    if (chatIdx !== -1) {
-      baseNav.splice(chatIdx + 1, 0, ...chatItems, ...deptChatItems);
+    navSections.push({ label: "Chats", items: chatItems });
+
+    // Departments (management panels)
+    const deptItems: NavItem[] = [];
+    if (powerLevel >= 100) {
+      departments.forEach((d: any) => {
+        deptItems.push({ id: `dept-${d.id}`, label: d.name, minPower: 0, deptId: d.id });
+      });
+    } else if (allowedDeptIds.length > 0) {
+      departments
+        .filter((d: any) => allowedDeptIds.includes(d.id))
+        .forEach((d: any) => {
+          deptItems.push({ id: `dept-${d.id}`, label: d.name, minPower: 0, deptId: d.id });
+        });
     }
+    if (deptItems.length > 0) {
+      navSections.push({ label: "Departments", items: deptItems });
+    }
+
+    // Management
+    navSections.push({
+      label: "Management",
+      items: [
+        { id: "meets", label: "Meets", minPower: 0 },
+        { id: "projects", label: "Projects", minPower: 0 },
+        { id: "instructions", label: "Instructions", minPower: 0 },
+        { id: "recruitments", label: "Recruitments", minPower: 50 },
+        { id: "transfers", label: "Transfers", minPower: 0 },
+        { id: "announcements", label: "Announcements", minPower: 0 },
+      ],
+    });
+
+    // Admin
+    navSections.push({
+      label: "Admin",
+      items: [
+        { id: "consulting", label: "Consulting", minPower: 100 },
+        { id: "sendmail", label: "Send Mail", minPower: 100 },
+        { id: "admin", label: "Admin Console", minPower: 100 },
+      ],
+    });
   }
-  const visibleNav = baseNav.filter((n) => powerLevel >= n.minPower);
 
   if (!authToken) return <MembersLogin onLogin={handleLogin} />;
   if (!dashboardReady) {
@@ -277,31 +299,44 @@ export default function MembersLayout() {
           <div style={{ fontSize: 12, color: "var(--primary-green)", marginTop: 2 }}>Power: {powerLevel}</div>
         </div>
         <nav style={{ flex: 1, minHeight: 0, padding: "0.75rem 0", display: "flex", flexDirection: "column", gap: 2, overflowY: "auto" }}>
-          {visibleNav.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => {
-                if (item.deptId) { setActiveDeptId(item.deptId); setActivePanel("department"); }
-                else setActivePanel(item.id);
-              }}
-              style={{
-                display: "flex", alignItems: "center", gap: 10,
-                padding: sidebarCollapsed ? "0.7rem 0.5rem" : "0.7rem 1.2rem",
-                border: "none", justifyContent: sidebarCollapsed ? "center" : "flex-start",
-                background: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id)
-                  ? "var(--primary-green)" : "transparent",
-                color: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id)
-                  ? "#fff" : "var(--text-primary)", cursor: "pointer",
-                fontSize: sidebarCollapsed ? 10 : 14,
-                fontWeight: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id) ? 600 : 400,
-                textAlign: sidebarCollapsed ? "center" : "left", width: "100%",
-                borderRadius: 0, transition: "background 0.15s",
-              }}
-              title={sidebarCollapsed ? item.label : undefined}
-            >
-              {sidebarCollapsed ? item.label.slice(0, 3) : item.label}
-            </button>
-          ))}
+          {navSections.map((section) => {
+            const visible = section.items.filter((n) => powerLevel >= n.minPower);
+            if (visible.length === 0) return null;
+            return (
+              <div key={section.label}>
+                {section.label && !sidebarCollapsed && (
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-light)", padding: "0.75rem 1.2rem 0.25rem", textTransform: "uppercase", letterSpacing: 1 }}>
+                    {section.label}
+                  </div>
+                )}
+                {visible.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      if (item.deptId) { setActiveDeptId(item.deptId); setActivePanel("department"); }
+                      else setActivePanel(item.id);
+                    }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      padding: sidebarCollapsed ? "0.7rem 0.5rem" : "0.7rem 1.2rem",
+                      border: "none", justifyContent: sidebarCollapsed ? "center" : "flex-start",
+                      background: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id)
+                        ? "var(--primary-green)" : "transparent",
+                      color: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id)
+                        ? "#fff" : "var(--text-primary)", cursor: "pointer",
+                      fontSize: sidebarCollapsed ? 10 : 14,
+                      fontWeight: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id) ? 600 : 400,
+                      textAlign: sidebarCollapsed ? "center" : "left", width: "100%",
+                      borderRadius: 0, transition: "background 0.15s",
+                    }}
+                    title={sidebarCollapsed ? item.label : undefined}
+                  >
+                    {sidebarCollapsed ? item.label.slice(0, 3) : item.label}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
         </nav>
         <div style={{ padding: "1rem", borderTop: "1px solid var(--border-light)", display: sidebarCollapsed ? "none" : "flex", gap: 8 }}>
           <button
