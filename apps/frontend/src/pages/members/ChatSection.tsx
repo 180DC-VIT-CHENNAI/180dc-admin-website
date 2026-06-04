@@ -165,7 +165,6 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
         socket.onmessage = (event) => {
           if (cancelled) return;
           try {
-            console.log("[Chat] WS recv:", event.data);
             const msg = JSON.parse(event.data);
             switch (msg.type) {
               case "history":
@@ -351,17 +350,10 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
   }
 
   function createPoll() {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      console.log("[Chat] createPoll blocked — WS not open, state:", wsRef.current?.readyState);
-      return;
-    }
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     const question = pollQuestion.trim();
     const options = pollOptions.map((o) => o.trim()).filter(Boolean);
-    if (!question || options.length < 2) {
-      console.log("[Chat] createPoll blocked — question or options invalid:", { question, options });
-      return;
-    }
-    console.log("[Chat] createPoll sending:", { question, options });
+    if (!question || options.length < 2) return;
     setSending(true);
     try {
       wsRef.current.send(JSON.stringify({ type: "create_poll", question, options, connId: connIdRef.current }));

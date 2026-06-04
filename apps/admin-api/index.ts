@@ -3611,10 +3611,7 @@ export class ChatRoomDO {
 
   async webSocketMessage(ws: WebSocket, raw: string) {
     let data: any;
-    try { data = JSON.parse(raw); } catch {
-      try { ws.send(JSON.stringify({ type: "_error", message: "JSON parse failed", raw })); } catch {}
-      return;
-    }
+    try { data = JSON.parse(raw); } catch { return; }
 
     // Resolve sender: try direct ws lookup, then connId from client, then _connId on ws
     let sender = this.connections.get(ws);
@@ -3728,9 +3725,7 @@ export class ChatRoomDO {
         this.broadcast({ type: "poll", id: poll.id, poll, userId: sender.userId, userName: sender.userName, userEmail: sender.userEmail, userRole: sender.userRole, timestamp: poll.timestamp }, null);
         this.state.storage.put("messages", this.messages).catch(() => {});
         this.state.storage.put("polls", this.polls).catch(() => {});
-      } catch (e: any) {
-        try { ws.send(JSON.stringify({ type: "_error", message: String(e?.message || e), stack: e?.stack })); } catch {}
-      }
+      } catch {} 
     }
 
     if (data.type === "vote") {
