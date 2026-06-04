@@ -3526,10 +3526,11 @@ export class ChatRoomDO {
       this.messages.push(msg);
       if (this.messages.length > 100) this.messages = this.messages.slice(-100);
 
-      // Persist to DO storage
-      await this.state.storage.put("messages", this.messages);
-
+      // Broadcast immediately for real-time delivery
       this.broadcast({ type: "message", ...msg }, null);
+
+      // Persist to DO storage (fire-and-forget, don't block the broadcast)
+      this.state.storage.put("messages", this.messages).catch(() => {});
     }
 
     if (data.type === "typing") {
