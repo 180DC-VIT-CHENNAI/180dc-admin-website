@@ -1075,6 +1075,11 @@ app.post("/api/dev-login", async (c) => {
       });
   }
 
+    // Clear any stale active_role_id (e.g. from a removed secondary_role_id)
+    await c.env.DB.prepare(
+      "UPDATE admin_tokens SET active_role_id = NULL WHERE token = ?",
+    ).bind(token).run();
+
     return c.json({
       success: true,
       email: entry.email,

@@ -190,7 +190,7 @@ export default function MembersLayout() {
     { id: "dashboard", label: "Dashboard", minPower: 0 },
     { id: "members", label: "Members", minPower: 0 },
     { id: "profile", label: "Profile", minPower: 0 },
-    { id: "chat", label: "Chat", minPower: 0 },
+    { id: "chat", label: "Advisory Chat", minPower: 30 },
     { id: "meets", label: "Meets", minPower: 0 },
     { id: "projects", label: "Projects", minPower: 0 },
     { id: "instructions", label: "Instructions", minPower: 0 },
@@ -207,7 +207,7 @@ export default function MembersLayout() {
     baseNav.push(
       { id: "dashboard", label: "Dashboard", minPower: 0 },
       { id: "profile", label: "Profile", minPower: 0 },
-      { id: "chat", label: "Chat", minPower: 0 },
+      { id: "chat", label: "Advisory Chat", minPower: 30 },
     );
   }
   const roleDeptAccess: Record<string, string[]> = {

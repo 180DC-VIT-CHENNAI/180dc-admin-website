@@ -159,7 +159,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
       <div className="card-doodle" style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", height: "calc(100vh - 160px)", minHeight: 400 }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 12, borderBottom: "1px solid var(--border-light)" }}>
-          <h3 style={{ margin: 0 }}>Chat</h3>
+          <h3 style={{ margin: 0 }}>Advisory Chat Room</h3>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: connected ? "var(--primary-green)" : "#e74c3c", display: "inline-block" }} />
             <span style={{ color: "var(--text-secondary)" }}>{connected ? `${onlineUsers.length} online` : "Disconnected"}</span>
