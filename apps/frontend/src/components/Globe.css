@@ -1,7 +1,7 @@
 .globe-3d-wrapper {
   position: relative;
   width: 100%;
-  height: 700px;
+  height: min(700px, 90vw);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -446,17 +446,17 @@
 
 @media (max-width: 1024px) {
   .globe-3d-wrapper {
-    height: 550px;
+    height: min(550px, 85vw);
   }
 
   .globe-3d-wrapper::before {
-    width: 500px;
-    height: 500px;
+    width: min(500px, 80vw);
+    height: min(500px, 80vw);
   }
 
   .globe-3d-wrapper::after {
-    width: 520px;
-    height: 520px;
+    width: min(520px, 82vw);
+    height: min(520px, 82vw);
   }
 
   .globe-doodle-annotation {
@@ -470,17 +470,12 @@
 
 @media (max-width: 768px) {
   .globe-3d-wrapper {
-    height: 380px;
+    height: min(380px, 90vw);
   }
 
   .globe-3d-wrapper::before,
   .globe-3d-wrapper::after {
     display: none;
-  }
-
-  .globe-3d-wrapper canvas {
-    width: 380px !important;
-    height: 380px !important;
   }
 
   .campus-panel {
@@ -514,12 +509,7 @@
 
 @media (max-width: 480px) {
   .globe-3d-wrapper {
-    height: 300px;
-  }
-
-  .globe-3d-wrapper canvas {
-    width: 300px !important;
-    height: 300px !important;
+    height: min(300px, 85vw);
   }
 
   .campus-panel {

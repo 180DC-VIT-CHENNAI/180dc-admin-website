@@ -1125,27 +1125,9 @@ app.get("/api/admin-tokens", async (c) => {
   try {
     await ensureTables(c.env.DB);
     requireBoard(c);
-    const rows = await c.env.DB.prepare(
-      "SELECT token, email, name, role_id, created_by, created_at, revoked_at FROM admin_tokens ORDER BY created_at DESC",
-    ).all();
-    const masked = (rows.results || []).map((t: any) => ({
-      tokenPreview: maskToken(t.token),
-      email: t.email, name: t.name, role_id: t.role_id,
-      created_by: t.created_by, created_at: t.created_at, revoked_at: t.revoked_at,
-    }));
-    return c.json({ success: true, tokens: { results: masked } });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
-
-app.post("/api/admin-tokens", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    requireBoard(c);
-    const rl = await checkRateLimit(c, "create_admin_token", 20, 3600);
+    const rl = await checkRateLimit(c, "send_email", 10, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many token creation requests.", retryAfter: rl.retryAfter }, 429);
+      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
     const email = validateEmail(body.email);
@@ -2981,7 +2963,7 @@ app.get("/api/recruitment/open-domains", async (c) => {
 app.post("/api/consulting-request", async (c) => {
   try {
     await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "consulting_request", 3, 3600);
+    const rl = await checkRateLimit(c, "consulting_request", 1, 3600);
     if (!rl.allowed) {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
     }

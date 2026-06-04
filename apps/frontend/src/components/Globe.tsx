@@ -13,9 +13,22 @@ const Globe = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [countries, setCountries] = useState<{ features: any[] }>({ features: [] });
   const [doodleTextureUrl, setDoodleTextureUrl] = useState<string | null>(null);
+  const [globeSize, setGlobeSize] = useState(700);
 
   const [globeReady, setGlobeReady] = useState(false);
   const [inkSplash, setInkSplash] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    function updateSize() {
+      if (containerRef.current) {
+        const w = containerRef.current.clientWidth;
+        setGlobeSize(Math.min(w, 700));
+      }
+    }
+    updateSize();
+    window.addEventListener("resize", updateSize);
+    return () => window.removeEventListener("resize", updateSize);
+  }, []);
 
   const allBranches = useMemo(() => [
     {
@@ -225,8 +238,8 @@ const Globe = () => {
       {globeReady && doodleTextureUrl && (
         <GlobeGL
           ref={globeRef}
-          width={700}
-          height={700}
+          width={globeSize}
+          height={globeSize}
           backgroundColor="rgba(0,0,0,0)"
           globeImageUrl={doodleTextureUrl}
 
