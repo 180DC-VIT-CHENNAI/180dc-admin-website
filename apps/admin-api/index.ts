@@ -1254,12 +1254,12 @@ app.delete("/api/admin-tokens/:email", async (c) => {
     const row: any = await c.env.DB.prepare("SELECT email FROM admin_tokens WHERE email = ?").bind(email).first();
     if (!row) return c.json({ error: "Token not found for this email" }, 404);
     await c.env.DB.prepare(
-      "UPDATE admin_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE email = ?",
+      "DELETE FROM admin_tokens WHERE email = ?",
     )
       .bind(email)
       .run();
-    await addAuditLog(c, "token_revoked", "admin_token", email, "Token revoked for " + email);
-    return c.json({ success: true, message: "Token revoked." });
+    await addAuditLog(c, "token_deleted", "admin_token", email, "Token deleted for " + email);
+    return c.json({ success: true, message: "Token deleted permanently." });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -1670,9 +1670,23 @@ app.delete("/api/members/:id", async (c) => {
       );
     }
 
+    // Clean up related records
+    const deletedUser: any = await c.env.DB.prepare(
+      "SELECT email FROM users WHERE id = ?",
+    ).bind(targetId).first();
+
     await c.env.DB.prepare("DELETE FROM users WHERE id = ?")
       .bind(targetId)
       .run();
+
+    if (deletedUser?.email) {
+      await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?")
+        .bind(deletedUser.email)
+        .run();
+      await c.env.DB.prepare(
+        "DELETE FROM role_transfers WHERE from_user_id = ? OR to_user_id = ?",
+      ).bind(targetId, targetId).run();
+    }
     await addAuditLog(c, "member_removed", "user", targetId, "Member removed");
     return c.json({ success: true, message: "Member removed permanently." });
   } catch (e: any) {

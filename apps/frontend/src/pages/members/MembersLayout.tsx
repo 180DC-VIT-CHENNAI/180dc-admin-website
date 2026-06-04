@@ -548,13 +548,12 @@ export default function MembersLayout() {
                         <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{item.email} · {item.role_id}</div>
                         <div style={{ marginTop: 4, fontFamily: "monospace", fontSize: 12, wordBreak: "break-all" }}>{item.tokenPreview || item.token}</div>
                       </div>
-                      {!item.revoked_at ? (
-                        <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
-                          const res = await fetch(apiUrl(`/api/admin-tokens/${item.email}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
-                          const data = await res.json();
-                          if (data.success) setAdminTokens((prev) => prev.map((t) => t.email === item.email ? { ...t, revoked_at: new Date().toISOString() } : t));
-                        }}>Revoke</button>
-                      ) : <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>Revoked</span>}
+                      <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13, color: item.revoked_at ? "var(--text-secondary)" : "#e74c3c", borderColor: item.revoked_at ? "var(--border-light)" : "#e74c3c" }} onClick={async () => {
+                        if (!confirm("Delete this token permanently?")) return;
+                        const res = await fetch(apiUrl(`/api/admin-tokens/${item.email}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                        const data = await res.json();
+                        if (data.success) setAdminTokens((prev) => prev.filter((t) => t.email !== item.email));
+                      }}>{item.revoked_at ? "Remove" : "Delete"}</button>
                     </div>
                   ))}
                 </div>
