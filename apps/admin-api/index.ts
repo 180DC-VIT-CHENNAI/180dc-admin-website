@@ -1045,22 +1045,7 @@ app.post("/api/dev-login", async (c) => {
         secondaryRoleId: user.secondary_role_id,
         secondaryRoleName,
       });
-    }
-        // Fallback: if secondary role not found, fall through to director
-      }
-      // Default or "director" — primary role
-      return c.json({
-        success: true,
-        email: entry.email,
-        name: user.name || entry.name,
-        roleId: user.role_id || entry.role_id || "member",
-        roleName: user.role_name || null,
-        powerLevel: user.power_level ?? 10,
-        departmentId: user.department_id || null,
-        dualRole: true,
-        dualRoleChosen: !!loginAs,
-      });
-    }
+  }
 
     return c.json({
       success: true,
