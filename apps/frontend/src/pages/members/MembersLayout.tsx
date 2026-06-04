@@ -6,6 +6,7 @@ import DepartmentPanel from "./DepartmentPanel";
 import RecruitmentsPanel from "./RecruitmentsPanel";
 import ProfileSection from "./ProfileSection";
 import { apiUrl } from "../../lib/api";
+import { useTheme } from "../../context/ThemeContext";
 import "./MembersLayout.css";
 
 function FullPageLoader({ message }: { message: string }) {
@@ -35,6 +36,7 @@ const DEPT_NAMES: Record<string, string> = {
 };
 
 export default function MembersLayout() {
+  const { isDark, toggle: toggleTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(() => sessionStorage.getItem("authToken"));
   const [email, setEmail] = useState<string | null>(sessionStorage.getItem("authEmail"));
@@ -205,12 +207,22 @@ export default function MembersLayout() {
             </button>
           ))}
         </nav>
-        <div style={{ padding: "1rem", borderTop: "1px solid var(--border-light)" }}>
+        <div style={{ padding: "1rem", borderTop: "1px solid var(--border-light)", display: "flex", gap: 8 }}>
+          <button
+            onClick={toggleTheme}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "0.5rem 0.8rem", border: "1px solid var(--border-light)",
+              background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 13, borderRadius: 6, flex: 1,
+            }}
+            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {isDark ? "☀" : "☾"} {isDark ? "Light" : "Dark"}
+          </button>
           <button
             onClick={() => { sessionStorage.clear(); setAuthToken(null); }}
             style={{
-              display: "flex", alignItems: "center", gap: 8, padding: "0.5rem 1rem", border: "1px solid var(--border-light)",
-              background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 13, width: "100%",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0.5rem 1rem", border: "1px solid var(--border-light)",
+              background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 13, flex: 1,
               borderRadius: 6,
             }}
           >

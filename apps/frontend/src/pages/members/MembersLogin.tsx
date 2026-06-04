@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { apiUrl } from "../../lib/api";
+import { useTheme } from "../../context/ThemeContext";
 
 interface MembersLoginProps {
   onLogin: (
@@ -12,6 +13,7 @@ interface MembersLoginProps {
 }
 
 export default function MembersLogin({ onLogin }: MembersLoginProps) {
+  const { isDark, toggle: toggleTheme } = useTheme();
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
@@ -73,8 +75,20 @@ export default function MembersLogin({ onLogin }: MembersLoginProps) {
         background: "var(--bg-primary)",
         minHeight: "100vh",
         width: "100%",
+        position: "relative",
       }}
     >
+      <button
+        onClick={toggleTheme}
+        style={{
+          position: "absolute", top: 16, right: 16, zIndex: 10,
+          padding: "0.5rem 0.8rem", border: "2px solid var(--border-light)",
+          background: "var(--bg-card)", color: "var(--text-primary)", cursor: "pointer",
+          fontSize: 13, borderRadius: 8, fontWeight: 600,
+        }}
+      >
+        {isDark ? "☀ Light" : "☾ Dark"}
+      </button>
       <div className="container" style={{ padding: "4rem 0" }}>
         <div
           className="card-doodle"
