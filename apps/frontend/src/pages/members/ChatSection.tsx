@@ -102,9 +102,12 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
   const [pollOptions, setPollOptions] = useState(["", ""]);
   const [sending, setSending] = useState(false);
   const [reconnectKey, setReconnectKey] = useState(0);
+  const [mentionQuery, setMentionQuery] = useState<{ text: string; start: number } | null>(null);
+  const [mentionIdx, setMentionIdx] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const typingTimer = useRef<any>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const reconnectRef = useRef<number>(0);
   const heartbeatRef = useRef<number>(0);
@@ -248,13 +251,30 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
     try {
       wsRef.current.send(JSON.stringify({ type: "message", content }));
       setInput("");
+      setMentionQuery(null);
     } catch (e) {
       setError("Failed to send: " + (e instanceof Error ? e.message : String(e)));
     }
   }, [input]);
 
-  function handleInputChange(value: string) {
+  function handleInputChange(value: string, selStart: number) {
     setInput(value);
+
+    // Detect @mention being typed
+    const beforeCursor = value.slice(0, selStart);
+    const atIdx = beforeCursor.lastIndexOf("@");
+    if (atIdx !== -1 && (atIdx === 0 || beforeCursor[atIdx - 1] === " " || beforeCursor[atIdx - 1] === "\n")) {
+      const query = beforeCursor.slice(atIdx + 1);
+      if (!/\s/.test(query)) {
+        setMentionQuery({ text: query.toLowerCase(), start: atIdx });
+        setMentionIdx(0);
+      } else {
+        setMentionQuery(null);
+      }
+    } else {
+      setMentionQuery(null);
+    }
+
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     wsRef.current.send(JSON.stringify({ type: "typing", active: true }));
     if (typingTimer.current) clearTimeout(typingTimer.current);
@@ -265,11 +285,42 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
     }, 2000);
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentionQuery && mentionSuggestions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIdx((i) => (i + 1) % mentionSuggestions.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIdx((i) => (i - 1 + mentionSuggestions.length) % mentionSuggestions.length);
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        insertMention(mentionSuggestions[mentionIdx].userName);
+        return;
+      }
+      if (e.key === "Escape") {
+        setMentionQuery(null);
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
+  }
+
+  function insertMention(userName: string) {
+    if (!mentionQuery) return;
+    const before = input.slice(0, mentionQuery.start);
+    const after = input.slice(mentionQuery.start + 1 + mentionQuery.text.length);
+    setInput(before + "@" + userName + " " + after);
+    setMentionQuery(null);
+    inputRef.current?.focus();
   }
 
   function reconnect() {
@@ -349,11 +400,19 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
     }
   }
 
+  const mentionSuggestions = mentionQuery
+    ? onlineUsers.filter(
+        (u) =>
+          u.userId !== currentUser?.userId &&
+          u.userName.toLowerCase().startsWith(mentionQuery.text),
+      ).slice(0, 8)
+    : [];
+
   const grouped = groupByDate(entries);
 
   return (
     <div className="members-grid">
-      <div className="card-doodle" style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", height: "calc(100vh - 160px)", minHeight: 400 }}>
+      <div className="card-doodle" style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", height: "calc(100vh - 80px)", minHeight: 500 }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 12, borderBottom: "1px solid var(--border-light)" }}>
           <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
@@ -529,6 +588,31 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
               </div>
             )}
 
+            {/* @mention suggestions */}
+            {mentionSuggestions.length > 0 && (
+              <div style={{
+                border: "1px solid var(--border-light)", borderRadius: 8, background: "var(--bg-primary)",
+                overflow: "hidden", marginTop: 4,
+              }}>
+                {mentionSuggestions.map((u, idx) => (
+                  <div
+                    key={u.userId}
+                    onClick={() => insertMention(u.userName)}
+                    onMouseEnter={() => setMentionIdx(idx)}
+                    style={{
+                      padding: "6px 10px", cursor: "pointer", fontSize: 13,
+                      background: idx === mentionIdx ? "var(--bg-secondary)" : "transparent",
+                      display: "flex", alignItems: "center", gap: 6,
+                    }}
+                  >
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--primary-green)", display: "inline-block", flexShrink: 0 }} />
+                    <span style={{ fontWeight: idx === mentionIdx ? 600 : 400 }}>{u.userName}</span>
+                    <span style={{ color: "var(--text-light)", fontSize: 11, marginLeft: "auto" }}>@{u.userName}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Input area */}
             <div style={{ display: "flex", gap: 8, marginTop: 8, borderTop: "1px solid var(--border-light)", paddingTop: 12, alignItems: "flex-end" }}>
               <button
@@ -541,11 +625,12 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
                 +
               </button>
               <textarea
+                ref={inputRef}
                 className="input"
                 value={input}
-                onChange={(e) => handleInputChange(e.target.value)}
+                onChange={(e) => handleInputChange(e.target.value, e.target.selectionStart)}
                 onKeyDown={handleKeyDown}
-                placeholder={connected ? "Type a message... (@name to mention)" : "Connecting..."}
+                placeholder={connected ? "Type a message... (@ to mention)" : "Connecting..."}
                 rows={3}
                 disabled={!connected}
                 style={{ flex: 1, resize: "none", fontSize: 14, lineHeight: 1.5 }}
