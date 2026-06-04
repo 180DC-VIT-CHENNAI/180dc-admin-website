@@ -244,15 +244,18 @@ export default function MembersLayout() {
     // Chats
     const chatItems: NavItem[] = [
       { id: "chat_general", label: "General Chat", minPower: 10 },
+      { id: "chat_advisory", label: "Advisory Chat", minPower: 50 },
       { id: "chat_board", label: "Board Chat", minPower: 100 },
     ];
+    // Department chats — any member with a department sees their department's chat
     if (powerLevel >= 100) {
       departments.forEach((d: any) => {
         chatItems.push({ id: `chat_dept_${d.id}`, label: `${d.name} Chat`, minPower: 10 });
       });
-    } else if (allowedDeptIds.length > 0) {
+    } else {
+      const chatDeptIds = multiDeptRoles || (hasDepartment ? [departmentId!] : []);
       departments
-        .filter((d: any) => allowedDeptIds.includes(d.id))
+        .filter((d: any) => chatDeptIds.includes(d.id))
         .forEach((d: any) => {
           chatItems.push({ id: `chat_dept_${d.id}`, label: `${d.name} Chat`, minPower: 10 });
         });
@@ -261,6 +264,7 @@ export default function MembersLayout() {
       label: "Chats",
       items: chatItems.filter(item => {
         const room = item.id === "chat_general" ? "general"
+          : item.id === "chat_advisory" ? "advisory"
           : item.id === "chat_board" ? "board"
           : item.id.startsWith("chat_dept_") ? "dept-" + item.id.slice(10)
           : "";
@@ -330,7 +334,16 @@ export default function MembersLayout() {
       {/* SIDEBAR */}
       <div className={`members-sidebar ${sidebarOpen ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`}>
         <div style={{ padding: "1.5rem 1rem", borderBottom: "1px solid var(--border-light)", display: sidebarCollapsed ? "none" : "block" }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>180DC Portal</h2>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h2 style={{ margin: 0, fontSize: 18 }}>180DC Portal</h2>
+            <button className="desktop-sidebar-toggle" onClick={() => {
+              const next = !sidebarCollapsed;
+              setSidebarCollapsed(next);
+              localStorage.setItem("membersSidebarCollapsed", String(next));
+            }} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+              {sidebarCollapsed ? "☰" : "✕"}
+            </button>
+          </div>
           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>{email}</div>
           <div style={{ fontSize: 12, color: "var(--primary-green)", marginTop: 2 }}>Power: {powerLevel}</div>
         </div>
@@ -355,7 +368,7 @@ export default function MembersLayout() {
                     {section.label}
                   </div>
                 )}
-                {(!sidebarCollapsed && expandedSections.has(section.label)) || sidebarCollapsed ? visible.map((item) => (
+                {!section.label || (!sidebarCollapsed && expandedSections.has(section.label)) || sidebarCollapsed ? visible.map((item) => (
                   <button
                     key={item.id}
                     onClick={() => {
@@ -411,13 +424,6 @@ export default function MembersLayout() {
       {/* MAIN CONTENT */}
       <div className={`members-main ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
         <button className="mobile-sidebar-toggle" onClick={() => setSidebarOpen((o) => !o)}>{sidebarOpen ? "✕" : "☰"}</button>
-        <button className="desktop-sidebar-toggle" onClick={() => {
-          const next = !sidebarCollapsed;
-          setSidebarCollapsed(next);
-          localStorage.setItem("membersSidebarCollapsed", String(next));
-        }} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
-          {sidebarCollapsed ? "☰" : "✕"}
-        </button>
         {activePanel === "dashboard" && (
           <>
             <h2 style={{ marginTop: 0 }}>Dashboard</h2>
@@ -648,7 +654,7 @@ export default function MembersLayout() {
         )}
 
         {activePanel === "room_settings" && (
-          <RoomSettingsPanel authToken={authToken!} powerLevel={powerLevel} departmentId={departmentId} departments={departments} />
+          <RoomSettingsPanel authToken={authToken!} powerLevel={powerLevel} departmentId={departmentId} roleId={roleId} departments={departments} />
         )}
 
         {activePanel === "admin" && powerLevel >= 100 && (
@@ -2449,7 +2455,7 @@ function SendMailSection({ authToken }: { authToken: string }) {
   );
 }
 
-function RoomSettingsPanel({ authToken, powerLevel, departmentId, departments }: { authToken: string; powerLevel: number; departmentId: string | null; departments: any[] }) {
+function RoomSettingsPanel({ authToken, powerLevel, departmentId, roleId, departments }: { authToken: string; powerLevel: number; departmentId: string | null; roleId: string | null; departments: any[] }) {
   const [settings, setSettings] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -2466,15 +2472,21 @@ function RoomSettingsPanel({ authToken, powerLevel, departmentId, departments }:
       .catch(() => {});
   }, [authToken]);
 
-  const canManageAll = powerLevel >= 80;
+  const canManageAll = powerLevel >= 100;
 
   const rooms = [
     { id: "general", label: "General Chat" },
+    { id: "advisory", label: "Advisory Chat" },
     { id: "board", label: "Board Chat" },
     ...departments.map((d: any) => ({ id: `dept-${d.id}`, label: `${d.name} Chat` })),
   ].filter(r => {
     if (canManageAll) return true;
-    if (powerLevel >= 50 && r.id.startsWith("dept-") && r.id.replace("dept-", "") === departmentId) return true;
+    if (!r.id.startsWith("dept-")) return false;
+    const deptId = r.id.replace("dept-", "");
+    if (powerLevel >= 50 && deptId === departmentId) return true;
+    const roleDeptAccess: Record<string, string[]> = { marketing_director: ["marketing", "social_media"] };
+    const allowedDepts = roleDeptAccess[roleId || ""];
+    if (allowedDepts && allowedDepts.includes(deptId)) return true;
     return false;
   });
 

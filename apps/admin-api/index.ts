@@ -730,8 +730,9 @@ app.use(
 
 app.use("*", csrf({
   origin: (origin) => {
-    if (!origin || isDevOrigin(origin) || ALLOWED_ORIGINS.includes(origin)) return origin;
-    return origin;
+    if (!origin) return false;
+    if (isDevOrigin(origin) || ALLOWED_ORIGINS.includes(origin)) return true;
+    return false;
   },
 }));
 
@@ -3425,9 +3426,14 @@ app.post("/api/chat/rooms/:room/toggle", async (c) => {
     const deptId = isDeptRoom ? room.replace("dept-", "") : null;
 
     let canManage = false;
-    if (user.power_level >= 80) {
+    if (user.power_level >= 100) {
       canManage = true;
-    } else if (user.power_level >= 50 && isDeptRoom && user.department_id === deptId) {
+    } else if (user.power_level >= 50 && isDeptRoom && (() => {
+      if (user.department_id === deptId) return true;
+      const roleDeptAccess: Record<string, string[]> = { marketing_director: ["marketing", "social_media"] };
+      const allowedDepts = roleDeptAccess[user.role_id];
+      return allowedDepts && allowedDepts.includes(deptId);
+    })()) {
       canManage = true;
     }
 
@@ -3467,7 +3473,16 @@ app.post("/api/chat/init", async (c) => {
     const canAccessAdvisory = user.role_id === "advisory" || user.power_level >= 50;
     const canAccessGeneral = user.power_level >= 10 && user.role_id !== "advisory";
     const canAccessBoard = user.power_level >= 100;
-    const canAccessDept = room.startsWith("dept-") && (user.power_level >= 100 || user.department_id === room.replace("dept-", ""));
+    const canAccessDept = room.startsWith("dept-") && (() => {
+      if (user.power_level >= 100) return true;
+      const roleDeptAccess: Record<string, string[]> = {
+        marketing_director: ["marketing", "social_media"],
+      };
+      const allowedDepts = roleDeptAccess[user.role_id];
+      if (allowedDepts && allowedDepts.includes(room.replace("dept-", ""))) return true;
+      if (user.department_id === room.replace("dept-", "")) return true;
+      return false;
+    })();
 
     let allowed = false;
     if (room === "advisory") allowed = canAccessAdvisory;
@@ -3528,7 +3543,7 @@ export class ChatRoomDO {
       const body: any = await request.json();
       await this.state.storage.put("session:" + body.sessionId, JSON.stringify(body.userInfo));
       // Auto-expire sessions after 30 seconds
-      await this.state.storage.setAlarm(Date.now() + 30000);
+      await this.state.storage.setAlarm(Date.now() + 50000);
       return new Response(JSON.stringify({ success: true }));
     }
 

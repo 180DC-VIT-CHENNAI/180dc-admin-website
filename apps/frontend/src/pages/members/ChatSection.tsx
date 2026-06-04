@@ -158,7 +158,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
             if (wsRef.current?.readyState === WebSocket.OPEN) {
               wsRef.current.send(JSON.stringify({ type: "ping" }));
             }
-          }, 8000);
+          }, 30000);
         };
 
         socket.onmessage = (event) => {

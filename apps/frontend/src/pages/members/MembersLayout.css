@@ -64,10 +64,6 @@
 
 .desktop-sidebar-toggle {
   display: none;
-  position: fixed;
-  top: 0.75rem;
-  right: 0.75rem;
-  z-index: 11;
   width: 34px;
   height: 34px;
   border-radius: 8px;
@@ -78,6 +74,7 @@
   cursor: pointer;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 .desktop-sidebar-toggle:hover {
   background: var(--bg-secondary);
