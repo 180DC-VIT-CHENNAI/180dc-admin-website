@@ -107,6 +107,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
   const [mentionQuery, setMentionQuery] = useState<{ text: string; start: number } | null>(null);
   const [mentionIdx, setMentionIdx] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
+  const connIdRef = useRef<string>("");
   const typingTimer = useRef<any>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -156,7 +157,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
           setError("");
           heartbeatRef.current = window.setInterval(() => {
             if (wsRef.current?.readyState === WebSocket.OPEN) {
-              wsRef.current.send(JSON.stringify({ type: "ping" }));
+              wsRef.current.send(JSON.stringify({ type: "ping", connId: connIdRef.current }));
             }
           }, 30000);
         };
@@ -171,6 +172,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
                 setEntries(msg.messages || []);
                 setOnlineUsers(msg.onlineUsers || []);
                 if (msg.currentUser) setCurrentUser(msg.currentUser);
+                if (msg.connId) connIdRef.current = msg.connId;
                 break;
               case "message": {
                 setEntries((prev) => [...prev, msg]);
@@ -260,7 +262,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
       return;
     }
     try {
-      wsRef.current.send(JSON.stringify({ type: "message", content }));
+      wsRef.current.send(JSON.stringify({ type: "message", content, connId: connIdRef.current }));
       setInput("");
       setMentionQuery(null);
     } catch (e) {
@@ -287,11 +289,11 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
     }
 
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ type: "typing", active: true }));
+    wsRef.current.send(JSON.stringify({ type: "typing", active: true, connId: connIdRef.current }));
     if (typingTimer.current) clearTimeout(typingTimer.current);
     typingTimer.current = setTimeout(() => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: "typing", active: false }));
+        wsRef.current.send(JSON.stringify({ type: "typing", active: false, connId: connIdRef.current }));
       }
     }, 2000);
   }
@@ -362,7 +364,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
     console.log("[Chat] createPoll sending:", { question, options });
     setSending(true);
     try {
-      wsRef.current.send(JSON.stringify({ type: "create_poll", question, options }));
+      wsRef.current.send(JSON.stringify({ type: "create_poll", question, options, connId: connIdRef.current }));
       setPollQuestion("");
       setPollOptions(["", ""]);
       setShowPollForm(false);
@@ -376,7 +378,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
   function vote(pollId: string, optionIndex: number) {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     try {
-      wsRef.current.send(JSON.stringify({ type: "vote", pollId, optionIndex }));
+      wsRef.current.send(JSON.stringify({ type: "vote", pollId, optionIndex, connId: connIdRef.current }));
     } catch (e) {
       setError("Failed to vote: " + (e instanceof Error ? e.message : String(e)));
     }
@@ -385,7 +387,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
   function closePoll(pollId: string) {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     try {
-      wsRef.current.send(JSON.stringify({ type: "close_poll", pollId }));
+      wsRef.current.send(JSON.stringify({ type: "close_poll", pollId, connId: connIdRef.current }));
     } catch (e) {
       setError("Failed to close poll: " + (e instanceof Error ? e.message : String(e)));
     }

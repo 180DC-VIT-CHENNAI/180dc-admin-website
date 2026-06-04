@@ -3524,6 +3524,7 @@ export class ChatRoomDO {
   state: any;
   env: any;
   connections: Map<any, any>;
+  connById: Map<string, any>;
   messages: any[];
   polls: any[];
 
@@ -3531,7 +3532,7 @@ export class ChatRoomDO {
     this.state = state;
     this.env = env;
     this.connections = new Map();
-    this.wsMap = new WeakMap();
+    this.connById = new Map();
     this.messages = [];
     this.polls = [];
   }
@@ -3561,26 +3562,36 @@ export class ChatRoomDO {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
 
-      // Store in BOTH a regular Map and a WeakMap
-      const entry: any = { ...userInfo, ws: server };
+      // Create a persistent connection ID
+      const connId = crypto.randomUUID().replace(/-/g, "");
+      (server as any)._connId = connId;
+
+      const entry: any = { ...userInfo, ws: server, connId };
       this.connections.set(server, entry);
-      this.wsMap.set(server, entry);
+      this.connById.set(connId, entry);
+
+      // Persist in DO storage for restart recovery
+      const stored = await this.state.storage.get("conn:" + connId);
+      if (!stored) {
+        await this.state.storage.put("conn:" + connId, JSON.stringify(userInfo));
+      }
 
       this.state.acceptWebSocket(server);
 
       // Load persisted messages and polls
       if (this.messages.length === 0) {
-        const stored = await this.state.storage.get("messages");
-        if (stored) this.messages = stored;
+        const msgStored = await this.state.storage.get("messages");
+        if (msgStored) this.messages = msgStored;
       }
       if (this.polls.length === 0) {
-        const stored = await this.state.storage.get("polls");
-        if (stored) this.polls = stored;
+        const pollStored = await this.state.storage.get("polls");
+        if (pollStored) this.polls = pollStored;
       }
 
       // Send history + online users + polls to the new connection
       server.send(JSON.stringify({
         type: "history",
+        connId,
         messages: this.messages.slice(-50),
         onlineUsers: Array.from(this.connections.values()).map((c: any) => ({
           userId: c.userId, userName: c.userName, userEmail: c.userEmail, userRole: c.userRole,
@@ -3599,13 +3610,41 @@ export class ChatRoomDO {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string) {
-    // Try WeakMap first (reliable object identity), fall back to regular Map
-    let sender = this.wsMap.get(ws);
-    if (!sender) sender = this.connections.get(ws);
-    if (!sender) {
-      try { ws.send(JSON.stringify({ type: "_error", message: "sender not found in either map", mapSize: this.connections.size, keyTypes: [...this.connections.keys()].map(k => typeof k).slice(0, 5) })); } catch {}
-      return;
+    let data: any;
+    try { data = JSON.parse(raw); } catch { return; }
+
+    // Resolve sender: try direct ws lookup, then connId from client, then _connId on ws
+    let sender = this.connections.get(ws);
+    if (!sender && data.connId) {
+      sender = this.connById.get(data.connId);
+      if (!sender) {
+        // Try storage recovery
+        try {
+          const raw = await this.state.storage.get("conn:" + data.connId);
+          if (raw) {
+            const userInfo = JSON.parse(raw);
+            sender = { ...userInfo, ws, connId: data.connId };
+            this.connById.set(data.connId, sender);
+            this.connections.set(ws, sender);
+          }
+        } catch {}
+      }
     }
+    if (!sender && (ws as any)._connId) {
+      sender = this.connById.get((ws as any)._connId);
+      if (!sender) {
+        try {
+          const raw = await this.state.storage.get("conn:" + (ws as any)._connId);
+          if (raw) {
+            const userInfo = JSON.parse(raw);
+            sender = { ...userInfo, ws, connId: (ws as any)._connId };
+            this.connById.set((ws as any)._connId, sender);
+            this.connections.set(ws, sender);
+          }
+        } catch {}
+      }
+    }
+    if (!sender) return;
 
     let data: any;
     try { data = JSON.parse(raw); } catch {
@@ -3743,12 +3782,14 @@ export class ChatRoomDO {
   }
 
   async webSocketClose(ws: WebSocket) {
-    let user = this.wsMap.get(ws);
-    if (!user) user = this.connections.get(ws);
-    if (user) {
+    let entry = this.connections.get(ws);
+    if (!entry && (ws as any)._connId) {
+      entry = this.connById.get((ws as any)._connId);
+    }
+    if (entry) {
+      if (entry.connId) this.connById.delete(entry.connId);
       this.connections.delete(ws);
-      this.wsMap.delete(ws);
-      this.broadcast({ type: "user_left", userId: user.userId, userName: user.userName }, null);
+      this.broadcast({ type: "user_left", userId: entry.userId, userName: entry.userName }, null);
     }
   }
 
