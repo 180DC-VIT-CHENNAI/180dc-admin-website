@@ -145,7 +145,7 @@ export default function MembersLayout() {
           setRoomSettings(map);
         }
       })
-      .catch(() => {});
+      .catch((err) => console.error("Failed to fetch room settings:", err));
   }, [authToken]);
 
   const maskToken = (token: string) =>
@@ -2469,7 +2469,7 @@ function RoomSettingsPanel({ authToken, powerLevel, departmentId, roleId, depart
           setSettings(map);
         }
       })
-      .catch(() => {});
+      .catch((err) => console.error("Failed to fetch settings:", err));
   }, [authToken]);
 
   const canManageAll = powerLevel >= 100;

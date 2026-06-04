@@ -518,15 +518,7 @@ async function verifyPassword(password: string, salt: string, storedHash: string
   return result === 0;
 }
 
-let tablesEnsured = false;
-let seedDone = false;
-
 async function ensureTables(db: any) {
-  if (tablesEnsured) {
-    // Always run migrations even if tables were already ensured
-    await runMigrations(db);
-    return;
-  }
   await db.exec(`
     CREATE TABLE IF NOT EXISTS departments (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT);
     CREATE TABLE IF NOT EXISTS roles (id TEXT PRIMARY KEY, name TEXT NOT NULL, power_level INTEGER NOT NULL, created_by TEXT);
@@ -564,7 +556,6 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS chat_room_settings (room TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1);
     `);
   await runMigrations(db);
-  tablesEnsured = true;
 }
 
 async function runMigrations(db: any) {
@@ -596,7 +587,6 @@ let currentEnv: any = null;
 
 async function seedData(db: any, env?: any) {
   if (env) currentEnv = env;
-  if (seedDone) return;
   try {
     const roleSql = "INSERT OR IGNORE INTO roles (id, name, power_level, created_by) VALUES (?, ?, ?, ?)";
     await db.prepare(roleSql).bind("president", "President", 100, "system").run();
@@ -683,8 +673,6 @@ async function seedData(db: any, env?: any) {
     for (const domain of knownDomains) {
       await db.prepare("INSERT OR IGNORE INTO recruitment_domain_settings (domain_name, is_open) VALUES (?, ?)").bind(domain, 1).run();
     }
-
-    seedDone = true;
   } catch (e: any) {
     logError("Seed failed", e);
   }
@@ -700,6 +688,7 @@ app.use("*", async (c, next) => {
   c.res.headers.set("X-Content-Type-Options", "nosniff");
   c.res.headers.set("X-Frame-Options", "DENY");
   c.res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  c.res.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
 });
 
 const ALLOWED_ORIGINS = [
@@ -924,16 +913,16 @@ app.post("/api/members", async (c) => {
       return c.json({ error: "Invalid or missing email/name" }, 400);
     }
 
+    const rl = await checkRateLimit(c, "create_member", 10, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many member creation requests.", retryAfter: rl.retryAfter }, 429);
+    }
+
     const insert = await c.env.DB.prepare(
       "INSERT INTO users (id, name, email, role_id, department_id) VALUES (lower(hex(randomblob(16))), ?, ?, 'member', ?)",
     )
       .bind(name, email, departmentId)
       .run();
-
-    const rl = await checkRateLimit(c, "create_member", 10, 3600);
-    if (!rl.allowed) {
-      return c.json({ error: "Too many member creation requests.", retryAfter: rl.retryAfter }, 429);
-    }
 
     const token = crypto.randomUUID().replace(/-/g, "");
     const user: any = c.get("user");
@@ -2324,9 +2313,20 @@ app.post("/api/meets/process-queue", async (c) => {
 app.get("/api/department-meets", async (c) => {
   try {
     await ensureTables(c.env.DB);
-    const rows = await c.env.DB.prepare(
-      "SELECT dm.*, d.name as department_name FROM department_meets dm JOIN departments d ON dm.department_id = d.id ORDER BY dm.scheduled_at ASC",
-    ).all();
+    const user: any = c.get("user");
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+    let rows: any;
+    if (user.power_level >= 100) {
+      rows = await c.env.DB.prepare(
+        "SELECT dm.*, d.name as department_name FROM department_meets dm JOIN departments d ON dm.department_id = d.id ORDER BY dm.scheduled_at ASC",
+      ).all();
+    } else if (user.department_id) {
+      rows = await c.env.DB.prepare(
+        "SELECT dm.*, d.name as department_name FROM department_meets dm JOIN departments d ON dm.department_id = d.id WHERE dm.department_id = ? ORDER BY dm.scheduled_at ASC",
+      ).bind(user.department_id).all();
+    } else {
+      rows = { results: [] };
+    }
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
