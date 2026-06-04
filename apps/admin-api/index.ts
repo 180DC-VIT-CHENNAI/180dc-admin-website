@@ -3675,7 +3675,7 @@ export class ChatRoomDO {
       this.messages.push(pollMsg);
       if (this.messages.length > 100) this.messages = this.messages.slice(-100);
 
-      this.broadcast({ type: "poll_created", id: poll.id, poll, userId: sender.userId, userName: sender.userName, userEmail: sender.userEmail, userRole: sender.userRole, timestamp: poll.timestamp }, null);
+      this.broadcast({ type: "poll", id: poll.id, poll, userId: sender.userId, userName: sender.userName, userEmail: sender.userEmail, userRole: sender.userRole, timestamp: poll.timestamp }, null);
       this.state.storage.put("messages", this.messages).catch(() => {});
       this.state.storage.put("polls", this.polls).catch(() => {});
     }
