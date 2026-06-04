@@ -20,31 +20,22 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
   const bubble1Ref = useRef<HTMLDivElement>(null);
   const bubble2Ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
-  const dismissedRef = useRef(false);
   const hasEnteredRef = useRef(false);
   const visibleRef = useRef(false);
   const [, setStep] = useState(0);
 
-  function slideOut(callback?: () => void) {
+  function slideOut() {
     gsap.to(wrapperRef.current, {
       x: "-120%",
       duration: 0.5,
       ease: "power3.in",
-      onComplete: () => {
-        setVisible(false);
-        callback?.();
-      },
+      onComplete: () => setVisible(false),
     });
   }
 
   function slideIn() {
     setVisible(true);
     gsap.to(wrapperRef.current, { x: 0, duration: 0.6, ease: "power3.out" });
-  }
-
-  function dismiss() {
-    dismissedRef.current = true;
-    slideOut();
   }
 
   useEffect(() => {
@@ -65,19 +56,18 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
       trigger: sections[0],
       start: "top 75%",
       onEnter: () => {
-        if (dismissedRef.current) return;
         visibleRef.current = true;
         if (!hasEnteredRef.current) {
           hasEnteredRef.current = true;
           setVisible(true);
           tl.play();
-        } else if (!visibleRef.current) {
+        } else if (wrapperRef.current) {
           slideIn();
         }
       },
       onLeaveBack: () => {
         visibleRef.current = false;
-        if (wrapperRef.current && !dismissedRef.current) {
+        if (wrapperRef.current) {
           gsap.to(wrapperRef.current, { x: "-120%", duration: 0.4, ease: "power3.in", onComplete: () => setVisible(false) });
         }
       },
@@ -203,7 +193,7 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
               fontSize: 13,
               fontFamily: "'Nunito', sans-serif",
             }}
-            onClick={() => { onRequestConsulting(); dismiss(); }}
+            onClick={() => { onRequestConsulting(); slideOut(); }}
           >
             Send Request
           </button>
@@ -214,7 +204,7 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
               fontSize: 13,
               fontFamily: "'Nunito', sans-serif",
             }}
-            onClick={dismiss}
+            onClick={slideOut}
           >
             No Thanks
           </button>
