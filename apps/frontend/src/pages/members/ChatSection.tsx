@@ -35,8 +35,11 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
   const typingTimer = useRef<any>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  const reconnectRef = useRef<number>(0);
+
   useEffect(() => {
     let cancelled = false;
+    let retries = 0;
 
     async function connect() {
       try {
@@ -61,6 +64,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
 
         socket.onopen = () => {
           if (cancelled) { socket.close(); return; }
+          retries = 0;
           setConnected(true);
           setError("");
         };
@@ -103,15 +107,28 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
           if (cancelled) return;
           setConnected(false);
           setOnlineUsers([]);
+          // Auto-reconnect with exponential backoff
+          if (retries < 10) {
+            const delay = Math.min(1000 * Math.pow(1.5, retries), 15000);
+            retries++;
+            reconnectRef.current = window.setTimeout(connect, delay);
+          }
         };
 
         socket.onerror = () => {
           if (cancelled) return;
-          setError("Connection error");
+          setError("Connection error, reconnecting...");
           setConnected(false);
         };
       } catch (e) {
-        if (!cancelled) setError("Failed to connect: " + (e instanceof Error ? e.message : String(e)));
+        if (!cancelled) {
+          setError("Failed to connect: " + (e instanceof Error ? e.message : String(e)));
+          if (retries < 10) {
+            const delay = Math.min(1000 * Math.pow(1.5, retries), 15000);
+            retries++;
+            reconnectRef.current = window.setTimeout(connect, delay);
+          }
+        }
       }
     }
 
@@ -119,6 +136,7 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
 
     return () => {
       cancelled = true;
+      if (reconnectRef.current) clearTimeout(reconnectRef.current);
       if (wsRef.current) wsRef.current.close();
       if (typingTimer.current) clearTimeout(typingTimer.current);
     };
@@ -130,9 +148,17 @@ export default function ChatSection({ authToken }: ChatSectionProps) {
 
   function sendMessage() {
     const content = input.trim();
-    if (!content || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ type: "message", content }));
-    setInput("");
+    if (!content) return;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      setError("Not connected. Waiting for reconnection...");
+      return;
+    }
+    try {
+      wsRef.current.send(JSON.stringify({ type: "message", content }));
+      setInput("");
+    } catch (e) {
+      setError("Failed to send: " + (e instanceof Error ? e.message : String(e)));
+    }
   }
 
   function handleInputChange(value: string) {
