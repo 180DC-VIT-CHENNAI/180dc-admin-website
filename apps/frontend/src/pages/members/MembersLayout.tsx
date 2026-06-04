@@ -333,6 +333,16 @@ export default function MembersLayout() {
 
       {/* SIDEBAR */}
       <div className={`members-sidebar ${sidebarOpen ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`}>
+        {sidebarCollapsed && (
+          <button className="desktop-sidebar-toggle" onClick={() => {
+            const next = !sidebarCollapsed;
+            setSidebarCollapsed(next);
+            localStorage.setItem("membersSidebarCollapsed", String(next));
+          }} title="Expand sidebar"
+            style={{ position: "absolute", top: "0.75rem", left: "50%", transform: "translateX(-50%)", zIndex: 11 }}>
+            ☰
+          </button>
+        )}
         <div style={{ padding: "1.5rem 1rem", borderBottom: "1px solid var(--border-light)", display: sidebarCollapsed ? "none" : "block" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <h2 style={{ margin: 0, fontSize: 18 }}>180DC Portal</h2>
@@ -340,8 +350,8 @@ export default function MembersLayout() {
               const next = !sidebarCollapsed;
               setSidebarCollapsed(next);
               localStorage.setItem("membersSidebarCollapsed", String(next));
-            }} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
-              {sidebarCollapsed ? "☰" : "✕"}
+            }} title="Collapse sidebar">
+              ✕
             </button>
           </div>
           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>{email}</div>
