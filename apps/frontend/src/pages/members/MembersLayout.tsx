@@ -25,6 +25,22 @@ function FullPageLoader({ message }: { message: string }) {
   );
 }
 
+const EX_TITLES = [
+  "x-president",
+  "x-vice_president",
+  "x-technical_director",
+  "x-marketing_director",
+  "x-secretary",
+  "x-lead",
+  "x-lead_rnd",
+  "x-lead_marketing",
+  "x-lead_social",
+  "x-lead_finance",
+  "x-lead_events",
+  "x-lead_cps",
+  "x-lead_hr",
+];
+
 const DEPT_NAMES: Record<string, string> = {
   tech: "Technical",
   rnd: "Research & Development",
@@ -91,6 +107,20 @@ export default function MembersLayout() {
   const [transferToUserId, setTransferToUserId] = useState("");
   const [transferRoleId, setTransferRoleId] = useState("");
   const [transferBusy, setTransferBusy] = useState(false);
+
+  // Advisory member creation state
+  const [advisoryEmail, setAdvisoryEmail] = useState("");
+  const [advisoryName, setAdvisoryName] = useState("");
+  const [advisoryExTitle, setAdvisoryExTitle] = useState("");
+  const [advisoryMemberDeptId, setAdvisoryMemberDeptId] = useState("");
+  const [advisoryBusy, setAdvisoryBusy] = useState(false);
+  const [advisoryRecentToken, setAdvisoryRecentToken] = useState<string | null>(null);
+
+  // Danger Zone advisory change state
+  const [dangerAdvUserId, setDangerAdvUserId] = useState("");
+  const [dangerAdvExTitle, setDangerAdvExTitle] = useState("");
+  const [dangerAdvDeptId, setDangerAdvDeptId] = useState("");
+  const [dangerAdvBusy, setDangerAdvBusy] = useState(false);
 
   const maskToken = (token: string) =>
     token.length <= 8 ? `${token.slice(0, 3)}…` : `${token.slice(0, 6)}…${token.slice(-4)}`;
@@ -159,6 +189,7 @@ export default function MembersLayout() {
     { id: "dashboard", label: "Dashboard", minPower: 0 },
     { id: "members", label: "Members", minPower: 0 },
     { id: "profile", label: "Profile", minPower: 0 },
+    { id: "chat", label: "Chat", minPower: 0 },
     { id: "meets", label: "Meets", minPower: 0 },
     { id: "projects", label: "Projects", minPower: 0 },
     { id: "instructions", label: "Instructions", minPower: 0 },
@@ -169,6 +200,15 @@ export default function MembersLayout() {
     { id: "announcements", label: "Announcements", minPower: 0 },
     { id: "admin", label: "Admin Console", minPower: 100 },
   ];
+  // Advisory role: only dashboard, profile, chat
+  if (roleId === "advisory") {
+    baseNav.length = 0;
+    baseNav.push(
+      { id: "dashboard", label: "Dashboard", minPower: 0 },
+      { id: "profile", label: "Profile", minPower: 0 },
+      { id: "chat", label: "Chat", minPower: 0 },
+    );
+  }
   const roleDeptAccess: Record<string, string[]> = {
     marketing_director: ["marketing", "social_media"],
   };
@@ -179,7 +219,7 @@ export default function MembersLayout() {
       id: `dept-${d.id}`, label: `${d.name} Dept`, minPower: 0, deptId: d.id,
     }));
     baseNav.splice(1, 0, ...deptLinks);
-  } else if (allowedDeptIds.length > 0) {
+  } else if (allowedDeptIds.length > 0 && roleId !== "advisory") {
     const deptLinks = departments
       .filter((d: any) => allowedDeptIds.includes(d.id))
       .map((d: any) => ({
@@ -349,6 +389,17 @@ export default function MembersLayout() {
             departmentId={departmentId}
             deptName={deptName}
           />
+        )}
+
+        {activePanel === "chat" && (
+          <>
+            <h2 style={{ marginTop: 0 }}>Chat</h2>
+            <div className="members-grid">
+              <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>Coming soon...</p>
+              </div>
+            </div>
+          </>
         )}
 
         {activePanel === "department" && (() => {
@@ -611,6 +662,57 @@ export default function MembersLayout() {
                 </div>
               </div>
 
+              {/* ADVISORY BOARD MEMBER */}
+              <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                <h3>Create Advisory Board Member</h3>
+                <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+                  Create an advisory board member with an optional ex-title and optional active club member role.
+                </p>
+                <div className="admin-grid-4" style={{ marginTop: 16 }}>
+                  <input className="input" placeholder="Email" value={advisoryEmail} onChange={(e) => setAdvisoryEmail(e.target.value)} />
+                  <input className="input" placeholder="Name" value={advisoryName} onChange={(e) => setAdvisoryName(e.target.value)} />
+                  <select className="input" value={advisoryExTitle} onChange={(e) => setAdvisoryExTitle(e.target.value)}>
+                    <option value="">No ex-title</option>
+                    {EX_TITLES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <select className="input" value={advisoryMemberDeptId} onChange={(e) => setAdvisoryMemberDeptId(e.target.value)}>
+                    <option value="">Not a club member</option>
+                    {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name} (as member)</option>)}
+                  </select>
+                  <button className="btn" disabled={advisoryBusy} onClick={async () => {
+                    if (!authToken || !advisoryEmail.trim()) { alert("Enter an email first"); return; }
+                    setAdvisoryBusy(true);
+                    try {
+                      const res = await fetch(apiUrl("/api/advisory-members"), {
+                        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                        body: JSON.stringify({
+                          email: advisoryEmail.trim(),
+                          name: advisoryName.trim(),
+                          exTitle: advisoryExTitle || null,
+                          memberDeptId: advisoryMemberDeptId || null,
+                        }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        setAdminTokens((prev) => [data, ...prev]);
+                        setAdvisoryEmail(""); setAdvisoryName(""); setAdvisoryExTitle(""); setAdvisoryMemberDeptId("");
+                        setAdvisoryRecentToken(data.token);
+                        alert(`Advisory member created successfully.`);
+                      } else alert(data.error);
+                    } finally { setAdvisoryBusy(false); }
+                  }}>{advisoryBusy ? "Creating..." : "Create Advisory Member"}</button>
+                </div>
+                {advisoryRecentToken && (
+                  <div className="floating-note" style={{ marginTop: 16, display: "inline-flex", gap: 10, alignItems: "center" }}>
+                    <span>Token: {advisoryRecentToken.slice(0, 6)}...{advisoryRecentToken.slice(-4)}</span>
+                    <button className="btn outline" style={{ padding: "0.45rem 0.9rem", boxShadow: "none" }} onClick={async () => {
+                      await navigator.clipboard.writeText(advisoryRecentToken);
+                      alert("Token copied");
+                    }}>Copy</button>
+                  </div>
+                )}
+              </div>
+
               {/* MEMBER */}
               <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
                 <h3>Create Member</h3>
@@ -690,7 +792,7 @@ export default function MembersLayout() {
                 <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
                   Change user roles or remove users permanently. These actions cannot be undone.
                 </p>
-                <div className="admin-grid-2" style={{ marginTop: 16 }}>
+                <div className="admin-grid-3" style={{ marginTop: 16 }}>
                   <div className="card-doodle" style={{ padding: 14, border: "1px solid var(--border-light)" }}>
                     <h4 style={{ margin: 0, fontSize: 15 }}>Change Role</h4>
                     <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
@@ -744,6 +846,55 @@ export default function MembersLayout() {
                           else alert(data.error);
                         } finally { setDeleteBusy(false); }
                       }}>{deleteBusy ? "Deleting..." : "Delete User"}</button>
+                    </div>
+                  </div>
+                  <div className="card-doodle" style={{ padding: 14, border: "1px solid var(--border-light)" }}>
+                    <h4 style={{ margin: 0, fontSize: 15 }}>Board Advisory Change</h4>
+                    <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
+                      Move a user to advisory board with an ex-title and optional club member department.
+                    </p>
+                    <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                      <select className="input" value={dangerAdvUserId} onChange={(e) => {
+                        setDangerAdvUserId(e.target.value);
+                        const u = allUsers.find((x: any) => x.id === e.target.value);
+                        setDangerAdvExTitle(u?.ex_title || "");
+                        setDangerAdvDeptId(u?.secondary_role_id === "member" ? u.department_id || "" : "");
+                      }}>
+                        <option value="">Select user</option>
+                        {allUsers.filter((u: any) => u.role_id !== "advisory").map((u: any) => (
+                          <option key={u.id} value={u.id}>{u.name} ({u.email}) - {u.role_name}</option>
+                        ))}
+                      </select>
+                      <select className="input" value={dangerAdvExTitle} onChange={(e) => setDangerAdvExTitle(e.target.value)}>
+                        <option value="">No ex-title</option>
+                        {EX_TITLES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <select className="input" value={dangerAdvDeptId} onChange={(e) => setDangerAdvDeptId(e.target.value)}>
+                        <option value="">Not a club member (advisory only)</option>
+                        {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name} (as member)</option>)}
+                      </select>
+                      <button className="btn" style={{ background: "#e74c3c" }} disabled={dangerAdvBusy} onClick={async () => {
+                        if (!dangerAdvUserId) { alert("Select a user"); return; }
+                        if (!confirm("Move this user to advisory board?")) return;
+                        setDangerAdvBusy(true);
+                        try {
+                          const res = await fetch(apiUrl(`/api/members/${dangerAdvUserId}/role`), {
+                            method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                            body: JSON.stringify({
+                              newRoleId: "advisory",
+                              departmentId: dangerAdvDeptId || null,
+                              secondaryRoleId: dangerAdvDeptId ? "member" : null,
+                              exTitle: dangerAdvExTitle || null,
+                            }),
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            alert("User moved to advisory board. Email sent.");
+                            setDangerAdvUserId(""); setDangerAdvExTitle(""); setDangerAdvDeptId("");
+                          } else alert(data.error);
+                        } finally { setDangerAdvBusy(false); }
+                      }}>{dangerAdvBusy ? "Updating..." : "Move to Advisory"}</button>
+                      {dangerAdvBusy && <FullPageLoader message="Updating role and sending email..." />}
                     </div>
                   </div>
                 </div>

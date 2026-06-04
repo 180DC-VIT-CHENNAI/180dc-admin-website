@@ -332,17 +332,18 @@ async function queueOrSendMeetEmails(c: any, recipients: { email: string; name: 
 }
 
 async function getMeetRecipients(db: any, meetType: string, departmentId?: string, departments?: string[]): Promise<{ email: string; name: string }[]> {
+  const advisoryFilter = " AND NOT (role_id = 'advisory' AND secondary_role_id IS NULL)";
   if (meetType === "department_meet" && departmentId) {
-    const rows: any = await db.prepare("SELECT email, name FROM users WHERE department_id = ? AND email != ?").bind(departmentId, DEV_ADMIN_EMAIL).all();
+    const rows: any = await db.prepare("SELECT email, name FROM users WHERE department_id = ? AND email != ?" + advisoryFilter).bind(departmentId, DEV_ADMIN_EMAIL).all();
     return rows.results || [];
   }
   if (meetType === "club_meet") {
-    const rows: any = await db.prepare("SELECT email, name FROM users WHERE email != ?").bind(DEV_ADMIN_EMAIL).all();
+    const rows: any = await db.prepare("SELECT email, name FROM users WHERE email != ?" + advisoryFilter).bind(DEV_ADMIN_EMAIL).all();
     return rows.results || [];
   }
   if (meetType === "inter_dept_meet" && departments && departments.length > 0) {
     const placeholders = departments.map(() => "?").join(",");
-    const rows: any = await db.prepare(`SELECT email, name FROM users WHERE department_id IN (${placeholders}) AND email != ?`).bind(...departments, DEV_ADMIN_EMAIL).all();
+    const rows: any = await db.prepare(`SELECT email, name FROM users WHERE department_id IN (${placeholders}) AND email != ?` + advisoryFilter).bind(...departments, DEV_ADMIN_EMAIL).all();
     return rows.results || [];
   }
   return [];
@@ -353,7 +354,7 @@ async function sendProjectAssignmentEmail(c: any, projectName: string, departmen
   if (!apiKey) return;
   const safeProjectName = escapeHtml(projectName);
   const rows: any = await c.env.DB.prepare(
-    `SELECT u.email, u.name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id IN (${departmentIds.map(() => "?").join(",")}) AND r.power_level >= 50 AND u.email != ?`
+    `SELECT u.email, u.name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id IN (${departmentIds.map(() => "?").join(",")}) AND r.power_level >= 50 AND u.email != ? AND NOT (u.role_id = 'advisory' AND u.secondary_role_id IS NULL)`
   ).bind(...departmentIds, DEV_ADMIN_EMAIL).all();
   const leads = rows.results || [];
   let count = await getTodayEmailCount(c.env.DB);
@@ -529,7 +530,7 @@ async function ensureTables(db: any) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS departments (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT);
     CREATE TABLE IF NOT EXISTS roles (id TEXT PRIMARY KEY, name TEXT NOT NULL, power_level INTEGER NOT NULL, created_by TEXT);
-    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, role_id TEXT NOT NULL, department_id TEXT, secondary_role_id TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (role_id) REFERENCES roles(id), FOREIGN KEY (department_id) REFERENCES departments(id));
+    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, role_id TEXT NOT NULL, department_id TEXT, secondary_role_id TEXT, ex_title TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (role_id) REFERENCES roles(id), FOREIGN KEY (department_id) REFERENCES departments(id));
     CREATE TABLE IF NOT EXISTS signup_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, message TEXT, department_id TEXT, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS admin_tokens (token TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, name TEXT, role_id TEXT NOT NULL DEFAULT 'member', created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, revoked_at DATETIME, FOREIGN KEY (role_id) REFERENCES roles(id));
     CREATE TABLE IF NOT EXISTS department_meets (id TEXT PRIMARY KEY, department_id TEXT NOT NULL, title TEXT NOT NULL, meet_link TEXT, description TEXT, scheduled_at DATETIME NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (department_id) REFERENCES departments(id));
@@ -587,6 +588,7 @@ async function runMigrations(db: any) {
   try { await db.exec("DELETE FROM rate_limits WHERE endpoint IN ('dev_login', 'recruitment_login', 'recruitment_register')"); } catch (e: any) { console.warn("Migration: clear login rate limits"); }
   try { await db.exec("ALTER TABLE users ADD COLUMN secondary_role_id TEXT"); } catch { console.warn("Migration: secondary_role_id may already exist"); }
   try { await db.exec("ALTER TABLE admin_tokens ADD COLUMN active_role_id TEXT"); } catch { console.warn("Migration: active_role_id may already exist"); }
+  try { await db.exec("ALTER TABLE users ADD COLUMN ex_title TEXT"); } catch { console.warn("Migration: ex_title may already exist"); }
 }
 
 let currentEnv: any = null;
@@ -610,6 +612,7 @@ async function seedData(db: any, env?: any) {
     await db.prepare(roleSql).bind("lead_cps", "Client Partner Sponsor Lead", 50, "system").run();
     await db.prepare(roleSql).bind("lead_hr", "HR Lead", 50, "system").run();
     await db.prepare(roleSql).bind("member", "General Member", 10, "system").run();
+    await db.prepare(roleSql).bind("advisory", "Advisory Board", 30, "system").run();
 
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("tech", "Technical", "Handles technical infrastructure and UI").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("rnd", "Research & Development", "Handles consulting research").run();
@@ -1357,6 +1360,71 @@ app.post("/api/board-users", async (c) => {
 });
 
 // ---------------------------------------------------------
+// 2a. CREATE ADVISORY BOARD MEMBER
+// ---------------------------------------------------------
+app.post("/api/advisory-members", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const rl = await checkRateLimit(c, "create_advisory_member", 10, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many advisory member creation requests.", retryAfter: rl.retryAfter }, 429);
+    }
+
+    const body = await c.req.json();
+    const email = validateEmail(body.email);
+    const name = sanitizeStr(body.name) || email?.split?.("@")?.[0] || "advisory-member";
+    const exTitle = sanitizeStr(body.exTitle) || null;
+    const memberDeptId = sanitizeStr(body.memberDeptId) || null;
+
+    if (!email) {
+      return c.json({ error: "Missing email" }, 400);
+    }
+
+    const roleRow: any = await c.env.DB.prepare("SELECT id FROM roles WHERE id = 'advisory'").first();
+    if (!roleRow) {
+      return c.json({ error: "Advisory role does not exist" }, 500);
+    }
+
+    const userRow: any = await c.env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
+
+    if (userRow) {
+      await c.env.DB.prepare(
+        "UPDATE users SET name = ?, role_id = 'advisory', ex_title = ?, department_id = ?, secondary_role_id = ? WHERE email = ?",
+      ).bind(name, exTitle, memberDeptId, memberDeptId ? "member" : null, email).run();
+    } else {
+      await c.env.DB.prepare(
+        "INSERT INTO users (id, name, email, role_id, department_id, secondary_role_id, ex_title) VALUES (lower(hex(randomblob(16))), ?, ?, 'advisory', ?, ?, ?)",
+      ).bind(name, email, memberDeptId, memberDeptId ? "member" : null, exTitle).run();
+    }
+
+    // Delete prior token
+    await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?").bind(email).run();
+
+    const token = crypto.randomUUID().replace(/-/g, "");
+    const creator: any = c.get("user");
+
+    await c.env.DB.prepare(
+      "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, 'advisory', ?)",
+    ).bind(token, email, name, creator.id).run();
+
+    await addAuditLog(c, "advisory_member_created", "user", null, "Advisory member created: " + email + " exTitle=" + (exTitle || "none"));
+
+    await sendTokenEmail(c, email, token, name);
+
+    return c.json({
+      success: true,
+      email,
+      name,
+      exTitle,
+      token,
+    }, 200, { "Cache-Control": "private, no-store" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// ---------------------------------------------------------
 // 2. PROMOTE / CHANGE ROLE (Only Pres / VP)
 // ---------------------------------------------------------
 app.put("/api/members/:id/role", async (c) => {
@@ -1367,14 +1435,15 @@ app.put("/api/members/:id/role", async (c) => {
     const newRoleId = sanitizeStr(body.newRoleId);
     const departmentId = sanitizeStr(body.departmentId);
     const secondaryRoleId = sanitizeStr(body.secondaryRoleId) || null;
+    const exTitle = sanitizeStr(body.exTitle) || null;
     if (!newRoleId) {
       return c.json({ error: "Missing newRoleId" }, 400);
     }
 
     await c.env.DB.prepare(
-      "UPDATE users SET role_id = ?, department_id = ?, secondary_role_id = ? WHERE id = ?",
+      "UPDATE users SET role_id = ?, department_id = ?, secondary_role_id = ?, ex_title = ? WHERE id = ?",
     )
-      .bind(newRoleId, departmentId || null, secondaryRoleId, targetUserId)
+      .bind(newRoleId, departmentId || null, secondaryRoleId, exTitle, targetUserId)
       .run();
 
     // Send role change email
@@ -1442,7 +1511,7 @@ app.get("/api/users", async (c) => {
     await ensureTables(c.env.DB);
     requireBoard(c);
     const rows = await c.env.DB.prepare(
-      "SELECT u.id, u.name, u.email, u.role_id, u.department_id, u.secondary_role_id, u.created_at, r.name as role_name, r.power_level, sr.name as secondary_role_name FROM users u JOIN roles r ON u.role_id = r.id LEFT JOIN roles sr ON u.secondary_role_id = sr.id ORDER BY u.name ASC",
+      "SELECT u.id, u.name, u.email, u.role_id, u.department_id, u.secondary_role_id, u.ex_title, u.created_at, r.name as role_name, r.power_level, sr.name as secondary_role_name FROM users u JOIN roles r ON u.role_id = r.id LEFT JOIN roles sr ON u.secondary_role_id = sr.id ORDER BY u.name ASC",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
