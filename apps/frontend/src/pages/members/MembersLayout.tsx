@@ -122,6 +122,31 @@ export default function MembersLayout() {
   const [dangerAdvExTitle, setDangerAdvExTitle] = useState("");
   const [dangerAdvDeptId, setDangerAdvDeptId] = useState("");
   const [dangerAdvBusy, setDangerAdvBusy] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["General", "Chats", "Departments", "Management", "Admin"]));
+  const [roomSettings, setRoomSettings] = useState<Record<string, boolean>>({});
+
+  function toggleSection(label: string) {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    if (!authToken) return;
+    fetch(apiUrl("/api/chat/rooms"), { headers: { Authorization: `Bearer ${authToken}` } })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          const map: Record<string, boolean> = {};
+          (d.data || []).forEach((r: any) => { map[r.room] = !!r.enabled; });
+          setRoomSettings(map);
+        }
+      })
+      .catch(() => {});
+  }, [authToken]);
 
   const maskToken = (token: string) =>
     token.length <= 8 ? `${token.slice(0, 3)}…` : `${token.slice(0, 6)}…${token.slice(-4)}`;
@@ -232,7 +257,16 @@ export default function MembersLayout() {
           chatItems.push({ id: `chat_dept_${d.id}`, label: `${d.name} Chat`, minPower: 10 });
         });
     }
-    navSections.push({ label: "Chats", items: chatItems });
+    navSections.push({
+      label: "Chats",
+      items: chatItems.filter(item => {
+        const room = item.id === "chat_general" ? "general"
+          : item.id === "chat_board" ? "board"
+          : item.id.startsWith("chat_dept_") ? "dept-" + item.id.slice(10)
+          : "";
+        return roomSettings[room] !== false;
+      }),
+    });
 
     // Departments (management panels)
     const deptItems: NavItem[] = [];
@@ -252,17 +286,19 @@ export default function MembersLayout() {
     }
 
     // Management
-    navSections.push({
-      label: "Management",
-      items: [
-        { id: "meets", label: "Meets", minPower: 0 },
-        { id: "projects", label: "Projects", minPower: 0 },
-        { id: "instructions", label: "Instructions", minPower: 0 },
-        { id: "recruitments", label: "Recruitments", minPower: 50 },
-        { id: "transfers", label: "Transfers", minPower: 0 },
-        { id: "announcements", label: "Announcements", minPower: 0 },
-      ],
-    });
+    const managementItems: NavItem[] = [
+      { id: "meets", label: "Meets", minPower: 0 },
+      { id: "projects", label: "Projects", minPower: 0 },
+      { id: "instructions", label: "Instructions", minPower: 0 },
+      { id: "recruitments", label: "Recruitments", minPower: 50 },
+      { id: "transfers", label: "Transfers", minPower: 0 },
+      { id: "announcements", label: "Announcements", minPower: 0 },
+    ];
+    // Room Settings for power >= 50
+    if (powerLevel >= 50) {
+      managementItems.push({ id: "room_settings", label: "Room Settings", minPower: 50 });
+    }
+    navSections.push({ label: "Management", items: managementItems });
 
     // Admin
     navSections.push({
@@ -305,11 +341,21 @@ export default function MembersLayout() {
             return (
               <div key={section.label}>
                 {section.label && !sidebarCollapsed && (
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-light)", padding: "0.75rem 1.2rem 0.25rem", textTransform: "uppercase", letterSpacing: 1 }}>
+                  <div
+                    onClick={() => toggleSection(section.label)}
+                    style={{
+                      fontSize: 11, fontWeight: 600, color: "var(--text-light)",
+                      padding: "0.75rem 1.2rem 0.25rem",
+                      textTransform: "uppercase", letterSpacing: 1,
+                      cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+                      userSelect: "none",
+                    }}
+                  >
+                    <span style={{ fontSize: 10, width: 12 }}>{expandedSections.has(section.label) ? "▼" : "▶"}</span>
                     {section.label}
                   </div>
                 )}
-                {visible.map((item) => (
+                {(!sidebarCollapsed && expandedSections.has(section.label)) || sidebarCollapsed ? visible.map((item) => (
                   <button
                     key={item.id}
                     onClick={() => {
@@ -333,7 +379,7 @@ export default function MembersLayout() {
                   >
                     {sidebarCollapsed ? item.label.slice(0, 3) : item.label}
                   </button>
-                ))}
+                )) : null}
               </div>
             );
           })}
@@ -599,6 +645,10 @@ export default function MembersLayout() {
               ))}
             </div>
           </>
+        )}
+
+        {activePanel === "room_settings" && (
+          <RoomSettingsPanel authToken={authToken!} powerLevel={powerLevel} departmentId={departmentId} departments={departments} />
         )}
 
         {activePanel === "admin" && powerLevel >= 100 && (
@@ -2396,6 +2446,92 @@ function SendMailSection({ authToken }: { authToken: string }) {
         </div>
       </div>
     </>
+  );
+}
+
+function RoomSettingsPanel({ authToken, powerLevel, departmentId, departments }: { authToken: string; powerLevel: number; departmentId: string | null; departments: any[] }) {
+  const [settings, setSettings] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(apiUrl("/api/chat/rooms"), { headers: { Authorization: `Bearer ${authToken}` } })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          const map: Record<string, boolean> = {};
+          (d.data || []).forEach((r: any) => { map[r.room] = !!r.enabled; });
+          setSettings(map);
+        }
+      })
+      .catch(() => {});
+  }, [authToken]);
+
+  const canManageAll = powerLevel >= 80;
+
+  const rooms = [
+    { id: "general", label: "General Chat" },
+    { id: "board", label: "Board Chat" },
+    ...departments.map((d: any) => ({ id: `dept-${d.id}`, label: `${d.name} Chat` })),
+  ].filter(r => {
+    if (canManageAll) return true;
+    if (powerLevel >= 50 && r.id.startsWith("dept-") && r.id.replace("dept-", "") === departmentId) return true;
+    return false;
+  });
+
+  async function toggle(room: string) {
+    setBusy(room);
+    try {
+      const res = await fetch(apiUrl(`/api/chat/rooms/${room}/toggle`), {
+        method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSettings(prev => ({ ...prev, [room]: data.enabled }));
+      } else {
+        alert(data.error || "Failed to toggle");
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div>
+      <h2 style={{ marginTop: 0 }}>Chat Room Settings</h2>
+      <div className="card-doodle">
+        <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 16 }}>
+          Enable or disable chat rooms. Disabled rooms are hidden from the sidebar.
+        </p>
+        <div style={{ display: "grid", gap: 8 }}>
+          {rooms.map(r => (
+            <div key={r.id} style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "0.6rem 0.8rem", background: "var(--bg-secondary)",
+              borderRadius: 8, border: "1px solid var(--border-light)",
+            }}>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>{r.label}</span>
+              <button
+                onClick={() => toggle(r.id)}
+                disabled={busy === r.id}
+                style={{
+                  padding: "0.3rem 0.8rem", fontSize: 12, minWidth: 64,
+                  background: settings[r.id] === false ? "transparent" : "var(--primary-green)",
+                  color: settings[r.id] === false ? "var(--text-secondary)" : "#fff",
+                  border: `1px solid ${settings[r.id] === false ? "var(--border-light)" : "var(--primary-green)"}`,
+                  borderRadius: 6, cursor: busy === r.id ? "default" : "pointer",
+                  fontWeight: 500,
+                }}
+              >
+                {busy === r.id ? "..." : settings[r.id] === false ? "Disabled" : "Enabled"}
+              </button>
+            </div>
+          ))}
+        </div>
+        {rooms.length === 0 && (
+          <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>No rooms available to manage.</p>
+        )}
+      </div>
+    </div>
   );
 }
 

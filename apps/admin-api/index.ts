@@ -561,6 +561,7 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS pending_emails (id TEXT PRIMARY KEY, meet_id TEXT NOT NULL, meet_type TEXT NOT NULL, recipient_email TEXT NOT NULL, recipient_name TEXT NOT NULL, meet_title TEXT NOT NULL, meet_description TEXT, meet_link TEXT, scheduled_at TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
+    CREATE TABLE IF NOT EXISTS chat_room_settings (room TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1);
     `);
   await runMigrations(db);
   tablesEnsured = true;
@@ -3399,6 +3400,54 @@ app.post("/api/send-email", async (c) => {
 });
 
 // ---------------------------------------------------------
+// CHAT ROOM SETTINGS — enable/disable rooms
+// ---------------------------------------------------------
+app.get("/api/chat/rooms", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const { results } = await c.env.DB.prepare("SELECT * FROM chat_room_settings").all();
+    return c.json({ success: true, data: results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+app.post("/api/chat/rooms/:room/toggle", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const room = c.req.param("room");
+    const isDeptRoom = room.startsWith("dept-");
+    const deptId = isDeptRoom ? room.replace("dept-", "") : null;
+
+    let canManage = false;
+    if (user.power_level >= 80) {
+      canManage = true;
+    } else if (user.power_level >= 50 && isDeptRoom && user.department_id === deptId) {
+      canManage = true;
+    }
+
+    if (!canManage) return c.json({ error: "Forbidden" }, 403);
+
+    const existing: any = await c.env.DB.prepare("SELECT enabled FROM chat_room_settings WHERE room = ?").bind(room).first();
+    const currentEnabled = existing ? existing.enabled : 1;
+    const newEnabled = currentEnabled ? 0 : 1;
+
+    await c.env.DB.prepare(
+      "INSERT INTO chat_room_settings (room, enabled) VALUES (?, ?) ON CONFLICT(room) DO UPDATE SET enabled = ?"
+    ).bind(room, newEnabled, newEnabled).run();
+
+    return c.json({ success: true, enabled: !!newEnabled });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
 // CHAT — Session init (auth'd users get a WS sessionId)
 // ---------------------------------------------------------
 app.post("/api/chat/init", async (c) => {
@@ -3409,6 +3458,10 @@ app.post("/api/chat/init", async (c) => {
 
     const body = await c.req.json();
     const room = body.room || "advisory";
+
+    // Check if room is enabled
+    const setting: any = await c.env.DB.prepare("SELECT enabled FROM chat_room_settings WHERE room = ?").bind(room).first();
+    if (setting && !setting.enabled) return c.json({ error: "This chat room is currently disabled" }, 403);
 
     // Validate room access
     const canAccessAdvisory = user.role_id === "advisory" || user.power_level >= 50;
