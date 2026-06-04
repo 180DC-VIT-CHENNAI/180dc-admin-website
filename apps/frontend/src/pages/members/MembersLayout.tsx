@@ -60,6 +60,7 @@ export default function MembersLayout() {
   const [boardName, setBoardName] = useState("");
   const [boardRoleId, setBoardRoleId] = useState("president");
   const [boardDepartmentId, setBoardDepartmentId] = useState("");
+  const [boardSecondaryRoleId, setBoardSecondaryRoleId] = useState("");
   const [boardBusy, setBoardBusy] = useState(false);
   const [recentToken, setRecentToken] = useState<string | null>(null);
   const [showRecentToken, setShowRecentToken] = useState(false);
@@ -77,6 +78,7 @@ export default function MembersLayout() {
   const [dangerUserId, setDangerUserId] = useState("");
   const [dangerNewRoleId, setDangerNewRoleId] = useState("");
   const [dangerNewDeptId, setDangerNewDeptId] = useState("");
+  const [dangerNewSecondaryRoleId, setDangerNewSecondaryRoleId] = useState("");
   const [dangerBusy, setDangerBusy] = useState(false);
   const [deleteUserId, setDeleteUserId] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -526,6 +528,7 @@ export default function MembersLayout() {
                   <select className="input" value={boardRoleId} onChange={(e) => setBoardRoleId(e.target.value)}>
                     <option value="president">president</option>
                     <option value="vice_president">vice_president</option>
+                    <option value="technical_director">technical_director</option>
                     <option value="secretary">secretary</option>
                     <option value="lead">lead</option>
                   </select>
@@ -533,18 +536,22 @@ export default function MembersLayout() {
                     <option value="">No department</option>
                     {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
+                  <select className="input" value={boardSecondaryRoleId} onChange={(e) => setBoardSecondaryRoleId(e.target.value)} style={{ gridColumn: "1 / -1" }}>
+                    <option value="">No secondary role</option>
+                    {allRoles.filter((r: any) => r.id !== boardRoleId).map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
                   <button className="btn" disabled={boardBusy} onClick={async () => {
                     if (!authToken || !boardEmail.trim()) { alert("Enter an email first"); return; }
                     setBoardBusy(true);
                     try {
                       const res = await fetch(apiUrl("/api/board-users"), {
                         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-                        body: JSON.stringify({ email: boardEmail.trim(), name: boardName.trim(), roleId: boardRoleId, departmentId: boardDepartmentId || null }),
+                        body: JSON.stringify({ email: boardEmail.trim(), name: boardName.trim(), roleId: boardRoleId, departmentId: boardDepartmentId || null, secondaryRoleId: boardSecondaryRoleId || null }),
                       });
                       const data = await res.json();
                       if (data.success) {
                         setAdminTokens((prev) => [data, ...prev]);
-                        setBoardEmail(""); setBoardName(""); setBoardRoleId("president"); setBoardDepartmentId("");
+                        setBoardEmail(""); setBoardName(""); setBoardRoleId("president"); setBoardDepartmentId(""); setBoardSecondaryRoleId("");
                         setRecentToken(data.token); setShowRecentToken(false);
                         alert(`Board user created successfully.`);
                       } else alert(data.error);
@@ -648,16 +655,20 @@ export default function MembersLayout() {
                         <option value="">No department</option>
                         {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
                       </select>
+                      <select className="input" value={dangerNewSecondaryRoleId} onChange={(e) => setDangerNewSecondaryRoleId(e.target.value)}>
+                        <option value="">No secondary role</option>
+                        {allRoles.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                      </select>
                       <button className="btn" style={{ background: "#e74c3c" }} disabled={dangerBusy} onClick={async () => {
                         if (!dangerUserId || !dangerNewRoleId) { alert("Select user and role"); return; }
                         setDangerBusy(true);
                         try {
                           const res = await fetch(apiUrl(`/api/members/${dangerUserId}/role`), {
                             method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-                            body: JSON.stringify({ newRoleId: dangerNewRoleId, departmentId: dangerNewDeptId || null }),
+                            body: JSON.stringify({ newRoleId: dangerNewRoleId, departmentId: dangerNewDeptId || null, secondaryRoleId: dangerNewSecondaryRoleId || null }),
                           });
                           const data = await res.json();
-                          if (data.success) { alert("Role updated. Email sent."); setDangerUserId(""); setDangerNewRoleId(""); setDangerNewDeptId(""); }
+                          if (data.success) { alert("Role updated. Email sent."); setDangerUserId(""); setDangerNewRoleId(""); setDangerNewDeptId(""); setDangerNewSecondaryRoleId(""); }
                           else alert(data.error);
                         } finally { setDangerBusy(false); }
                       }}>{dangerBusy ? "Updating..." : "Update Role"}</button>

@@ -529,7 +529,7 @@ async function ensureTables(db: any) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS departments (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT);
     CREATE TABLE IF NOT EXISTS roles (id TEXT PRIMARY KEY, name TEXT NOT NULL, power_level INTEGER NOT NULL, created_by TEXT);
-    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, role_id TEXT NOT NULL, department_id TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (role_id) REFERENCES roles(id), FOREIGN KEY (department_id) REFERENCES departments(id));
+    CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, role_id TEXT NOT NULL, department_id TEXT, secondary_role_id TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (role_id) REFERENCES roles(id), FOREIGN KEY (department_id) REFERENCES departments(id));
     CREATE TABLE IF NOT EXISTS signup_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, message TEXT, department_id TEXT, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS admin_tokens (token TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, name TEXT, role_id TEXT NOT NULL DEFAULT 'member', created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, revoked_at DATETIME, FOREIGN KEY (role_id) REFERENCES roles(id));
     CREATE TABLE IF NOT EXISTS department_meets (id TEXT PRIMARY KEY, department_id TEXT NOT NULL, title TEXT NOT NULL, meet_link TEXT, description TEXT, scheduled_at DATETIME NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (department_id) REFERENCES departments(id));
@@ -585,6 +585,7 @@ async function runMigrations(db: any) {
     )`);
   } catch (e: any) { logError("Migration: recruitment_sessions table", e); }
   try { await db.exec("DELETE FROM rate_limits WHERE endpoint IN ('dev_login', 'recruitment_login', 'recruitment_register')"); } catch (e: any) { console.warn("Migration: clear login rate limits"); }
+  try { await db.exec("ALTER TABLE users ADD COLUMN secondary_role_id TEXT"); } catch { console.warn("Migration: secondary_role_id may already exist"); }
 }
 
 let currentEnv: any = null;
@@ -672,6 +673,8 @@ async function seedData(db: any, env?: any) {
 
     // Migration: promote existing Technical Lead users to Technical Director
     await db.prepare("UPDATE users SET role_id = 'technical_director' WHERE role_id = 'lead'").run();
+    // Set secondary_role_id = 'lead' for the current Technical Director (only if not already set)
+    await db.prepare("UPDATE users SET secondary_role_id = 'lead' WHERE role_id = 'technical_director' AND secondary_role_id IS NULL").run();
 
     seedDone = true;
   } catch (e: any) {
@@ -983,7 +986,7 @@ app.post("/api/dev-login", async (c) => {
     }
 
     const user: any = await c.env.DB.prepare(
-      "SELECT u.email, u.name, u.role_id, u.department_id, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
+      "SELECT u.email, u.name, u.role_id, u.department_id, u.secondary_role_id, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
     )
       .bind(entry.email)
       .first();
@@ -995,33 +998,67 @@ app.post("/api/dev-login", async (c) => {
 
     await resetLoginRateLimit(c, "dev_login");
 
-    // Dual-role support: Technical Director can login as Lead (power_level 50) or Director (power_level 100)
-    if (user.role_id === "technical_director") {
+    // Dual-role support: if user has a secondary_role_id, show role choice prompt
+    if (user.secondary_role_id) {
       const loginAs = body.loginAs;
-      if (loginAs === "lead") {
-        return c.json({
-          success: true,
-          email: entry.email,
-          name: user.name || entry.name,
-          roleId: "lead",
-          roleName: "Technical Lead",
-          powerLevel: 50,
-          departmentId: user.department_id || null,
-          dualRole: true,
-          dualRoleChosen: true,
-        });
+      if (loginAs && loginAs !== "director") {
+        // Look up the secondary role's power_level and name
+        const secondaryRole: any = await c.env.DB.prepare(
+          "SELECT id, name, power_level FROM roles WHERE id = ?",
+        ).bind(user.secondary_role_id).first();
+        if (secondaryRole) {
+          return c.json({
+            success: true,
+            email: entry.email,
+            name: user.name || entry.name,
+            roleId: secondaryRole.id,
+            roleName: secondaryRole.name,
+            powerLevel: secondaryRole.power_level,
+            departmentId: user.department_id || null,
+            dualRole: true,
+            dualRoleChosen: true,
+          });
+        }
+        // Fallback: if secondary role not found, fall through to director
       }
-      // Default or "director" — full power
+
+      // Look up secondary role details for the prompt (only on first call without loginAs)
+      let secondaryRoleName = null;
+      if (!loginAs) {
+        const sr: any = await c.env.DB.prepare(
+          "SELECT name FROM roles WHERE id = ?",
+        ).bind(user.secondary_role_id).first();
+        secondaryRoleName = sr?.name || null;
+      }
+
+      // Default or "director" — primary role
       return c.json({
         success: true,
         email: entry.email,
         name: user.name || entry.name,
-        roleId: "technical_director",
-        roleName: "Technical Director",
-        powerLevel: 100,
+        roleId: user.role_id || entry.role_id || "member",
+        roleName: user.role_name || null,
+        powerLevel: user.power_level ?? 10,
         departmentId: user.department_id || null,
         dualRole: true,
-        dualRoleChosen: !!body.loginAs,
+        dualRoleChosen: !!loginAs,
+        secondaryRoleId: user.secondary_role_id,
+        secondaryRoleName,
+      });
+    }
+        // Fallback: if secondary role not found, fall through to director
+      }
+      // Default or "director" — primary role
+      return c.json({
+        success: true,
+        email: entry.email,
+        name: user.name || entry.name,
+        roleId: user.role_id || entry.role_id || "member",
+        roleName: user.role_name || null,
+        powerLevel: user.power_level ?? 10,
+        departmentId: user.department_id || null,
+        dualRole: true,
+        dualRoleChosen: !!loginAs,
       });
     }
 
@@ -1236,6 +1273,7 @@ app.post("/api/board-users", async (c) => {
       sanitizeStr(body.name) || email?.split?.("@")?.[0] || "board-member";
     const roleId = sanitizeStr(body.roleId);
     const departmentId = sanitizeStr(body.departmentId) || null;
+    const secondaryRoleId = sanitizeStr(body.secondaryRoleId) || null;
 
     if (!email || !roleId) {
       return c.json({ error: "Missing email or roleId" }, 400);
@@ -1266,15 +1304,15 @@ app.post("/api/board-users", async (c) => {
 
     if (userRow) {
       await c.env.DB.prepare(
-        "UPDATE users SET name = ?, role_id = ?, department_id = ? WHERE email = ?",
+        "UPDATE users SET name = ?, role_id = ?, department_id = ?, secondary_role_id = ? WHERE email = ?",
       )
-        .bind(name, roleId, departmentId, email)
+        .bind(name, roleId, departmentId, secondaryRoleId, email)
         .run();
     } else {
       await c.env.DB.prepare(
-        "INSERT INTO users (id, name, email, role_id, department_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
+        "INSERT INTO users (id, name, email, role_id, department_id, secondary_role_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
       )
-        .bind(name, email, roleId, departmentId)
+        .bind(name, email, roleId, departmentId, secondaryRoleId)
         .run();
     }
 
@@ -1318,14 +1356,15 @@ app.put("/api/members/:id/role", async (c) => {
     const body = await c.req.json();
     const newRoleId = sanitizeStr(body.newRoleId);
     const departmentId = sanitizeStr(body.departmentId);
+    const secondaryRoleId = sanitizeStr(body.secondaryRoleId) || null;
     if (!newRoleId) {
       return c.json({ error: "Missing newRoleId" }, 400);
     }
 
     await c.env.DB.prepare(
-      "UPDATE users SET role_id = ?, department_id = ? WHERE id = ?",
+      "UPDATE users SET role_id = ?, department_id = ?, secondary_role_id = ? WHERE id = ?",
     )
-      .bind(newRoleId, departmentId || null, targetUserId)
+      .bind(newRoleId, departmentId || null, secondaryRoleId, targetUserId)
       .run();
 
     // Send role change email
@@ -1393,7 +1432,7 @@ app.get("/api/users", async (c) => {
     await ensureTables(c.env.DB);
     requireBoard(c);
     const rows = await c.env.DB.prepare(
-      "SELECT u.id, u.name, u.email, u.role_id, u.department_id, u.created_at, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id ORDER BY u.name ASC",
+      "SELECT u.id, u.name, u.email, u.role_id, u.department_id, u.secondary_role_id, u.created_at, r.name as role_name, r.power_level, sr.name as secondary_role_name FROM users u JOIN roles r ON u.role_id = r.id LEFT JOIN roles sr ON u.secondary_role_id = sr.id ORDER BY u.name ASC",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {

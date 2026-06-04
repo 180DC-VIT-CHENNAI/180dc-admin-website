@@ -211,14 +211,14 @@ export default function MembersLogin({ onLogin }: MembersLoginProps) {
           <div className="card-doodle" style={{ maxWidth: 400, width: "90%", textAlign: "center" }}>
             <h3 style={{ margin: "0 0 8px" }}>Choose Login Role</h3>
             <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: "0 0 20px" }}>
-              Your token is recognized as <strong>Technical Director</strong>. Which role would you like to use for this session?
+              Your token is recognized as <strong>{dualRolePending.roleName}</strong> with a secondary role of <strong>{dualRolePending.secondaryRoleName}</strong>. Which role would you like to use for this session?
             </p>
             <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-              <button className="btn" onClick={() => handleTokenLogin("lead")}>
-                Login as Lead
+              <button className="btn" onClick={() => handleTokenLogin(dualRolePending.secondaryRoleId)}>
+                Login as {dualRolePending.secondaryRoleName}
               </button>
               <button className="btn outline" onClick={() => handleTokenLogin("director")}>
-                Login as Director
+                Login as {dualRolePending.roleName}
               </button>
             </div>
           </div>
