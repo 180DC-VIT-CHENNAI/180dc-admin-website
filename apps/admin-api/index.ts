@@ -567,8 +567,8 @@ async function ensureTables(db: any) {
       poll_data TEXT,
       is_test_account INTEGER DEFAULT 0
     );
-    CREATE INDEX IF NOT EXISTS idx_chat_messages_room_ts ON chat_messages(room, timestamp);
     `);
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_chat_messages_room_ts ON chat_messages(room, timestamp)");
   await runMigrations(db);
 }
 
