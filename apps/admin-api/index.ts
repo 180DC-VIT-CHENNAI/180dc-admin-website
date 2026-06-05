@@ -554,20 +554,8 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
     CREATE TABLE IF NOT EXISTS chat_room_settings (room TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1);
-    CREATE TABLE IF NOT EXISTS chat_messages (
-      id TEXT PRIMARY KEY,
-      room TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      user_name TEXT NOT NULL,
-      user_role TEXT NOT NULL,
-      content TEXT,
-      created_at INTEGER NOT NULL,
-      mentions TEXT,
-      type TEXT,
-      poll_data TEXT,
-      is_test_account INTEGER DEFAULT 0
-    );
     `);
+  await db.exec("CREATE TABLE IF NOT EXISTS chat_messages (id TEXT PRIMARY KEY, room TEXT NOT NULL, user_id TEXT NOT NULL, user_name TEXT NOT NULL, user_role TEXT NOT NULL, content TEXT, created_at INTEGER NOT NULL, mentions TEXT, type TEXT, poll_data TEXT, is_test_account INTEGER DEFAULT 0)");
   await db.exec("CREATE INDEX IF NOT EXISTS idx_chat_messages_room_ts ON chat_messages(room, created_at)");
   await runMigrations(db);
 }

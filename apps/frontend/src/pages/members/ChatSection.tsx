@@ -1,5 +1,15 @@
-import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { apiUrl } from "../../lib/api";
+
+function useIsMobile(breakpoint = 768): boolean {
+  const [mobile, setMobile] = useState(() => window.innerWidth < breakpoint);
+  useEffect(() => {
+    const handler = () => setMobile(window.innerWidth < breakpoint);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, [breakpoint]);
+  return mobile;
+}
 
 interface ChatSectionProps {
   authToken: string;
@@ -104,6 +114,12 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
   const [reconnectKey, setReconnectKey] = useState(0);
   const [mentionQuery, setMentionQuery] = useState<{ text: string; start: number } | null>(null);
   const [mentionIdx, setMentionIdx] = useState(0);
+  const isMobile = useIsMobile();
+  const storageKey = useMemo(() => `chat_online_visible_${room}`, [room]);
+  const [showOnline, setShowOnline] = useState(() => {
+    const saved = localStorage.getItem(storageKey);
+    return saved !== null ? saved === "true" : !isMobile;
+  });
   const wsRef = useRef<WebSocket | null>(null);
   const connIdRef = useRef<string>("");
   const typingTimer = useRef<any>(null);
@@ -113,6 +129,14 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
   const reconnectRef = useRef<number>(0);
   const heartbeatRef = useRef<number>(0);
   const retriesRef = useRef(0);
+
+  function toggleOnline() {
+    setShowOnline((prev) => {
+      const next = !prev;
+      localStorage.setItem(storageKey, String(next));
+      return next;
+    });
+  }
 
   useEffect(() => {
     setEntries([]);
@@ -438,6 +462,16 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: connected ? "var(--primary-green)" : "#e74c3c", display: "inline-block" }} />
             <span style={{ color: "var(--text-secondary)" }}>{connected ? `${onlineUsers.length} online` : "Disconnected"}</span>
             <button
+              onClick={toggleOnline}
+              title={showOnline ? "Hide online users" : "Show online users"}
+              style={{
+                background: "none", border: "1px solid var(--border-light)", borderRadius: 4,
+                cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "2px 6px",
+                color: showOnline ? "var(--primary-green)" : "var(--text-secondary)",
+                opacity: showOnline ? 1 : 0.5,
+              }}
+            >{showOnline ? "👁" : "👁‍🗨"}</button>
+            <button
               onClick={reconnect}
               title="Reload chat"
               style={{ background: "none", border: "1px solid var(--border-light)", borderRadius: 4, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "2px 6px", color: "var(--text-secondary)" }}
@@ -653,16 +687,32 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
           </div>
 
           {/* Online users sidebar */}
+          {showOnline && isMobile && (
+            <div onClick={toggleOnline} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 99 }} />
+          )}
           <div style={{
-            width: 200,
+            width: isMobile ? 220 : 200,
             flexShrink: 0,
-            borderLeft: "1px solid var(--border-light)",
-            paddingLeft: 12,
+            borderLeft: isMobile ? "none" : "1px solid var(--border-light)",
+            paddingLeft: isMobile ? 0 : 12,
             display: "flex",
             flexDirection: "column",
             gap: 4,
+            ...(isMobile ? {
+              display: showOnline ? "flex" : "none",
+              position: "fixed",
+              top: 0, right: 0, bottom: 0,
+              background: "var(--bg-primary)",
+              zIndex: 100,
+              padding: "1rem",
+              borderLeft: "1px solid var(--border-light)",
+              boxShadow: "-4px 0 12px rgba(0,0,0,0.15)",
+            } : showOnline ? {} : { display: "none" }),
           }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>Online</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              Online
+              <button onClick={toggleOnline} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--text-secondary)", padding: 0, lineHeight: 1 }}>x</button>
+            </div>
             {onlineUsers.map((u) => (
               <div key={u.userId} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, padding: "4px 0" }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--primary-green)", display: "inline-block", flexShrink: 0 }} />
