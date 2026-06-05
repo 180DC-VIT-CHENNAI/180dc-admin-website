@@ -554,6 +554,20 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
     CREATE TABLE IF NOT EXISTS chat_room_settings (room TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id TEXT PRIMARY KEY,
+      room TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT NOT NULL,
+      user_role TEXT NOT NULL,
+      content TEXT,
+      timestamp INTEGER NOT NULL,
+      mentions TEXT,
+      type TEXT,
+      poll_data TEXT,
+      is_test_account INTEGER DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_room_ts ON chat_messages(room, timestamp);
     `);
   await runMigrations(db);
 }
@@ -3506,6 +3520,7 @@ app.post("/api/chat/init", async (c) => {
       method: "POST",
       body: JSON.stringify({
         sessionId,
+        room,
         userInfo: {
           userId: user.id,
           userName: user.name,
@@ -3533,6 +3548,7 @@ export class ChatRoomDO {
   connById: Map<string, any>;
   messages: any[];
   polls: any[];
+  room: string;
 
   constructor(state: any, env: any) {
     this.state = state;
@@ -3541,6 +3557,7 @@ export class ChatRoomDO {
     this.connById = new Map();
     this.messages = [];
     this.polls = [];
+    this.room = "";
   }
 
   async fetch(request: Request) {
@@ -3549,8 +3566,9 @@ export class ChatRoomDO {
     // Register a session — called from POST /api/chat/init
     if (url.pathname === "/register" && request.method === "POST") {
       const body: any = await request.json();
+      this.room = body.room || "advisory";
+      await this.state.storage.put("room", this.room);
       await this.state.storage.put("session:" + body.sessionId, JSON.stringify(body.userInfo));
-      // Auto-expire sessions after 50 seconds
       await this.state.storage.setAlarm(Date.now() + 50000);
       return new Response(JSON.stringify({ success: true }));
     }
@@ -3593,12 +3611,19 @@ export class ChatRoomDO {
         const pollStored = await this.state.storage.get("polls");
         if (pollStored) this.polls = pollStored;
       }
+      if (!this.room) {
+        const roomStored = await this.state.storage.get("room");
+        if (roomStored) this.room = roomStored;
+      }
+
+      // Load older history from D1
+      const d1History = await this._loadD1History();
 
       // Send history + online users + polls to the new connection
       server.send(JSON.stringify({
         type: "history",
         connId,
-        messages: this.messages.slice(-50),
+        messages: [...d1History, ...this.messages.slice(-50)],
         onlineUsers: Array.from(this.connections.values()).map((c: any) => ({
           userId: c.userId, userName: c.userName, userRole: c.userRole,
         })),
@@ -3681,7 +3706,10 @@ export class ChatRoomDO {
       if (mentionedUserIds.length > 0) msg.mentions = mentionedUserIds;
 
       this.messages.push(msg);
-      if (this.messages.length > 100) this.messages = this.messages.slice(-100);
+      if (this.messages.length > 100) {
+        const toFlush = this.messages.splice(0, 50);
+        this._flushToD1(toFlush);
+      }
 
       // Broadcast immediately for real-time delivery
       this.broadcast({ type: "message", ...msg }, null);
@@ -3726,7 +3754,10 @@ export class ChatRoomDO {
         };
 
         this.messages.push(pollMsg);
-        if (this.messages.length > 100) this.messages = this.messages.slice(-100);
+        if (this.messages.length > 100) {
+          const toFlush = this.messages.splice(0, 50);
+          this._flushToD1(toFlush);
+        }
 
         this.broadcast({ type: "poll", id: poll.id, poll, userId: sender.userId, userName: sender.userName, userRole: sender.userRole, timestamp: poll.timestamp, isTestAccount: sender.isTestAccount }, null);
         this.state.storage.put("messages", this.messages).catch(() => {});
@@ -3799,6 +3830,64 @@ export class ChatRoomDO {
     // Clean up expired sessions — called by the TTL alarm set in register
     // We don't need to do anything specific here; the TTL on the storage key handles it
     // But we need this method for the DO alarm callback
+  }
+
+  _msgToRow(msg: any): any[] {
+    return [
+      msg.id,
+      this.room,
+      msg.userId,
+      msg.userName,
+      msg.userRole,
+      msg.content || null,
+      msg.timestamp,
+      msg.mentions ? JSON.stringify(msg.mentions) : null,
+      msg.type === "poll" ? "poll" : null,
+      msg.poll ? JSON.stringify(msg.poll) : null,
+      msg.isTestAccount ? 1 : 0,
+    ];
+  }
+
+  _rowToMsg(row: any): any {
+    const msg: any = {
+      id: row.id,
+      userId: row.user_id,
+      userName: row.user_name,
+      userRole: row.user_role,
+      content: row.content,
+      timestamp: row.timestamp,
+      isTestAccount: !!row.is_test_account,
+    };
+    if (row.mentions) msg.mentions = JSON.parse(row.mentions);
+    if (row.type === "poll") {
+      msg.type = "poll";
+      msg.poll = JSON.parse(row.poll_data);
+    }
+    return msg;
+  }
+
+  async _flushToD1(msgs: any[]) {
+    if (!this.env.DB || !this.room || msgs.length === 0) return;
+    const stmts = msgs.map((m) =>
+      this.env.DB.prepare(
+        "INSERT OR IGNORE INTO chat_messages (id, room, user_id, user_name, user_role, content, timestamp, mentions, type, poll_data, is_test_account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      ).bind(...this._msgToRow(m))
+    );
+    try {
+      await this.env.DB.batch(stmts);
+    } catch {}
+  }
+
+  async _loadD1History(): Promise<any[]> {
+    if (!this.env.DB || !this.room) return [];
+    try {
+      const { results } = await this.env.DB.prepare(
+        "SELECT * FROM chat_messages WHERE room = ? ORDER BY timestamp DESC LIMIT 50"
+      ).bind(this.room).all();
+      return (results || []).map((r: any) => this._rowToMsg(r)).reverse();
+    } catch {
+      return [];
+    }
   }
 
   broadcast(msg: any, excludeWs: WebSocket | null) {
