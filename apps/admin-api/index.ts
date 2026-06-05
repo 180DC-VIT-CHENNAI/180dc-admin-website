@@ -561,14 +561,14 @@ async function ensureTables(db: any) {
       user_name TEXT NOT NULL,
       user_role TEXT NOT NULL,
       content TEXT,
-      timestamp INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
       mentions TEXT,
       type TEXT,
       poll_data TEXT,
       is_test_account INTEGER DEFAULT 0
     );
     `);
-  await db.exec("CREATE INDEX IF NOT EXISTS idx_chat_messages_room_ts ON chat_messages(room, timestamp)");
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_chat_messages_room_ts ON chat_messages(room, created_at)");
   await runMigrations(db);
 }
 
@@ -3855,7 +3855,7 @@ export class ChatRoomDO {
       userName: row.user_name,
       userRole: row.user_role,
       content: row.content,
-      timestamp: row.timestamp,
+      timestamp: row.created_at,
       isTestAccount: !!row.is_test_account,
     };
     if (row.mentions) msg.mentions = JSON.parse(row.mentions);
@@ -3870,7 +3870,7 @@ export class ChatRoomDO {
     if (!this.env.DB || !this.room || msgs.length === 0) return;
     const stmts = msgs.map((m) =>
       this.env.DB.prepare(
-        "INSERT OR IGNORE INTO chat_messages (id, room, user_id, user_name, user_role, content, timestamp, mentions, type, poll_data, is_test_account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT OR IGNORE INTO chat_messages (id, room, user_id, user_name, user_role, content, created_at, mentions, type, poll_data, is_test_account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       ).bind(...this._msgToRow(m))
     );
     try {
@@ -3882,7 +3882,7 @@ export class ChatRoomDO {
     if (!this.env.DB || !this.room) return [];
     try {
       const { results } = await this.env.DB.prepare(
-        "SELECT * FROM chat_messages WHERE room = ? ORDER BY timestamp DESC LIMIT 50"
+        "SELECT * FROM chat_messages WHERE room = ? ORDER BY created_at DESC LIMIT 50"
       ).bind(this.room).all();
       return (results || []).map((r: any) => this._rowToMsg(r)).reverse();
     } catch {
