@@ -1518,12 +1518,13 @@ app.get("/api/users", async (c) => {
 app.get("/api/members-directory", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    requireBoard(c);
     const rows = await c.env.DB.prepare(
       "SELECT u.id, u.name, u.email, u.role_id, u.department_id, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id ORDER BY r.power_level DESC, u.name ASC",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
-    return errorResponse(c, e.message, 500);
+    return errorResponse(c, e.message, 403);
   }
 });
 
@@ -3348,6 +3349,10 @@ app.post("/api/send-email", async (c) => {
   try {
     await ensureTables(c.env.DB);
     requireBoard(c);
+    const rl = await checkRateLimit(c, "send_email", 10, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
     const body = await c.req.json();
     const to = sanitizeStr(body.to, MAX_MSG_LEN);
     const subject = sanitizeStr(body.subject);
@@ -3506,6 +3511,7 @@ app.post("/api/chat/init", async (c) => {
           userName: user.name,
           userEmail: user.email,
           userRole: user.role_id,
+          isTestAccount: user.email === "admin@vitstudent.ac.in" || user.email === "kevindaniel.2025@vitstudent.ac.in",
         },
       }),
       headers: { "Content-Type": "application/json" },
@@ -3594,14 +3600,14 @@ export class ChatRoomDO {
         connId,
         messages: this.messages.slice(-50),
         onlineUsers: Array.from(this.connections.values()).map((c: any) => ({
-          userId: c.userId, userName: c.userName, userEmail: c.userEmail, userRole: c.userRole,
+          userId: c.userId, userName: c.userName, userRole: c.userRole,
         })),
-        currentUser: { userId: userInfo.userId, userName: userInfo.userName, userEmail: userInfo.userEmail, userRole: userInfo.userRole },
+        currentUser: { userId: userInfo.userId, userName: userInfo.userName, userRole: userInfo.userRole, isTestAccount: userInfo.isTestAccount },
         polls: this.polls,
       }));
 
       // Broadcast user joined
-      this.broadcast({ type: "user_joined", userId: userInfo.userId, userName: userInfo.userName, userEmail: userInfo.userEmail, userRole: userInfo.userRole }, server);
+      this.broadcast({ type: "user_joined", userId: userInfo.userId, userName: userInfo.userName, userRole: userInfo.userRole }, server);
 
       return new Response(null, { status: 101, webSocket: client });
     }
@@ -3667,10 +3673,10 @@ export class ChatRoomDO {
         id: crypto.randomUUID().replace(/-/g, ""),
         userId: sender.userId,
         userName: sender.userName,
-        userEmail: sender.userEmail,
         userRole: sender.userRole,
         content,
         timestamp: Date.now(),
+        isTestAccount: sender.isTestAccount,
       };
       if (mentionedUserIds.length > 0) msg.mentions = mentionedUserIds;
 
@@ -3714,15 +3720,15 @@ export class ChatRoomDO {
           poll,
           userId: sender.userId,
           userName: sender.userName,
-          userEmail: sender.userEmail,
           userRole: sender.userRole,
           timestamp: poll.timestamp,
+          isTestAccount: sender.isTestAccount,
         };
 
         this.messages.push(pollMsg);
         if (this.messages.length > 100) this.messages = this.messages.slice(-100);
 
-        this.broadcast({ type: "poll", id: poll.id, poll, userId: sender.userId, userName: sender.userName, userEmail: sender.userEmail, userRole: sender.userRole, timestamp: poll.timestamp }, null);
+        this.broadcast({ type: "poll", id: poll.id, poll, userId: sender.userId, userName: sender.userName, userRole: sender.userRole, timestamp: poll.timestamp, isTestAccount: sender.isTestAccount }, null);
         this.state.storage.put("messages", this.messages).catch(() => {});
         this.state.storage.put("polls", this.polls).catch(() => {});
       } catch {} 

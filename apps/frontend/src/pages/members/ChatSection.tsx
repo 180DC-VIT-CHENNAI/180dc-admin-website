@@ -10,7 +10,6 @@ interface ChatSectionProps {
 interface ChatUser {
   userId: string;
   userName: string;
-  userEmail: string;
   userRole: string;
 }
 
@@ -18,11 +17,11 @@ interface ChatMessage {
   id: string;
   userId: string;
   userName: string;
-  userEmail: string;
   userRole: string;
   content: string;
   timestamp: number;
   mentions?: string[];
+  isTestAccount?: boolean;
 }
 
 interface PollData {
@@ -42,14 +41,13 @@ interface PollMessage {
   poll: PollData;
   userId: string;
   userName: string;
-  userEmail: string;
   userRole: string;
   timestamp: number;
+  isTestAccount?: boolean;
 }
 
 type ChatEntry = ChatMessage | PollMessage;
 
-const TEST_ACCOUNTS = new Set(["kevindaniel.2025@vitstudent.ac.in", "admin@vitstudent.ac.in"]);
 const POLL_OPTION_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 
 function formatDateLabel(ts: number): string {
@@ -190,7 +188,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
               case "user_joined":
                 setOnlineUsers((prev) => {
                   if (prev.find((u) => u.userId === msg.userId)) return prev;
-                  return [...prev, { userId: msg.userId, userName: msg.userName, userEmail: msg.userEmail, userRole: msg.userRole }];
+                  return [...prev, { userId: msg.userId, userName: msg.userName, userRole: msg.userRole }];
                 });
                 break;
               case "user_left":
@@ -534,7 +532,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
                         <div style={{ fontSize: 11, color: "var(--text-light)", marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
                           <strong>{msg.userName}</strong>
                           {isMentioned && <span style={{ background: "#3498db", color: "#fff", fontSize: 10, borderRadius: 8, padding: "0 6px", fontWeight: 600 }}>mentioned</span>}
-                          <span>({TEST_ACCOUNTS.has(msg.userEmail) ? "test acc" : msg.userRole.replace(/_/g, " ")})</span>
+                          <span>({msg.isTestAccount ? "test acc" : msg.userRole.replace(/_/g, " ")})</span>
                         </div>
                         <div style={{
                           padding: "8px 14px",
