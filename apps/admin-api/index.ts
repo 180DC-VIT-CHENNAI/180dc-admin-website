@@ -862,6 +862,8 @@ app.get("/api/content/case-studies", async (c) => {
   try {
     await ensureTables(c.env.DB);
     await seedData(c.env.DB, c.env);
+    const rl = await checkRateLimit(c, "content_case_studies", 100, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare("SELECT * FROM case_studies ORDER BY created_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
@@ -873,6 +875,8 @@ app.get("/api/content/team-members", async (c) => {
   try {
     await ensureTables(c.env.DB);
     await seedData(c.env.DB, c.env);
+    const rl = await checkRateLimit(c, "content_team_members", 100, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare("SELECT * FROM team_members ORDER BY created_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
@@ -884,6 +888,8 @@ app.get("/api/content/blog-posts", async (c) => {
   try {
     await ensureTables(c.env.DB);
     await seedData(c.env.DB, c.env);
+    const rl = await checkRateLimit(c, "content_blog_posts", 100, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare("SELECT * FROM blog_posts ORDER BY created_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
@@ -895,6 +901,8 @@ app.get("/api/content/partners", async (c) => {
   try {
     await ensureTables(c.env.DB);
     await seedData(c.env.DB, c.env);
+    const rl = await checkRateLimit(c, "content_partners", 100, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare("SELECT * FROM partners ORDER BY created_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
@@ -1518,6 +1526,33 @@ app.get("/api/users", async (c) => {
   }
 });
 
+// Export all users as CSV for download
+app.get("/api/members/export", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const rows = await c.env.DB.prepare(
+      "SELECT u.name, u.email, r.name as role_name, d.name as department_name, sr.name as secondary_role_name, u.ex_title, u.created_at FROM users u JOIN roles r ON u.role_id = r.id LEFT JOIN departments d ON u.department_id = d.id LEFT JOIN roles sr ON u.secondary_role_id = sr.id ORDER BY r.power_level DESC, u.name ASC"
+    ).all();
+
+    const esc = (v: any) => {
+      const s = String(v ?? "");
+      return s.includes(",") || s.includes('"') || s.includes("\n") ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+
+    let csv = "Name,Email,Role,Department,Secondary Role,Ex.Title,Created At\r\n";
+    for (const r of (rows.results || [])) {
+      csv += `${esc(r.name)},${esc(r.email)},${esc(r.role_name)},${esc(r.department_name)},${esc(r.secondary_role_name)},${esc(r.ex_title)},${esc(r.created_at)}\r\n`;
+    }
+
+    c.header("Content-Type", "text/csv; charset=utf-8");
+    c.header("Content-Disposition", 'attachment; filename="members_export.csv"');
+    return c.body(csv);
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
 app.get("/api/members-directory", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -2088,6 +2123,8 @@ app.put("/api/departments/:id/projects/:projectId/status", async (c) => {
 app.get("/api/departments", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "public_departments", 100, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare("SELECT id, name, description FROM departments ORDER BY name ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
@@ -2687,6 +2724,8 @@ app.post("/api/projects/:id/reopen", async (c) => {
 app.get("/api/projects/completed", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "public_completed_projects", 100, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const projects = await c.env.DB.prepare(
       "SELECT id, name, description, company_org, deadline, created_at FROM projects WHERE status = 'completed' ORDER BY created_at DESC",
     ).all();
@@ -3139,6 +3178,8 @@ app.put("/api/recruitment/admin/settings", async (c) => {
 app.get("/api/recruitment/open-domains", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "recruitment_open_domains", 100, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare("SELECT domain_name FROM recruitment_domain_settings WHERE is_open = 1 ORDER BY domain_name ASC").all();
     return c.json({ success: true, data: (rows.results || []).map((r: any) => r.domain_name) });
   } catch (e: any) {
@@ -3587,6 +3628,7 @@ export class ChatRoomDO {
   messages: any[];
   polls: any[];
   room: string;
+  rateLimits: Map<string, { count: number; windowStart: number }>;
 
   constructor(state: any, env: any) {
     this.state = state;
@@ -3596,6 +3638,7 @@ export class ChatRoomDO {
     this.messages = [];
     this.polls = [];
     this.room = "";
+    this.rateLimits = new Map();
   }
 
   async fetch(request: Request) {
@@ -3714,6 +3757,23 @@ export class ChatRoomDO {
       }
     }
     if (!sender) return;
+
+    // Per-user rate limiting for chat actions
+    if (data.type === "message" || data.type === "create_poll") {
+      const now = Date.now();
+      const windowMs = 1000;
+      const maxPerWindow = 10;
+      let rl = this.rateLimits.get(sender.userId);
+      if (!rl || now - rl.windowStart > windowMs) {
+        rl = { count: 0, windowStart: now };
+        this.rateLimits.set(sender.userId, rl);
+      }
+      rl.count++;
+      if (rl.count > maxPerWindow) {
+        try { ws.send(JSON.stringify({ type: "rate_limited", retryAfter: Math.ceil((rl.windowStart + windowMs - now) / 1000) })); } catch {}
+        return;
+      }
+    }
 
     if (data.type === "message") {
       const content = (data.content || "").trim().slice(0, 2000);
@@ -3857,6 +3917,11 @@ export class ChatRoomDO {
   async alarm() {
     // Daily cleanup: delete messages older than 6 months
     await this._cleanupOldMessages();
+    // Clean up stale rate limit entries (older than 60s)
+    const cutoff = Date.now() - 60000;
+    for (const [userId, rl] of this.rateLimits) {
+      if (rl.windowStart < cutoff) this.rateLimits.delete(userId);
+    }
     await this.state.storage.setAlarm(Date.now() + 24 * 60 * 60 * 1000);
   }
 

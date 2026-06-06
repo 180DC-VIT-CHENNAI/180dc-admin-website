@@ -491,7 +491,7 @@ export default function MembersLayout() {
         )}
 
         {activePanel === "members" && (
-          <MembersSection authToken={authToken!} />
+          <MembersSection authToken={authToken!} powerLevel={powerLevel} />
         )}
 
         {activePanel === "profile" && (
@@ -1100,7 +1100,7 @@ export default function MembersLayout() {
   );
 }
 
-function MembersSection({ authToken }: { authToken: string }) {
+function MembersSection({ authToken, powerLevel }: { authToken: string; powerLevel: number }) {
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -1123,6 +1123,21 @@ function MembersSection({ authToken }: { authToken: string }) {
   }, [authToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const testAccounts = new Set(["kevindaniel.2025@vitstudent.ac.in", "admin@vitstudent.ac.in"]);
+
+  async function handleExport() {
+    const res = await fetch(apiUrl("/api/members/export"), {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "members.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   const roleOrder: Record<string, number> = {
     president: 0,
@@ -1178,7 +1193,12 @@ function MembersSection({ authToken }: { authToken: string }) {
 
   return (
     <div>
-      <h2 style={{ marginTop: 0 }}>Members</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 0, marginBottom: 16 }}>
+        <h2 style={{ margin: 0 }}>Members</h2>
+        <button className="btn" onClick={handleExport} style={{ fontSize: 12, padding: "4px 12px" }}>
+          Export CSV
+        </button>
+      </div>
       <div className="card-doodle" style={{ marginBottom: 16, padding: "0.75rem 1rem" }}>
         <input
           className="input"
