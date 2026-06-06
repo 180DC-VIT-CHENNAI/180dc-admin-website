@@ -1100,7 +1100,7 @@ export default function MembersLayout() {
   );
 }
 
-function MembersSection({ authToken, powerLevel }: { authToken: string; powerLevel: number }) {
+function MembersSection({ authToken }: { authToken: string; powerLevel: number }) {
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");

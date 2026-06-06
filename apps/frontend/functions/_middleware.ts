@@ -10,13 +10,38 @@ function addSecurityHeaders(headers: Headers) {
   headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
 }
 
+const API_BASE = "https://admin-api.technical-vitc.workers.dev";
+
 export async function onRequest(context: any) {
   const { request, next, env } = context;
   const url = new URL(request.url);
   const path = url.pathname;
 
+  // Proxy API requests to the admin-api worker
+  if (path.startsWith("/api/")) {
+    const apiUrl = new URL(path, API_BASE);
+    apiUrl.search = url.search;
+    const apiHeaders = new Headers(request.headers);
+    apiHeaders.delete("X-Content-Type-Options");
+    const apiResponse = await fetch(apiUrl.toString(), {
+      method: request.method,
+      headers: apiHeaders,
+      body: request.method !== "GET" && request.method !== "HEAD" ? request.body : undefined,
+    });
+    const respHeaders = new Headers(apiResponse.headers);
+    addSecurityHeaders(respHeaders);
+    return new Response(apiResponse.body, {
+      status: apiResponse.status,
+      statusText: apiResponse.statusText,
+      headers: respHeaders,
+    });
+  }
+
   if (path.startsWith("/assets/") || path === "/favicon.svg" || path === "/icons.svg") {
     const response = await next();
+    if (path.endsWith(".js") || path.endsWith(".mjs")) {
+      response.headers.set("Content-Type", "text/javascript");
+    }
     addSecurityHeaders(response.headers);
     return response;
   }
