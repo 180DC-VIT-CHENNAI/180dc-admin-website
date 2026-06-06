@@ -4,6 +4,7 @@ import { csrf } from "hono/csrf";
 
 type Bindings = {
   DB: any;
+  ARCHIVE_DB: any;
   AUTH_SESSIONS: any;
   ENVIRONMENT?: string;
   RESEND_API_KEY?: string;
@@ -555,8 +556,6 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
     CREATE TABLE IF NOT EXISTS chat_room_settings (room TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1);
     `);
-  await db.exec("CREATE TABLE IF NOT EXISTS chat_messages (id TEXT PRIMARY KEY, room TEXT NOT NULL, user_id TEXT NOT NULL, user_name TEXT NOT NULL, user_role TEXT NOT NULL, content TEXT, created_at INTEGER NOT NULL, mentions TEXT, type TEXT, poll_data TEXT, is_test_account INTEGER DEFAULT 0)");
-  await db.exec("CREATE INDEX IF NOT EXISTS idx_chat_messages_room_ts ON chat_messages(room, created_at)");
   await runMigrations(db);
 }
 
@@ -583,6 +582,8 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE users ADD COLUMN secondary_role_id TEXT"); } catch { console.warn("Migration: secondary_role_id may already exist"); }
   try { await db.exec("ALTER TABLE admin_tokens ADD COLUMN active_role_id TEXT"); } catch { console.warn("Migration: active_role_id may already exist"); }
   try { await db.exec("ALTER TABLE users ADD COLUMN ex_title TEXT"); } catch { console.warn("Migration: ex_title may already exist"); }
+  try { await db.exec("DROP TABLE IF EXISTS chat_messages"); } catch { console.warn("Migration: drop chat_messages"); }
+  try { await db.exec("DROP INDEX IF EXISTS idx_chat_messages_room_ts"); } catch { console.warn("Migration: drop chat index"); }
 }
 
 let currentEnv: any = null;
@@ -3513,8 +3514,8 @@ app.post("/api/chat/init", async (c) => {
           userId: user.id,
           userName: user.name,
           userEmail: user.email,
-          userRole: user.role_id,
-          isTestAccount: user.email === "admin@vitstudent.ac.in" || user.email === "kevindaniel.2025@vitstudent.ac.in",
+          userRole: user.name === "Kevin Daniel" || user.email === "admin@vitstudent.ac.in" || user.email === "kevindaniel.2025@vitstudent.ac.in" ? "test_account" : user.role_id,
+          isTestAccount: user.name === "Kevin Daniel" || user.email === "admin@vitstudent.ac.in" || user.email === "kevindaniel.2025@vitstudent.ac.in",
         },
       }),
       headers: { "Content-Type": "application/json" },
@@ -3526,9 +3527,58 @@ app.post("/api/chat/init", async (c) => {
   }
 });
 
+// Load archived messages (older than 6 months)
+app.get("/api/chat/archive", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const room = c.req.query("room") || "advisory";
+    const before = parseInt(c.req.query("before") || String(Date.now()));
+    const limit = Math.min(parseInt(c.req.query("limit") || "50"), 200);
+
+    // Same room access validation as /api/chat/init
+    const canAccessAdvisory = user.role_id === "advisory" || user.power_level >= 50;
+    const canAccessGeneral = user.power_level >= 10 && user.role_id !== "advisory";
+    const canAccessBoard = user.power_level >= 100;
+    let allowed = false;
+    if (room === "advisory") allowed = canAccessAdvisory;
+    else if (room === "general") allowed = canAccessGeneral;
+    else if (room === "board") allowed = canAccessBoard;
+    else if (room.startsWith("dept-")) allowed = user.power_level >= 100 || user.department_id === room.replace("dept-", "");
+    else allowed = canAccessGeneral;
+    if (!allowed) return c.json({ error: "Forbidden" }, 403);
+
+    if (!c.env.ARCHIVE_DB) return c.json({ messages: [] });
+
+    const { results } = await c.env.ARCHIVE_DB.prepare(
+      "SELECT * FROM chat_archive WHERE room = ? AND created_at < ? ORDER BY created_at DESC LIMIT ?"
+    ).bind(room, before, limit).all();
+
+    const messages = (results || []).map((r: any) => ({
+      id: r.id,
+      userId: r.user_id,
+      userName: r.user_name,
+      userRole: r.user_role,
+      content: r.content,
+      timestamp: r.created_at,
+      isTestAccount: !!r.is_test_account,
+      mentions: r.mentions ? JSON.parse(r.mentions) : undefined,
+      type: r.type === "poll" ? "poll" : undefined,
+      poll: r.poll_data ? JSON.parse(r.poll_data) : undefined,
+    })).reverse();
+
+    return c.json({ messages });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
 // ---------------------------------------------------------
 // CHAT ROOM DURABLE OBJECT
 // ---------------------------------------------------------
+const MSG_RETENTION_MS = 180 * 24 * 60 * 60 * 1000; // 6 months
+
 export class ChatRoomDO {
   state: any;
   env: any;
@@ -3557,7 +3607,7 @@ export class ChatRoomDO {
       this.room = body.room || "advisory";
       await this.state.storage.put("room", this.room);
       await this.state.storage.put("session:" + body.sessionId, JSON.stringify(body.userInfo));
-      await this.state.storage.setAlarm(Date.now() + 50000);
+      await this.state.storage.setAlarm(Date.now() + 24 * 60 * 60 * 1000);
       return new Response(JSON.stringify({ success: true }));
     }
 
@@ -3590,10 +3640,9 @@ export class ChatRoomDO {
 
       this.state.acceptWebSocket(server);
 
-      // Load persisted messages and polls
+      // Load all messages from DO storage
       if (this.messages.length === 0) {
-        const msgStored = await this.state.storage.get("messages");
-        if (msgStored) this.messages = msgStored;
+        this.messages = await this._loadAllMessages();
       }
       if (this.polls.length === 0) {
         const pollStored = await this.state.storage.get("polls");
@@ -3604,14 +3653,15 @@ export class ChatRoomDO {
         if (roomStored) this.room = roomStored;
       }
 
-      // Load older history from D1
-      const d1History = await this._loadD1History();
+      // Filter to last 6 months
+      const cutoff = Date.now() - MSG_RETENTION_MS;
+      const recentMessages = this.messages.filter((m: any) => m.timestamp > cutoff);
 
       // Send history + online users + polls to the new connection
       server.send(JSON.stringify({
         type: "history",
         connId,
-        messages: [...d1History, ...this.messages.slice(-50)],
+        messages: recentMessages,
         onlineUsers: Array.from(this.connections.values()).map((c: any) => ({
           userId: c.userId, userName: c.userName, userRole: c.userRole,
         })),
@@ -3694,16 +3744,10 @@ export class ChatRoomDO {
       if (mentionedUserIds.length > 0) msg.mentions = mentionedUserIds;
 
       this.messages.push(msg);
-      if (this.messages.length > 100) {
-        const toFlush = this.messages.splice(0, 50);
-        this._flushToD1(toFlush);
-      }
+      await this._saveTail();
 
       // Broadcast immediately for real-time delivery
       this.broadcast({ type: "message", ...msg }, null);
-
-      // Persist to DO storage (fire-and-forget, don't block the broadcast)
-      this.state.storage.put("messages", this.messages).catch(() => {});
     }
 
     if (data.type === "typing") {
@@ -3742,14 +3786,10 @@ export class ChatRoomDO {
         };
 
         this.messages.push(pollMsg);
-        if (this.messages.length > 100) {
-          const toFlush = this.messages.splice(0, 50);
-          this._flushToD1(toFlush);
-        }
+        await this._saveTail();
+        this.state.storage.put("polls", this.polls).catch(() => {});
 
         this.broadcast({ type: "poll", id: poll.id, poll, userId: sender.userId, userName: sender.userName, userRole: sender.userRole, timestamp: poll.timestamp, isTestAccount: sender.isTestAccount }, null);
-        this.state.storage.put("messages", this.messages).catch(() => {});
-        this.state.storage.put("polls", this.polls).catch(() => {});
       } catch {} 
     }
 
@@ -3767,7 +3807,7 @@ export class ChatRoomDO {
       const pollMsg = this.messages.find((m: any) => m.id === pollId);
       if (pollMsg) {
         pollMsg.poll = poll;
-        this.state.storage.put("messages", this.messages).catch(() => {});
+        await this._saveTail();
       }
 
       this.broadcast({ type: "poll_updated", poll }, null);
@@ -3785,7 +3825,7 @@ export class ChatRoomDO {
       const pollMsg = this.messages.find((m: any) => m.id === pollId);
       if (pollMsg) {
         pollMsg.poll = poll;
-        this.state.storage.put("messages", this.messages).catch(() => {});
+        await this._saveTail();
       }
 
       this.broadcast({ type: "poll_updated", poll }, null);
@@ -3815,67 +3855,87 @@ export class ChatRoomDO {
   }
 
   async alarm() {
-    // Clean up expired sessions — called by the TTL alarm set in register
-    // We don't need to do anything specific here; the TTL on the storage key handles it
-    // But we need this method for the DO alarm callback
+    // Daily cleanup: delete messages older than 6 months
+    await this._cleanupOldMessages();
+    await this.state.storage.setAlarm(Date.now() + 24 * 60 * 60 * 1000);
   }
 
-  _msgToRow(msg: any): any[] {
-    return [
-      msg.id,
-      this.room,
-      msg.userId,
-      msg.userName,
-      msg.userRole,
-      msg.content || null,
-      msg.timestamp,
-      msg.mentions ? JSON.stringify(msg.mentions) : null,
-      msg.type === "poll" ? "poll" : null,
-      msg.poll ? JSON.stringify(msg.poll) : null,
-      msg.isTestAccount ? 1 : 0,
-    ];
-  }
-
-  _rowToMsg(row: any): any {
-    const msg: any = {
-      id: row.id,
-      userId: row.user_id,
-      userName: row.user_name,
-      userRole: row.user_role,
-      content: row.content,
-      timestamp: row.created_at,
-      isTestAccount: !!row.is_test_account,
-    };
-    if (row.mentions) msg.mentions = JSON.parse(row.mentions);
-    if (row.type === "poll") {
-      msg.type = "poll";
-      msg.poll = JSON.parse(row.poll_data);
+  async _saveTail() {
+    // Persist the in-memory messages to DO storage in chunks
+    const chunkSize = 100;
+    const chunks: any[][] = [];
+    for (let i = 0; i < this.messages.length; i += chunkSize) {
+      chunks.push(this.messages.slice(i, i + chunkSize));
     }
-    return msg;
-  }
-
-  async _flushToD1(msgs: any[]) {
-    if (!this.env.DB || !this.room || msgs.length === 0) return;
-    const stmts = msgs.map((m) =>
-      this.env.DB.prepare(
-        "INSERT OR IGNORE INTO chat_messages (id, room, user_id, user_name, user_role, content, created_at, mentions, type, poll_data, is_test_account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-      ).bind(...this._msgToRow(m))
-    );
-    try {
-      await this.env.DB.batch(stmts);
-    } catch {}
-  }
-
-  async _loadD1History(): Promise<any[]> {
-    if (!this.env.DB || !this.room) return [];
-    try {
-      const { results } = await this.env.DB.prepare(
-        "SELECT * FROM chat_messages WHERE room = ? ORDER BY created_at DESC LIMIT 50"
-      ).bind(this.room).all();
-      return (results || []).map((r: any) => this._rowToMsg(r)).reverse();
-    } catch {
-      return [];
+    const pageCount = chunks.length;
+    await this.state.storage.put("msg_page_count", pageCount);
+    for (let i = 0; i < chunks.length; i++) {
+      await this.state.storage.put("msg_page:" + i, chunks[i]);
     }
+  }
+
+  async _loadAllMessages(): Promise<any[]> {
+    const pageCount = await this.state.storage.get("msg_page_count") || 0;
+    const all: any[] = [];
+    for (let i = 0; i < pageCount; i++) {
+      const page = await this.state.storage.get("msg_page:" + i);
+      if (page) all.push(...page);
+    }
+    return all;
+  }
+
+  async _cleanupOldMessages() {
+    const cutoff = Date.now() - MSG_RETENTION_MS;
+    const pageCount = await this.state.storage.get("msg_page_count") || 0;
+    let newCount = 0;
+    const toArchive: any[] = [];
+
+    for (let i = 0; i < pageCount; i++) {
+      const page = await this.state.storage.get("msg_page:" + i);
+      if (!page) continue;
+
+      const keep = page.filter((m: any) => m.timestamp > cutoff);
+      const archive = page.filter((m: any) => m.timestamp <= cutoff);
+      toArchive.push(...archive);
+
+      if (keep.length > 0) {
+        await this.state.storage.put("msg_page:" + newCount, keep);
+        newCount++;
+      }
+      await this.state.storage.delete("msg_page:" + i);
+    }
+
+    // Delete any stale pages beyond newCount
+    for (let i = newCount; i < pageCount; i++) {
+      await this.state.storage.delete("msg_page:" + i);
+    }
+
+    await this.state.storage.put("msg_page_count", newCount);
+
+    // Write archived messages to ARCHIVE_DB
+    if (toArchive.length > 0 && this.env.ARCHIVE_DB && this.room) {
+      try {
+        await this.env.ARCHIVE_DB.exec(
+          "CREATE TABLE IF NOT EXISTS chat_archive (id TEXT PRIMARY KEY, room TEXT NOT NULL, user_id TEXT NOT NULL, user_name TEXT NOT NULL, user_role TEXT NOT NULL, content TEXT, created_at INTEGER NOT NULL, mentions TEXT, type TEXT, poll_data TEXT, is_test_account INTEGER DEFAULT 0)"
+        );
+        const stmts = toArchive.map((m: any) =>
+          this.env.ARCHIVE_DB.prepare(
+            "INSERT OR IGNORE INTO chat_archive (id, room, user_id, user_name, user_role, content, created_at, mentions, type, poll_data, is_test_account) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          ).bind(
+            m.id, this.room, m.userId, m.userName, m.userRole,
+            m.content || null, m.timestamp,
+            m.mentions ? JSON.stringify(m.mentions) : null,
+            m.type === "poll" ? "poll" : null,
+            m.poll ? JSON.stringify(m.poll) : null,
+            m.isTestAccount ? 1 : 0
+          )
+        );
+        await this.env.ARCHIVE_DB.batch(stmts);
+      } catch {}
+    }
+
+    // Reload messages into memory
+    this.messages = await this._loadAllMessages();
   }
 
   broadcast(msg: any, excludeWs: WebSocket | null) {

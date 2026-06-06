@@ -5,5 +5,6 @@ interface Env {
 	RESEND_API_KEY: string;
 	CHAT_ROOM: DurableObjectNamespace<import("./index").ChatRoomDO>;
 	DB: D1Database;
+	ARCHIVE_DB: D1Database;
 	QUEUE: Queue;
 }

@@ -2,10 +2,19 @@ name = "admin-api"
 main = "./index.ts"
 compatibility_date = "2024-04-05"
 
+routes = [
+  { pattern = "*180dc.shop/api/*", zone_name = "180dc.shop" },
+]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "180dc-db"
 database_id = "ee99b36c-b013-4cde-b136-eba5b044bd4b"
+
+[[d1_databases]]
+binding = "ARCHIVE_DB"
+database_name = "180dc-chat-archive"
+database_id = "f376133b-e500-4224-a514-b94c5c05ae8e"  # Create in Cloudflare dashboard → Workers & Pages → D1
 
 [[kv_namespaces]]
 binding = "AUTH_SESSIONS"
@@ -19,10 +28,6 @@ class_name = "ChatRoomDO"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ChatRoomDO"]
-
-[[custom_domains]]
-domain = "api.180dc.shop"
-zone_name = "180dc.shop"
 
 [[queues.producers]]
 binding = "QUEUE"
