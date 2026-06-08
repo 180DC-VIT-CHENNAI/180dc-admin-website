@@ -3638,6 +3638,7 @@ function fileFromR2Obj(obj: any, key: string): any {
     project_name: m.projectName || null,
     meeting_title: m.meetingTitle || null,
     meeting_date: m.meetingDate || null,
+    meeting_class: m.meetingClass || null,
     description: m.description || null,
     uploaded_by: m.uploadedBy || "",
     uploaded_by_name: m.uploadedByName || "",
@@ -3756,6 +3757,7 @@ app.post("/api/club-files/upload", async (c) => {
     if (body["projectName"]) customMetadata.projectName = body["projectName"] as string;
     if (body["meetingTitle"]) customMetadata.meetingTitle = body["meetingTitle"] as string;
     if (body["meetingDate"]) customMetadata.meetingDate = body["meetingDate"] as string;
+    if (body["meetingClass"]) customMetadata.meetingClass = body["meetingClass"] as string;
     if (body["description"]) customMetadata.description = body["description"] as string;
 
     const arrayBuffer = await file.arrayBuffer();
@@ -3764,7 +3766,7 @@ app.post("/api/club-files/upload", async (c) => {
       customMetadata,
     });
 
-    return c.json({ success: true, file: { id, category, file_name: file.name, file_type: file.type, file_size: file.size, event_name: customMetadata.eventName || null, event_for: customMetadata.eventFor || null, project_name: customMetadata.projectName || null, meeting_title: customMetadata.meetingTitle || null, meeting_date: customMetadata.meetingDate || null, description: customMetadata.description || null, uploaded_by: user.id, uploaded_by_name: user.name || user.email, created_at: customMetadata.createdAt, r2_key: r2Key } });
+    return c.json({ success: true, file: { id, category, file_name: file.name, file_type: file.type, file_size: file.size, event_name: customMetadata.eventName || null, event_for: customMetadata.eventFor || null, project_name: customMetadata.projectName || null, meeting_title: customMetadata.meetingTitle || null, meeting_date: customMetadata.meetingDate || null, meeting_class: customMetadata.meetingClass || null, description: customMetadata.description || null, uploaded_by: user.id, uploaded_by_name: user.name || user.email, created_at: customMetadata.createdAt, r2_key: r2Key } });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }

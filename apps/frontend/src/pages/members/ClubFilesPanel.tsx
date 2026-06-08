@@ -12,6 +12,7 @@ interface ClubFile {
   project_name: string | null;
   meeting_title: string | null;
   meeting_date: string | null;
+  meeting_class: string | null;
   description: string | null;
   uploaded_by: string;
   uploaded_by_name: string;
@@ -48,6 +49,7 @@ export default function ClubFilesPanel({ authToken }: { authToken: string }) {
   const [uploadEventFor, setUploadEventFor] = useState("");
   const [uploadProjectName, setUploadProjectName] = useState("");
   const [uploadMeetingTitle, setUploadMeetingTitle] = useState("");
+  const [uploadMeetingClass, setUploadMeetingClass] = useState("");
   const [uploadMeetingDate, setUploadMeetingDate] = useState("");
   const [uploadDescription, setUploadDescription] = useState("");
 
@@ -100,6 +102,7 @@ export default function ClubFilesPanel({ authToken }: { authToken: string }) {
     setUploadEventFor("");
     setUploadProjectName("");
     setUploadMeetingTitle("");
+    setUploadMeetingClass("");
     setUploadMeetingDate("");
     setUploadDescription("");
   }
@@ -115,6 +118,7 @@ export default function ClubFilesPanel({ authToken }: { authToken: string }) {
       if (uploadEventFor) formData.append("eventFor", uploadEventFor);
       if (uploadProjectName) formData.append("projectName", uploadProjectName);
       if (uploadMeetingTitle) formData.append("meetingTitle", uploadMeetingTitle);
+      if (uploadMeetingClass) formData.append("meetingClass", uploadMeetingClass);
       if (uploadMeetingDate) formData.append("meetingDate", uploadMeetingDate);
       if (uploadDescription) formData.append("description", uploadDescription);
 
@@ -178,7 +182,7 @@ export default function ClubFilesPanel({ authToken }: { authToken: string }) {
   };
 
   const tabHeaders: Record<Tab, string[]> = {
-    General: ["#", "Document", "Type", "Meeting / MOV", "Meeting Date", "Uploaded At", "Uploaded By", "Description", ""],
+    General: ["#", "Document", "Type", "MOM", "Class", "Meeting Date", "Uploaded At", "Uploaded By", "Description", ""],
     Projects: ["#", "Document", "Type", "Project", "Uploaded At", "Uploaded By", "Description", ""],
     Events: ["#", "Document", "Type", "Event", "For", "Uploaded At", "Uploaded By", "Description", ""],
   };
@@ -299,6 +303,7 @@ export default function ClubFilesPanel({ authToken }: { authToken: string }) {
                     {tab === "General" && (
                       <>
                         <td style={{ ...cellStyle, fontWeight: 500 }}>{file.meeting_title || <span style={{ color: "var(--text-light)" }}>—</span>}</td>
+                        <td style={{ ...cellStyle, color: "var(--text-secondary)" }}>{file.meeting_class || <span style={{ color: "var(--text-light)" }}>—</span>}</td>
                         <td style={{ ...cellStyle, color: "var(--text-secondary)" }}>{file.meeting_date || <span style={{ color: "var(--text-light)" }}>—</span>}</td>
                       </>
                     )}
@@ -373,8 +378,13 @@ export default function ClubFilesPanel({ authToken }: { authToken: string }) {
               {tab === "General" && (
                 <>
                   <div>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Meeting / MOV Title</label>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>MOM Title</label>
                     <input className="input" placeholder="e.g. Weekly Sync Meeting Minutes" value={uploadMeetingTitle} onChange={(e) => setUploadMeetingTitle(e.target.value)}
+                      style={{ width: "100%", fontSize: 13, boxSizing: "border-box" }} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>Class</label>
+                    <input className="input" placeholder="e.g. Board Meeting, Team Sync, Workshop" value={uploadMeetingClass} onChange={(e) => setUploadMeetingClass(e.target.value)}
                       style={{ width: "100%", fontSize: 13, boxSizing: "border-box" }} />
                   </div>
                   <div>
