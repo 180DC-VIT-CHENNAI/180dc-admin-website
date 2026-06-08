@@ -356,18 +356,17 @@ p {
 
 /* Cards */
 .card-doodle {
-  background: #fff;
-  border: 3px solid var(--text-black);
-  border-radius: var(--border-radius-lg);
-  padding: 2.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  padding: 1.5rem;
   position: relative;
-  box-shadow: 4px 4px 0 var(--text-black);
-  transition: all 0.3s ease;
+  transition: box-shadow 0.2s, border-color 0.2s;
 }
 
 .card-doodle:hover {
-  transform: translate(-3px, -3px);
-  box-shadow: 7px 7px 0 var(--text-black);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  border-color: color-mix(in srgb, var(--border-light) 70%, var(--primary-green));
 }
 
 /* Members grid, responsive */
@@ -1104,14 +1103,10 @@ p {
 .card-doodle {
   cursor: pointer;
   user-select: none;
-  transition:
-    transform 0.3s ease,
-    box-shadow 0.3s ease;
 }
 
 .card-doodle.expanded {
   transform: scale(1.02) translateY(-5px);
-  box-shadow: 8px 8px 0 var(--text-black);
   z-index: 10;
 }
 
@@ -1202,7 +1197,6 @@ html.lenis body {
   border-bottom-color: var(--text-black);
 }
 
-[data-theme="dark"] .card-doodle,
 [data-theme="dark"] .about-card,
 [data-theme="dark"] .floating-note {
   background: var(--bg-card);
