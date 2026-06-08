@@ -299,7 +299,7 @@ export default function ClubFilesPanel({ authToken }: { authToken: string }) {
                     {tab === "General" && (
                       <>
                         <td style={{ ...cellStyle, fontWeight: 500 }}>{file.meeting_title || <span style={{ color: "var(--text-light)" }}>—</span>}</td>
-                        <td style={{ ...cellStyle, color: "var(--text-secondary)" }}>{file.meeting_date || <span style={{ color: "var(--text-light)" }}>—</span>}</td>
+                        <td style={{ ...cellStyle, color: "var(--text-secondary)" }}>{file.meeting_date || ""}</td>
                       </>
                     )}
                     <td style={{ ...cellStyle, color: "var(--text-light)", whiteSpace: "nowrap", fontSize: 12 }}>{formatDate(file.created_at)}</td>
