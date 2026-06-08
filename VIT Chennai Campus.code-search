@@ -1,0 +1,9 @@
+# Query: VIT Chennai HQ
+# ContextLines: 1
+
+1 result - 1 file
+
+apps\frontend\src\components\Globe.tsx:
+  332        {/* Floating doodle annotations */}
+  333:       <div className="globe-doodle-annotation top-left arrow">VIT Chennai Campus</div>
+  334        <div className="globe-doodle-annotation top-right">190+ Branches</div>

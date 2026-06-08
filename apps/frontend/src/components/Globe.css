@@ -530,3 +530,74 @@
     padding: 6px 8px;
   }
 }
+
+.campus-building-card {
+  position: relative;
+  cursor: pointer;
+}
+
+.building-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: campusFadeIn 0.2s ease;
+}
+
+.building-modal {
+  background: var(--bg-card);
+  border-radius: 16px;
+  max-width: 480px;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.building-modal img {
+  width: 100%;
+  height: 260px;
+  object-fit: cover;
+  object-position: top;
+  display: block;
+}
+
+.building-modal-info {
+  padding: 20px;
+}
+
+.building-modal-info h3 {
+  margin: 0 0 10px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.building-modal-info p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.building-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}

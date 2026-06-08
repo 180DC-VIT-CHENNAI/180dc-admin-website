@@ -729,7 +729,9 @@ function App() {
             <a href="mailto:vit.chennai@180dc.org" className="footer-link">
               vit.chennai@180dc.org
             </a>
+            
             <div className="social-links">
+
               <h4>Connect With Us</h4>
               <ul>
                 <li>
@@ -755,6 +757,10 @@ function App() {
               </ul>
             </div>
           </div>
+          <div className="footer-about">
+  <h4>About 180DC</h4>
+  <p>180 Degrees Consulting is the world's largest consultancy for non-profits and social enterprises, with 190+ branches across universities worldwide. Our VIT Chennai branch connects talented students with organizations that need strategic support to maximize their impact.</p>
+</div>
           <div className="footer-links">
             <h4>Quick Links</h4>
             <a href="#about">About</a>
@@ -764,7 +770,7 @@ function App() {
           </div>
         </div>
         <div className="copyright text-center">
-          <p>&copy; 2026 180dc vit chennai. All rights reserved.</p>
+          <p>&copy; 2026 180DC VIT Chennai. All rights reserved.</p>
         </div>
       </footer>
 

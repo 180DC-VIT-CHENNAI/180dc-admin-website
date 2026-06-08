@@ -924,7 +924,7 @@ p {
   justify-content: space-between;
   align-items: flex-start;
   gap: 2rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .footer-info h3 {
@@ -986,7 +986,7 @@ p {
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
-  align-items: flex-end;
+  align-items: flex-start;
 }
 
 .footer-links h4 {
@@ -1015,6 +1015,31 @@ p {
   font-family: "Patrick Hand", cursive;
   font-size: 0.9rem;
   color: var(--text-light);
+  margin: 0;
+}
+.footer-tagline {
+  font-family: 'Patrick Hand', cursive;
+  color: var(--primary-green);
+  font-size: 0.95rem;
+  margin: 0;
+  font-style: italic;
+}
+
+.footer-about {
+  flex: 1.5;
+  min-width: 240px;
+}
+
+.footer-about h4 {
+  font-family: 'Caveat', cursive;
+  font-size: 1.3rem;
+  margin-bottom: 12px;
+}
+
+.footer-about p {
+  font-size: 0.875rem;
+  line-height: 1.8;
+  color: var(--text-gray);
   margin: 0;
 }
 
