@@ -27,7 +27,6 @@ interface Props {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export default function DepartmentPanel({ authToken, departmentId, departmentName }: Props) {
   const [meets, setMeets] = useState<any[]>([]);
-  const [documents, setDocuments] = useState<any[]>([]);
   const [instructions, setInstructions] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]);
 
@@ -38,10 +37,6 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
   const [newMeetWhen, setNewMeetWhen] = useState("");
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
   const [scheduling, setScheduling] = useState(false);
-
-  const [newDocTitle, setNewDocTitle] = useState("");
-  const [newDocDesc, setNewDocDesc] = useState("");
-  const [newDocUrl, setNewDocUrl] = useState("");
 
   const [newInstTitle, setNewInstTitle] = useState("");
   const [newInstContent, setNewInstContent] = useState("");
@@ -65,7 +60,6 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
       const membersData = await membersRes.json();
       if (overview.success) {
         setMeets(overview.meets || []);
-        setDocuments(overview.documents || []);
         setInstructions(overview.instructions || []);
       }
       if (membersData.success) setMembers(membersData.data || []);
@@ -163,42 +157,6 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
               } finally { setScheduling(false); }
             }}>{scheduling ? "Adding..." : "Add Meet"}</button>
             {scheduling && <FullPageLoader message="Creating meet and sending emails..." />}
-          </div>
-        </div>
-
-        {/* DOCUMENTS */}
-        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-          <h3>Important Documents</h3>
-          {documents.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No documents yet.</p>}
-          <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
-            {documents.map((d) => (
-              <div key={d.id} className="card-doodle" style={{ padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <strong>{d.title}</strong>
-                  {d.description && <div style={{ color: "var(--text-secondary)", fontSize: 14 }}>{d.description}</div>}
-                  {d.file_url && <a href={d.file_url} target="_blank" style={{ color: "var(--primary-green)", fontWeight: 700, fontSize: 14 }}>View ↗</a>}
-                  <div style={{ fontSize: 12, color: "var(--text-light)", marginTop: 4 }}>Status: {d.status}</div>
-                </div>
-                <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
-                  await fetch(apiUrl(`/api/departments/${departmentId}/documents/${d.id}`), { method: "DELETE", headers });
-                  setDocuments(documents.filter((x) => x.id !== d.id));
-                }}>Delete</button>
-              </div>
-            ))}
-          </div>
-          <div className="admin-grid-4" style={{ marginTop: 0 }}>
-            <input className="input" placeholder="Document title" value={newDocTitle} onChange={(e) => setNewDocTitle(e.target.value)} />
-            <input className="input" placeholder="Description" value={newDocDesc} onChange={(e) => setNewDocDesc(e.target.value)} />
-            <input className="input" placeholder="File URL (Google Drive, etc.)" value={newDocUrl} onChange={(e) => setNewDocUrl(e.target.value)} />
-            <button className="btn" onClick={async () => {
-              if (!newDocTitle) return alert("Title required");
-              const res = await fetch(apiUrl(`/api/departments/${departmentId}/documents`), {
-                method: "POST", headers, body: JSON.stringify({ title: newDocTitle, description: newDocDesc, fileUrl: newDocUrl }),
-              });
-              const data = await res.json();
-              if (data.success) { setNewDocTitle(""); setNewDocDesc(""); setNewDocUrl(""); loadOverview(); }
-              else alert(data.error);
-            }}>Add Document</button>
           </div>
         </div>
 
