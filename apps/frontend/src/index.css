@@ -157,36 +157,33 @@ body {
 
 /* Buttons */
 .btn {
-  display: inline-block;
-  padding: 0.8rem 2rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.5rem 1.25rem;
   background-color: var(--primary-green);
-  color: var(--primary-white);
-  border: 3px solid var(--text-black);
-  border-radius: 50px;
-  font-weight: 700;
-  font-family: "Nunito", sans-serif;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: #fff;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  font-family: inherit;
   cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 3px 3px 0 var(--text-black);
-  position: relative;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
 .btn:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 5px 5px 0 var(--text-black);
   background-color: var(--primary-dark-green);
 }
 
 .btn.outline {
   background-color: transparent;
-  color: var(--text-black);
+  color: var(--text-primary);
+  border-color: var(--border-light);
 }
 
 .btn.outline:hover {
-  background-color: var(--primary-green);
-  color: var(--primary-white);
+  background-color: var(--bg-secondary);
 }
 
 /* Container */
@@ -1246,14 +1243,6 @@ html.lenis body {
 }
 
 /* Dark mode button text fix */
-[data-theme="dark"] .btn {
-  color: #fff;
-}
-
-[data-theme="dark"] .btn:hover {
-  color: #fff;
-}
-
 [data-theme="dark"] .btn.outline {
   color: var(--text-primary);
 }

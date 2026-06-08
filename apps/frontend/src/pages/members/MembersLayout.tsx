@@ -237,7 +237,7 @@ export default function MembersLayout() {
       label: "General",
       items: [
         { id: "dashboard", label: "Dashboard", minPower: 0 },
-        { id: "members", label: "Members", minPower: 0 },
+        { id: "members", label: "Members", minPower: 10 },
         { id: "profile", label: "Profile", minPower: 0 },
         { id: "club-files", label: "Club Files", minPower: 10 },
       ],
@@ -1156,7 +1156,7 @@ function MembersSection({ authToken }: { authToken: string; powerLevel: number }
     return (
       <div className="members-grid">
         <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-          <p style={{ color: "var(--text-secondary)" }}>Loading members...</p>
+          <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: 14 }}>Loading members...</p>
         </div>
       </div>
     );
@@ -1164,13 +1164,13 @@ function MembersSection({ authToken }: { authToken: string; powerLevel: number }
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 0, marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Members</h2>
-        <button className="btn" onClick={handleExport} style={{ fontSize: 12, padding: "4px 12px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Members</h2>
+        <button className="btn" onClick={handleExport}>
           Export CSV
         </button>
       </div>
-      <div className="card-doodle" style={{ marginBottom: 16, padding: "0.75rem 1rem" }}>
+      <div className="card-doodle" style={{ marginBottom: 20 }}>
         <input
           className="input"
           placeholder="Search by name, email, role, or department..."
@@ -1178,7 +1178,7 @@ function MembersSection({ authToken }: { authToken: string; powerLevel: number }
           onChange={(e) => setQuery(e.target.value)}
           style={{ width: "100%" }}
         />
-        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 8 }}>
+        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 10 }}>
           Showing {filtered.length} member{filtered.length !== 1 ? "s" : ""}
           {filtered.length !== members.length && ` (filtered from ${members.length})`}
         </div>
@@ -1186,37 +1186,39 @@ function MembersSection({ authToken }: { authToken: string; powerLevel: number }
       <div className="members-grid" style={{ gap: 16 }}>
         {deptKeys.length === 0 && (
           <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-            <p style={{ color: "var(--text-secondary)" }}>No members match your search.</p>
+            <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: 14 }}>No members match your search.</p>
           </div>
         )}
         {deptKeys.map((key) => (
           <div key={key} className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-            <h3 style={{ margin: 0 }}>
-              {key === "__none" ? "No Department" : (DEPT_NAMES[key] || key)}
-              <span style={{ fontSize: 13, fontWeight: 400, color: "var(--text-secondary)", marginLeft: 8 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
+                {key === "__none" ? "No Department" : (DEPT_NAMES[key] || key)}
+              </h3>
+              <span style={{ fontSize: 13, color: "var(--text-light)" }}>
                 {deptGroups[key].length} member{deptGroups[key].length !== 1 ? "s" : ""}
               </span>
-            </h3>
-            <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
               {deptGroups[key].map((m: any) => (
                 <div
                   key={m.id}
                   style={{
                     display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "0.6rem 0.8rem", background: "var(--bg-secondary)",
-                    borderRadius: 8, border: "1px solid var(--border-light)",
+                    padding: "0.65rem 0.9rem", background: "var(--bg-secondary)",
+                    borderRadius: 10, border: "1px solid var(--border-light)",
                   }}
                 >
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <strong style={{ fontSize: 14 }}>{m.name}</strong>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{m.name}</span>
                       {testAccounts.has(m.email) && (
-                        <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 6, background: "var(--accent)", color: "#fff", fontWeight: 600 }}>test account</span>
+                        <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 5, background: "var(--accent)", color: "#fff", fontWeight: 600, lineHeight: "18px" }}>test account</span>
                       )}
                     </div>
-                    <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>{m.email}</div>
+                    <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 2 }}>{m.email}</div>
                   </div>
-                  <div style={{ fontSize: 13, color: "var(--primary-green)", textAlign: "right" }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--primary-green)", textAlign: "right", whiteSpace: "nowrap" }}>
                     {m.role_name}
                   </div>
                 </div>
