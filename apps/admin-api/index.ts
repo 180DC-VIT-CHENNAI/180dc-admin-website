@@ -3638,7 +3638,6 @@ function fileFromR2Obj(obj: any, key: string): any {
     project_name: m.projectName || null,
     meeting_title: m.meetingTitle || null,
     meeting_date: m.meetingDate || null,
-    meeting_class: m.meetingClass || null,
     description: m.description || null,
     uploaded_by: m.uploadedBy || "",
     uploaded_by_name: m.uploadedByName || "",
@@ -3757,7 +3756,6 @@ app.post("/api/club-files/upload", async (c) => {
     if (body["projectName"]) customMetadata.projectName = body["projectName"] as string;
     if (body["meetingTitle"]) customMetadata.meetingTitle = body["meetingTitle"] as string;
     if (body["meetingDate"]) customMetadata.meetingDate = body["meetingDate"] as string;
-    if (body["meetingClass"]) customMetadata.meetingClass = body["meetingClass"] as string;
     if (body["description"]) customMetadata.description = body["description"] as string;
 
     const arrayBuffer = await file.arrayBuffer();
