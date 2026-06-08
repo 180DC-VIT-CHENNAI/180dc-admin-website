@@ -5,6 +5,7 @@ import { csrf } from "hono/csrf";
 type Bindings = {
   DB: any;
   ARCHIVE_DB: any;
+  CLUB_FILES: any;
   AUTH_SESSIONS: any;
   ENVIRONMENT?: string;
   RESEND_API_KEY?: string;
@@ -3610,6 +3611,216 @@ app.get("/api/chat/archive", async (c) => {
     })).reverse();
 
     return c.json({ messages });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// CLUB FILES ENDPOINTS (R2 only — metadata stored as custom metadata on objects)
+// ---------------------------------------------------------
+
+function meta(obj: any, key: string): string {
+  return obj?.customMetadata?.[key] || "";
+}
+
+function fileFromR2Obj(obj: any, key: string): any {
+  const m = obj.customMetadata || {};
+  const fileName = m.fileName || key.split("/").pop() || "";
+  return {
+    id: key.split("/").pop()?.split(".")[0] || "",
+    category: key.split("/")[0],
+    file_name: fileName,
+    file_type: obj.httpMetadata?.contentType || m.fileType || "",
+    file_size: obj.size,
+    event_name: m.eventName || null,
+    event_for: m.eventFor || null,
+    project_name: m.projectName || null,
+    meeting_title: m.meetingTitle || null,
+    meeting_date: m.meetingDate || null,
+    description: m.description || null,
+    uploaded_by: m.uploadedBy || "",
+    uploaded_by_name: m.uploadedByName || "",
+    created_at: m.createdAt || obj.uploaded,
+    r2_key: key,
+  };
+}
+
+// List files with optional filters
+app.get("/api/club-files", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+
+    const category = c.req.query("category") || "";
+    const eventName = (c.req.query("eventName") || "").toLowerCase();
+    const projectName = (c.req.query("projectName") || "").toLowerCase();
+    const search = (c.req.query("search") || "").toLowerCase();
+
+    const prefix = category ? `${category}/` : "";
+    const listed = await c.env.CLUB_FILES.list({ prefix });
+
+    const files: any[] = [];
+    for (const obj of listed.objects) {
+      const head = await c.env.CLUB_FILES.head(obj.key);
+      if (!head) continue;
+      const m = head.customMetadata || {};
+      const cat = obj.key.split("/")[0];
+
+      if (category && cat !== category) continue;
+      if (eventName && (m.eventName || "").toLowerCase() !== eventName) continue;
+      if (projectName && (m.projectName || "").toLowerCase() !== projectName) continue;
+      if (search) {
+        const fileName = (m.fileName || "").toLowerCase();
+        const desc = (m.description || "").toLowerCase();
+        if (!fileName.includes(search) && !desc.includes(search)) continue;
+      }
+
+      files.push(fileFromR2Obj(head, obj.key));
+    }
+
+    files.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+    return c.json({ files });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Get unique event names (for filter dropdown)
+app.get("/api/club-files/events", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+
+    const listed = await c.env.CLUB_FILES.list({ prefix: "events/" });
+    const names = new Set<string>();
+    for (const obj of listed.objects) {
+      const head = await c.env.CLUB_FILES.head(obj.key);
+      if (head?.customMetadata?.eventName) names.add(head.customMetadata.eventName);
+    }
+    return c.json({ events: [...names].sort() });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Get unique project names (for filter dropdown)
+app.get("/api/club-files/projects", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+
+    const listed = await c.env.CLUB_FILES.list({ prefix: "projects/" });
+    const names = new Set<string>();
+    for (const obj of listed.objects) {
+      const head = await c.env.CLUB_FILES.head(obj.key);
+      if (head?.customMetadata?.projectName) names.add(head.customMetadata.projectName);
+    }
+    return c.json({ projects: [...names].sort() });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Upload a file
+app.post("/api/club-files/upload", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+
+    const body = await c.req.parseBody();
+    const file = body["file"] as File | null;
+    if (!file) return c.json({ error: "No file provided" }, 400);
+
+    const category = (body["category"] as string) || "general";
+    if (!["general", "projects", "events"].includes(category)) {
+      return c.json({ error: "Invalid category" }, 400);
+    }
+
+    const maxSize = 100 * 1024 * 1024;
+    if (file.size > maxSize) return c.json({ error: "File too large (max 100MB)" }, 400);
+
+    const id = crypto.randomUUID().replace(/-/g, "");
+    const ext = file.name.split(".").pop() || "";
+    const r2Key = `${category}/${id}.${ext}`;
+
+    const customMetadata: Record<string, string> = {
+      fileName: file.name,
+      fileType: file.type,
+      uploadedBy: user.id,
+      uploadedByName: user.name || user.email,
+      createdAt: new Date().toISOString(),
+    };
+    if (body["eventName"]) customMetadata.eventName = body["eventName"] as string;
+    if (body["eventFor"]) customMetadata.eventFor = body["eventFor"] as string;
+    if (body["projectName"]) customMetadata.projectName = body["projectName"] as string;
+    if (body["meetingTitle"]) customMetadata.meetingTitle = body["meetingTitle"] as string;
+    if (body["meetingDate"]) customMetadata.meetingDate = body["meetingDate"] as string;
+    if (body["description"]) customMetadata.description = body["description"] as string;
+
+    const arrayBuffer = await file.arrayBuffer();
+    await c.env.CLUB_FILES.put(r2Key, arrayBuffer, {
+      httpMetadata: { contentType: file.type },
+      customMetadata,
+    });
+
+    return c.json({ success: true, file: { id, category, file_name: file.name, file_type: file.type, file_size: file.size, event_name: customMetadata.eventName || null, event_for: customMetadata.eventFor || null, project_name: customMetadata.projectName || null, meeting_title: customMetadata.meetingTitle || null, meeting_date: customMetadata.meetingDate || null, description: customMetadata.description || null, uploaded_by: user.id, uploaded_by_name: user.name || user.email, created_at: customMetadata.createdAt, r2_key: r2Key } });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Download a file
+app.get("/api/club-files/:id/download", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+
+    const id = c.req.param("id");
+    const listed = await c.env.CLUB_FILES.list();
+    let targetKey = "";
+    for (const obj of listed.objects) {
+      if (obj.key.endsWith(`/${id}.`) || obj.key.includes(`/${id}.`)) {
+        targetKey = obj.key;
+        break;
+      }
+    }
+    if (!targetKey) return c.json({ error: "File not found" }, 404);
+
+    const obj = await c.env.CLUB_FILES.get(targetKey);
+    if (!obj) return c.json({ error: "File not found in storage" }, 404);
+
+    const m = obj.customMetadata || {};
+    const headers = new Headers();
+    headers.set("Content-Type", obj.httpMetadata?.contentType || m.fileType || "application/octet-stream");
+    headers.set("Content-Disposition", `attachment; filename="${m.fileName || targetKey.split("/").pop()}"`);
+    headers.set("Content-Length", String(obj.size));
+
+    return new Response(obj.body, { headers });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Delete a file
+app.delete("/api/club-files/:id", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+
+    const id = c.req.param("id");
+    const listed = await c.env.CLUB_FILES.list();
+    let targetKey = "";
+    for (const obj of listed.objects) {
+      if (obj.key.endsWith(`/${id}.`) || obj.key.includes(`/${id}.`)) {
+        targetKey = obj.key;
+        break;
+      }
+    }
+    if (!targetKey) return c.json({ error: "File not found" }, 404);
+
+    await c.env.CLUB_FILES.delete(targetKey);
+    return c.json({ success: true });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }

@@ -112,6 +112,8 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
   const [pollOptions, setPollOptions] = useState(["", ""]);
   const [sending, setSending] = useState(false);
   const [reconnectKey, setReconnectKey] = useState(0);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [allLoaded, setAllLoaded] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<{ text: string; start: number } | null>(null);
   const [mentionIdx, setMentionIdx] = useState(0);
   const isMobile = useIsMobile();
@@ -358,6 +360,28 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
     inputRef.current?.focus();
   }
 
+  async function loadOlderMessages() {
+    if (loadingOlder || entries.length === 0) return;
+    setLoadingOlder(true);
+    try {
+      const oldest = entries.reduce((min, e) => Math.min(min, e.timestamp), Infinity);
+      const res = await fetch(apiUrl(`/api/chat/archive?room=${encodeURIComponent(room)}&before=${oldest}&limit=50`), {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const data = await res.json();
+      if (data.messages?.length) {
+        setEntries((prev) => [...data.messages, ...prev]);
+        if (data.messages.length < 50) setAllLoaded(true);
+      } else {
+        setAllLoaded(true);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
+
   function reconnect() {
     if (wsRef.current) {
       wsRef.current.close();
@@ -487,6 +511,18 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
           {/* Messages area */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
             <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 8 }}>
+              {entries.length > 0 && !allLoaded && (
+                <div style={{ textAlign: "center", padding: "8px 0" }}>
+                  <button
+                    onClick={loadOlderMessages}
+                    disabled={loadingOlder}
+                    className="btn btn-small"
+                    style={{ fontSize: 12 }}
+                  >
+                    {loadingOlder ? "Loading..." : "Load older messages"}
+                  </button>
+                </div>
+              )}
               {entries.length === 0 && connected && (
                 <div style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 14, padding: "2rem 0" }}>
                   No messages yet. Start the conversation!

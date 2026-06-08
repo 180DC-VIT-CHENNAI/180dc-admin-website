@@ -6,6 +6,7 @@ import DepartmentPanel from "./DepartmentPanel";
 import RecruitmentsPanel from "./RecruitmentsPanel";
 import ProfileSection from "./ProfileSection";
 import ChatSection from "./ChatSection";
+import ClubFilesPanel from "./ClubFilesPanel";
 import { apiUrl } from "../../lib/api";
 import { useTheme } from "../../context/ThemeContext";
 import "./MembersLayout.css";
@@ -238,6 +239,7 @@ export default function MembersLayout() {
         { id: "dashboard", label: "Dashboard", minPower: 0 },
         { id: "members", label: "Members", minPower: 0 },
         { id: "profile", label: "Profile", minPower: 0 },
+        { id: "club-files", label: "Club Files", minPower: 10 },
       ],
     });
 
@@ -343,9 +345,9 @@ export default function MembersLayout() {
             ☰
           </button>
         )}
-        <div style={{ padding: "1.5rem 1rem", borderBottom: "1px solid var(--border-light)", display: sidebarCollapsed ? "none" : "block" }}>
+        <div className="sidebar-header" style={{ display: sidebarCollapsed ? "none" : "block" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <h2 style={{ margin: 0, fontSize: 18 }}>180DC Portal</h2>
+            <h2>180DC Portal</h2>
             <button className="desktop-sidebar-toggle" onClick={() => {
               const next = !sidebarCollapsed;
               setSidebarCollapsed(next);
@@ -354,27 +356,19 @@ export default function MembersLayout() {
               ✕
             </button>
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>{email}</div>
-          <div style={{ fontSize: 12, color: "var(--primary-green)", marginTop: 2 }}>Power: {powerLevel}</div>
+          <div className="user-email">{email}</div>
+          <div className="power-badge">&#9679; Power {powerLevel}</div>
         </div>
-        <nav style={{ flex: 1, minHeight: 0, padding: "0.75rem 0", display: "flex", flexDirection: "column", gap: 2, overflowY: "auto" }}>
+        <nav style={{ flex: 1, minHeight: 0, padding: "0.5rem 0", display: "flex", flexDirection: "column", gap: 1, overflowY: "auto" }}>
           {navSections.map((section) => {
             const visible = section.items.filter((n) => powerLevel >= n.minPower);
             if (visible.length === 0) return null;
+            const isActive = (item: any) => item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id;
             return (
               <div key={section.label}>
                 {section.label && !sidebarCollapsed && (
-                  <div
-                    onClick={() => toggleSection(section.label)}
-                    style={{
-                      fontSize: 11, fontWeight: 600, color: "var(--text-light)",
-                      padding: "0.75rem 1.2rem 0.25rem",
-                      textTransform: "uppercase", letterSpacing: 1,
-                      cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
-                      userSelect: "none",
-                    }}
-                  >
-                    <span style={{ fontSize: 10, width: 12 }}>{expandedSections.has(section.label) ? "▼" : "▶"}</span>
+                  <div className="nav-section-label" onClick={() => toggleSection(section.label)}>
+                    <span style={{ fontSize: 9, width: 12 }}>{expandedSections.has(section.label) ? "▼" : "▶"}</span>
                     {section.label}
                   </div>
                 )}
@@ -385,19 +379,7 @@ export default function MembersLayout() {
                       if (item.deptId) { setActiveDeptId(item.deptId); setActivePanel("department"); }
                       else setActivePanel(item.id);
                     }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      padding: sidebarCollapsed ? "0.7rem 0.5rem" : "0.7rem 1.2rem",
-                      border: "none", justifyContent: sidebarCollapsed ? "center" : "flex-start",
-                      background: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id)
-                        ? "var(--primary-green)" : "transparent",
-                      color: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id)
-                        ? "#fff" : "var(--text-primary)", cursor: "pointer",
-                      fontSize: sidebarCollapsed ? 10 : 14,
-                      fontWeight: (item.deptId ? (activePanel === "department" && activeDeptId === item.deptId) : activePanel === item.id) ? 600 : 400,
-                      textAlign: sidebarCollapsed ? "center" : "left", width: "100%",
-                      borderRadius: 0, transition: "background 0.15s",
-                    }}
+                    className={`nav-item${isActive(item) ? " active" : ""}${sidebarCollapsed ? " collapsed" : ""}`}
                     title={sidebarCollapsed ? item.label : undefined}
                   >
                     {sidebarCollapsed ? item.label.slice(0, 3) : item.label}
@@ -407,25 +389,11 @@ export default function MembersLayout() {
             );
           })}
         </nav>
-        <div style={{ padding: "1rem", borderTop: "1px solid var(--border-light)", display: sidebarCollapsed ? "none" : "flex", gap: 8 }}>
-          <button
-            onClick={toggleTheme}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "0.5rem 0.8rem", border: "1px solid var(--border-light)",
-              background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 13, borderRadius: 6, flex: 1,
-            }}
-            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-          >
+        <div className="sidebar-footer" style={{ display: sidebarCollapsed ? "none" : "flex" }}>
+          <button onClick={toggleTheme} title={isDark ? "Switch to light mode" : "Switch to dark mode"}>
             {isDark ? "☀" : "☾"} {isDark ? "Light" : "Dark"}
           </button>
-          <button
-            onClick={() => { sessionStorage.clear(); setAuthToken(null); }}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0.5rem 1rem", border: "1px solid var(--border-light)",
-              background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 13, flex: 1,
-              borderRadius: 6,
-            }}
-          >
+          <button onClick={() => { sessionStorage.clear(); setAuthToken(null); }}>
             Logout
           </button>
         </div>
@@ -437,47 +405,46 @@ export default function MembersLayout() {
         {activePanel === "dashboard" && (
           <>
             <h2 style={{ marginTop: 0 }}>Dashboard</h2>
-            <div className="members-grid">
-              <div className="card-doodle">
+              <div className="members-grid">
+              <div className="dashboard-card">
                 <h3>Personal Profile</h3>
-                <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>{email}</p>
+                <p>{email}</p>
                 {hasDepartment && (
-                  <p style={{ color: "var(--primary-green)", fontSize: 14 }}>{deptName} Department</p>
+                  <p style={{ color: "var(--primary-green)", fontWeight: 600, fontSize: 13, marginTop: 6 }}>{deptName} Department</p>
                 )}
               </div>
 
               {powerLevel >= 50 && (
-                <div className="card-doodle">
+                <div className="dashboard-card">
                   <h3>Access Hub</h3>
-                  <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-                    Visit all department websites from one place.
-                  </p>
-                  <button className="btn" onClick={() => window.open("/departments", "_blank")}>
+                  <p>Visit all department websites from one place.</p>
+                  <button className="btn" style={{ marginTop: 12 }} onClick={() => window.open("/departments", "_blank")}>
                     Open Access Hub
                   </button>
                 </div>
               )}
 
               {hasDepartment && powerLevel >= 50 && (
-                <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
                   <h3>{deptName} Department</h3>
-                  <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-                    Manage meets, documents, instructions, and projects.
-                  </p>
-                  <button className="btn" onClick={() => setActivePanel("department")}>
+                  <p>Manage meets, documents, instructions, and projects.</p>
+                  <button className="btn" style={{ marginTop: 12 }} onClick={() => setActivePanel("department")}>
                     Open Department Panel
                   </button>
                 </div>
               )}
 
               {announcements.length > 0 && (
-                <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
+                <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
                   <h3>Recent Announcements</h3>
-                  <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "grid", gap: 10, marginTop: 4 }}>
                     {announcements.slice(0, 3).map((a: any) => (
-                      <div key={a.id} className="card-doodle" style={{ padding: 12 }}>
-                        <strong>{a.title}</strong>
-                        <div style={{ fontSize: 13, marginTop: 4, whiteSpace: "pre-wrap" }}>{a.content}</div>
+                      <div key={a.id} style={{
+                        padding: "12px 14px", borderRadius: 10, border: "1px solid var(--border-light)",
+                        background: "var(--bg-secondary)",
+                      }}>
+                        <strong style={{ fontSize: 14 }}>{a.title}</strong>
+                        <div style={{ fontSize: 13, marginTop: 4, whiteSpace: "pre-wrap", color: "var(--text-secondary)", lineHeight: 1.5 }}>{a.content}</div>
                         <div style={{ fontSize: 11, color: "var(--text-light)", marginTop: 6 }}>
                           {a.created_at?.slice(0, 10)}
                         </div>
@@ -502,6 +469,10 @@ export default function MembersLayout() {
             departmentId={departmentId}
             deptName={deptName}
           />
+        )}
+
+        {activePanel === "club-files" && (
+          <ClubFilesPanel authToken={authToken!} />
         )}
 
         {activePanel.startsWith("chat") && (() => {

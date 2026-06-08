@@ -29,6 +29,10 @@ class_name = "ChatRoomDO"
 tag = "v1"
 new_sqlite_classes = ["ChatRoomDO"]
 
+[[r2_buckets]]
+binding = "CLUB_FILES"
+bucket_name = "180dc-club-files"
+
 [[queues.producers]]
 binding = "QUEUE"
 queue = "jobs-queue"
