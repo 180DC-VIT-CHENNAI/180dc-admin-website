@@ -29,7 +29,7 @@ export default function TransfersSection({ authToken }: { authToken: string }) {
           <div key={t.id} style={{ 
             padding: "1.25rem", background: "var(--surface)", border: "1px solid var(--border-light)", borderRadius: 16
           }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1rem }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
                  <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--accent-bg)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <span className="material-symbols-outlined">swap_horiz</span>

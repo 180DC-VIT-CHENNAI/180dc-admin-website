@@ -390,15 +390,26 @@ const RecruitmentsPanel = ({ authToken, powerLevel = 0 }: Props) => {
                         <div style={{ padding: "1rem", background: "var(--surface)", borderRadius: 12, fontSize: 14, lineHeight: 1.6 }}>{selectedApp.application.prior_experience}</div>
                      </section>
                    )}
-                   {selectedApp.application.portfolio_link && (
-                     <section>
-                        <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Portfolio / External Links</h4>
-                        <a href={selectedApp.application.portfolio_link} target="_blank" rel="noreferrer" className="btn outline" style={{ gap: 8 }}>
-                           <span className="material-symbols-outlined" style={{ fontSize: 18 }}>open_in_new</span>
-                           View Portfolio
-                        </a>
-                     </section>
-                   )}
+                    {selectedApp.application.portfolio_link && (() => {
+                      const url = selectedApp.application.portfolio_link;
+                      const isValid = typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://"));
+                      return (
+                        <section>
+                           <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Portfolio / External Links</h4>
+                           {isValid ? (
+                             <a href={url} target="_blank" rel="noreferrer" className="btn outline" style={{ gap: 8 }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>open_in_new</span>
+                                View Portfolio
+                             </a>
+                           ) : (
+                             <span className="btn outline" style={{ gap: 8, opacity: 0.5, cursor: "default", pointerEvents: "none" }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>open_in_new</span>
+                                View Portfolio
+                             </span>
+                           )}
+                        </section>
+                      );
+                    })()}
                 </div>
 
                 <div style={{ marginTop: "3rem", borderTop: "1px solid var(--border-light)", paddingTop: "2rem" }}>

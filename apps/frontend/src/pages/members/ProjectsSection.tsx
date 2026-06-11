@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { apiUrl } from "../../lib/api";
 import CreateProjectSection from "./CreateProjectSection";
 import ProjectTasksSection from "./ProjectTasksSection";
-import FullPageLoader from "./FullPageLoader";
 
 export default function ProjectsSection({ authToken, departments, allUsers, powerLevel, departmentId }: { authToken: string; departments: any[]; allUsers: any[]; powerLevel: number; departmentId: string | null }) {
   const [projects, setProjects] = useState<any[]>([]);
@@ -155,7 +154,7 @@ export default function ProjectsSection({ authToken, departments, allUsers, powe
               const canManageTasks = isBoard || (canManage && userDeptAssigned);
               return (
                 <div key={p.id} className="dashboard-card" style={{ gridColumn: "1 / -1", padding: "1.5rem" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1rem }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem" }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                         <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 700 }}>{p.name}</h3>

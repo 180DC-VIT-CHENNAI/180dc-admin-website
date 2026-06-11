@@ -28,9 +28,6 @@ function formatDate(iso: string): string {
 
 const CATEGORY_MAP: Record<Tab, string> = { General: "general", Projects: "projects", Events: "events" };
 
-const cellStyle: React.CSSProperties = { padding: "12px 14px", fontSize: 13, lineHeight: 1.5 };
-const headerCellStyle: React.CSSProperties = { ...cellStyle, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em", fontSize: 11, borderBottom: "2px solid var(--border-light)", background: "var(--bg-secondary)" };
-
 export default function ClubFilesPanel({ authToken }: { authToken: string }) {
   const [tab, setTab] = useState<Tab>("General");
   const [files, setFiles] = useState<ClubFile[]>([]);
@@ -295,7 +292,7 @@ export default function ClubFilesPanel({ authToken }: { authToken: string }) {
              </div>
              
              <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-                <div style={{ padding: "2rem", border: "2px dashed var(--outline-variant)", borderRadius: 16, textAlign: "center", background: "var(--surface-container-low)" }}>
+                <div style={{ position: "relative", padding: "2rem", border: "2px dashed var(--outline-variant)", borderRadius: 16, textAlign: "center", background: "var(--surface-container-low)" }}>
                    <span className="material-symbols-outlined" style={{ fontSize: 40, color: "var(--primary-green)", marginBottom: "1rem" }}>cloud_upload</span>
                    <div style={{ fontSize: 14, fontWeight: 600 }}>{uploadFile ? uploadFile.name : "Select a file to upload"}</div>
                    <input type="file" onChange={(e) => setUploadFile(e.target.files?.[0] || null)} style={{ opacity: 0, position: "absolute", inset: 0, cursor: "pointer" }} />

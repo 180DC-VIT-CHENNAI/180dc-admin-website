@@ -58,8 +58,6 @@ interface PollMessage {
 
 type ChatEntry = ChatMessage | PollMessage;
 
-const POLL_OPTION_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
-
 function formatDateLabel(ts: number): string {
   const d = new Date(ts);
   const today = new Date();
@@ -471,6 +469,14 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)", background: "var(--bg-card)", borderRadius: 24, border: "1px solid var(--border-light)", overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
+      {/* Error Banner */}
+      {error && (
+        <div style={{ padding: "0.75rem 1.5rem", background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", fontSize: 13, fontWeight: 600, borderBottom: "1px solid rgba(239, 68, 68, 0.2)", display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>error</span>
+          {error}
+        </div>
+      )}
+      
       {/* Header */}
       <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-card)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

@@ -4,6 +4,7 @@ import { apiUrl } from "../../lib/api";
 export default function RoomSettingsPanel({ authToken, powerLevel, departmentId, roleId, departments }: { authToken: string; powerLevel: number; departmentId: string | null; roleId: string | null; departments: any[] }) {
   const [settings, setSettings] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
     fetch(apiUrl("/api/chat/rooms"), { headers: { Authorization: `Bearer ${authToken}` } })
@@ -53,6 +54,40 @@ export default function RoomSettingsPanel({ authToken, powerLevel, departmentId,
     }
   }
 
+  async function lockAll() {
+    setBulkBusy(true);
+    try {
+      const res = await fetch(apiUrl("/api/chat/rooms/lock-all"), {
+        method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        const allOff: Record<string, boolean> = {};
+        rooms.forEach(r => { allOff[r.id] = false; });
+        setSettings(allOff);
+      }
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function unlockAll() {
+    setBulkBusy(true);
+    try {
+      const res = await fetch(apiUrl("/api/chat/rooms/unlock-all"), {
+        method: "POST", headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        const allOn: Record<string, boolean> = {};
+        rooms.forEach(r => { allOn[r.id] = true; });
+        setSettings(allOn);
+      }
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       <div className="dashboard-card">
@@ -63,6 +98,19 @@ export default function RoomSettingsPanel({ authToken, powerLevel, departmentId,
         <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: "1.5rem" }}>
           Control which chat rooms are active and visible in the portal. Disabled rooms will be hidden from all members.
         </p>
+
+        {canManageAll && (
+          <div style={{ display: "flex", gap: 8, marginBottom: "1rem" }}>
+            <button onClick={lockAll} disabled={bulkBusy} className="btn" style={{ padding: "6px 16px", fontSize: 12, gap: 6 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>lock</span>
+              {bulkBusy ? "Working..." : "Lock All"}
+            </button>
+            <button onClick={unlockAll} disabled={bulkBusy} className="btn outline" style={{ padding: "6px 16px", fontSize: 12, gap: 6 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>lock_open</span>
+              {bulkBusy ? "Working..." : "Unlock All"}
+            </button>
+          </div>
+        )}
         
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {rooms.map(r => (

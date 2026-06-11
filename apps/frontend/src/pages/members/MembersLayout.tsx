@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useRef } from "react";
-import { useAuth } from "@clerk/react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useAuth, useClerk } from "@clerk/react";
 import MembersLogin from "./MembersLogin";
 import DepartmentPanel from "./DepartmentPanel";
 import RecruitmentsPanel from "./RecruitmentsPanel";
@@ -14,12 +14,10 @@ import DepartmentMeetsSection from "./DepartmentMeetsSection";
 import InterDeptMeetsSection from "./InterDeptMeetsSection";
 import ProjectsSection from "./ProjectsSection";
 import InstructionsSection from "./InstructionsSection";
-import RecruitmentSettingsSection from "./RecruitmentSettingsSection";
 import ConsultingRequestsSection from "./ConsultingRequestsSection";
 import SendMailSection from "./SendMailSection";
 import RoomSettingsPanel from "./RoomSettingsPanel";
 import TransfersSection from "./TransfersSection";
-import FullPageLoader from "./FullPageLoader";
 import { apiUrl } from "../../lib/api";
 import { useTheme } from "../../context/ThemeContext";
 import { DEPT_NAMES } from "./constants";
@@ -44,7 +42,7 @@ const EX_TITLES = [
 export default function MembersLayout() {
   const { isDark, toggle: toggleTheme } = useTheme();
   const { userId: clerkUserId, getToken, isLoaded: clerkLoaded } = useAuth();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const clerk = useClerk();
   const [authToken, setAuthToken] = useState<string | null>(() => sessionStorage.getItem("authToken"));
   const [email, setEmail] = useState<string | null>(sessionStorage.getItem("authEmail"));
   const [powerLevel, setPowerLevel] = useState<number>(() => {
@@ -63,6 +61,9 @@ export default function MembersLayout() {
   const [adminTokens, setAdminTokens] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [dashboardReady, setDashboardReady] = useState(false);
+  const [stats, setStats] = useState({ membersCount: 0, projectsCount: 0, upcomingMeetsCount: 0, announcementsCount: 0, todayEmailCount: 0 });
+  const [recentMeets, setRecentMeets] = useState<any[]>([]);
+
   const [tokenEmail, setTokenEmail] = useState("");
   const [tokenName, setTokenName] = useState("");
   const [tokenRoleId, setTokenRoleId] = useState("member");
@@ -86,17 +87,19 @@ export default function MembersLayout() {
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [allRoles, setAllRoles] = useState<any[]>([]);
   const [roleTransfers, setRoleTransfers] = useState<any[]>([]);
-  const [dangerUserId, setDangerUserId] = useState("");
-  const [dangerNewRoleId, setDangerNewRoleId] = useState("");
-  const [dangerNewDeptId, setDangerNewDeptId] = useState("");
-  const [dangerNewSecondaryRoleId, setDangerNewSecondaryRoleId] = useState("");
-  const [dangerBusy, setDangerBusy] = useState(false);
-  const [deleteUserId, setDeleteUserId] = useState("");
-  const [deleteBusy, setDeleteBusy] = useState(false);
+
   const [transferFromUserId, setTransferFromUserId] = useState("");
   const [transferToUserId, setTransferToUserId] = useState("");
   const [transferRoleId, setTransferRoleId] = useState("");
   const [transferBusy, setTransferBusy] = useState(false);
+
+  const [dangerUserId, setDangerUserId] = useState("");
+  const [dangerNewRoleId, setDangerNewRoleId] = useState("");
+  const [dangerNewDeptId, setDangerNewDeptId] = useState("");
+  const [dangerBusy, setDangerBusy] = useState(false);
+
+  const [deleteUserId, setDeleteUserId] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   // Advisory member creation state
   const [advisoryEmail, setAdvisoryEmail] = useState("");
@@ -109,12 +112,47 @@ export default function MembersLayout() {
   // Danger Zone advisory change state
   const [dangerAdvUserId, setDangerAdvUserId] = useState("");
   const [dangerAdvExTitle, setDangerAdvExTitle] = useState("");
-  const [dangerAdvDeptId, setDangerAdvDeptId] = useState("");
   const [dangerAdvBusy, setDangerAdvBusy] = useState(false);
+
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["General", "Chats", "Departments", "Management", "Admin"]));
   const [roomSettings, setRoomSettings] = useState<Record<string, boolean>>({});
   const [oauthEnabled, setOauthEnabled] = useState(false);
   const [oauthStatusMsg, setOauthStatusMsg] = useState<string | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  // Auto-logout after 7 days of inactivity
+  useEffect(() => {
+    const expiresAt = localStorage.getItem("authExpiresAt");
+    if (expiresAt && Date.now() > Number(expiresAt)) {
+      localStorage.removeItem("authExpiresAt");
+      sessionStorage.clear();
+      sessionStorage.setItem("loggedOut", "true");
+      setAuthToken(null);
+      clerk.signOut().catch(() => {});
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Day index (Mon=0..Sun=6) in IST for the Club Activity chart
+  const todayIndex = (() => {
+    const day = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Kolkata", weekday: "short" }).format(new Date());
+    return { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 }[day] ?? 3;
+  })();
+
+  const handleClickOutsideNotif = useCallback((e: MouseEvent) => {
+    if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+      setShowNotifications(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showNotifications) {
+      document.addEventListener("mousedown", handleClickOutsideNotif);
+    } else {
+      document.removeEventListener("mousedown", handleClickOutsideNotif);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutsideNotif);
+  }, [showNotifications, handleClickOutsideNotif]);
 
   function toggleSection(label: string) {
     setExpandedSections((prev) => {
@@ -149,6 +187,8 @@ export default function MembersLayout() {
     serverDepartmentId?: string,
     serverRoleId?: string,
   ) => {
+    sessionStorage.removeItem("loggedOut");
+    localStorage.setItem("authExpiresAt", String(Date.now() + 7 * 24 * 60 * 60 * 1000));
     sessionStorage.setItem("authToken", token);
     sessionStorage.setItem("authEmail", userEmail);
     sessionStorage.setItem("authPowerLevel", String(serverPowerLevel ?? 10));
@@ -180,6 +220,8 @@ export default function MembersLayout() {
             setRoleId(data.user.roleId);
             sessionStorage.setItem("authRoleId", data.user.roleId);
           }
+          if (data.stats) setStats(data.stats);
+          if (data.recentMeets) setRecentMeets(data.recentMeets);
           setOauthEnabled(data.user?.oauthEnabled ?? false);
           setPendingRequests(data.pendingRequests || []);
           setAdminTokens(data.adminTokens || []);
@@ -208,6 +250,9 @@ export default function MembersLayout() {
     const pending = sessionStorage.getItem("clnk");
 
     async function handleClerkCallback() {
+      // Don't auto-login after explicit logout
+      if (sessionStorage.getItem("loggedOut")) return;
+
       // Login flow: Clerk session exists but no token session
       if (!authToken) {
         try {
@@ -261,7 +306,7 @@ export default function MembersLayout() {
     }
 
     handleClerkCallback();
-  }, [clerkUserId, clerkLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clerkUserId, clerkLoaded, authToken, getToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasDepartment = departmentId && DEPT_NAMES[departmentId];
   const deptName = hasDepartment ? DEPT_NAMES[departmentId!] : "";
@@ -401,9 +446,34 @@ export default function MembersLayout() {
           </div>
         </div>
         <div className="header-right">
-          <button className="header-action-btn">
-            <span className="material-symbols-outlined">notifications</span>
-          </button>
+          <div ref={notifRef} style={{ position: "relative" }}>
+            <button className="header-action-btn" onClick={() => setShowNotifications(v => !v)}>
+              <span className="material-symbols-outlined">notifications</span>
+              {announcements.length > 0 && (
+                <span style={{ position: "absolute", top: 2, right: 2, width: 8, height: 8, borderRadius: "50%", background: "#ef4444" }} />
+              )}
+            </button>
+            {showNotifications && (
+              <div style={{ position: "absolute", top: "100%", right: 0, zIndex: 1000, width: 320, background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 12, boxShadow: "var(--shadow-lg)", padding: "0.75rem", marginTop: 4 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", padding: "0.25rem 0.5rem 0.5rem", borderBottom: "1px solid var(--border-light)", marginBottom: 4 }}>Notifications</div>
+                {announcements.length === 0 ? (
+                  <p style={{ fontSize: 13, color: "var(--text-tertiary)", padding: "1rem 0.5rem", margin: 0, textAlign: "center" }}>No notifications</p>
+                ) : (
+                  announcements.slice(0, 2).map((a: any) => (
+                    <div key={a.id} style={{ padding: "0.5rem", borderRadius: 8, cursor: "pointer" }} onClick={() => { setShowNotifications(false); setActivePanel("announcements"); }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{a.title}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.content}</div>
+                    </div>
+                  ))
+                )}
+                {announcements.length > 2 && (
+                  <div style={{ padding: "0.5rem", textAlign: "center", borderTop: "1px solid var(--border-light)", marginTop: 4 }}>
+                    <button className="btn outline" style={{ padding: "4px 12px", fontSize: 11, width: "100%", justifyContent: "center" }} onClick={() => { setShowNotifications(false); setActivePanel("announcements"); }}>View All</button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <button className="header-action-btn" onClick={toggleTheme}>
             <span className="material-symbols-outlined">{isDark ? "light_mode" : "dark_mode"}</span>
           </button>
@@ -464,7 +534,7 @@ export default function MembersLayout() {
               <span className="material-symbols-outlined">{sidebarCollapsed ? "side_navigation" : "menu_open"}</span>
               {!sidebarCollapsed && <span>{sidebarCollapsed ? "Expand" : "Collapse"} Sidebar</span>}
             </button>
-            <button className="nav-item" onClick={() => { sessionStorage.clear(); setAuthToken(null); }} style={{ color: "#ef4444" }}>
+            <button className="nav-item" onClick={async () => { sessionStorage.clear(); sessionStorage.setItem("loggedOut", "true"); setAuthToken(null); try { await clerk.signOut(); } catch {} }} style={{ color: "#ef4444" }}>
               <span className="material-symbols-outlined">logout</span>
               {!sidebarCollapsed && <span>Logout</span>}
             </button>
@@ -486,13 +556,9 @@ export default function MembersLayout() {
                     <div className="kpi-icon-wrapper" style={{ background: "rgba(141, 198, 63, 0.15)", color: "var(--primary-green)" }}>
                       <span className="material-symbols-outlined">account_tree</span>
                     </div>
-                    <span className="kpi-trend trend-up">
-                      <span className="material-symbols-outlined" style={{ fontSize: 14 }}>trending_up</span>
-                      +12%
-                    </span>
                   </div>
                   <span className="kpi-label">Active Projects</span>
-                  <span className="kpi-value">42</span>
+                  <span className="kpi-value">{stats.projectsCount}</span>
                 </div>
 
                 <div className="kpi-card">
@@ -502,7 +568,7 @@ export default function MembersLayout() {
                     </div>
                   </div>
                   <span className="kpi-label">Total Members</span>
-                  <span className="kpi-value">248</span>
+                  <span className="kpi-value">{stats.membersCount}</span>
                 </div>
 
                 <div className="kpi-card">
@@ -510,13 +576,9 @@ export default function MembersLayout() {
                     <div className="kpi-icon-wrapper" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}>
                       <span className="material-symbols-outlined">event_available</span>
                     </div>
-                    <span className="kpi-trend trend-down">
-                      <span className="material-symbols-outlined" style={{ fontSize: 14 }}>trending_down</span>
-                      -5%
-                    </span>
                   </div>
                   <span className="kpi-label">Upcoming Meets</span>
-                  <span className="kpi-value">8</span>
+                  <span className="kpi-value">{stats.upcomingMeetsCount}</span>
                 </div>
 
                 <div className="kpi-card">
@@ -526,68 +588,133 @@ export default function MembersLayout() {
                     </div>
                   </div>
                   <span className="kpi-label">Announcements</span>
-                  <span className="kpi-value">{announcements.length}</span>
+                  <span className="kpi-value">{stats.announcementsCount}</span>
                 </div>
               </div>
 
               <div className="members-grid" style={{ marginTop: "1.5rem" }}>
-                <div className="dashboard-card">
-                  <h3>Personal Profile</h3>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "12px" }}>
-                    <div className="avatar-circle" style={{ width: 48, height: 48, fontSize: 18 }}>{email?.[0].toUpperCase()}</div>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{email}</div>
-                      <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>{hasDepartment ? `${deptName} Department` : "No Department"}</div>
+                <div className="dashboard-card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <h3 style={{ margin: 0, fontSize: "1rem" }}>Club Activity</h3>
+                      <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 700, textTransform: "uppercase" }}>Last 7 Days</span>
+                   </div>
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 100, padding: "10px 0" }}>
+                       {[35, 60, 40, 85, 55, 75, 50].map((h, i) => (
+                         <div key={i} style={{ flex: 1, height: `${h}%`, background: i === todayIndex ? "var(--primary-green)" : "var(--surface-container-high)", borderRadius: "4px 4px 0 0", transition: "height 0.3s" }} />
+                       ))}
                     </div>
-                  </div>
-                  <button className="btn outline" style={{ marginTop: 16, width: "100%" }} onClick={() => setActivePanel("profile")}>View Profile</button>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--text-tertiary)", fontWeight: 800 }}>
+                       <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+                    </div>
                 </div>
 
-                {powerLevel >= 50 && (
-                  <div className="dashboard-card">
-                    <h3>Access Hub</h3>
-                    <p>Visit all department websites and manage cross-department resources from one central place.</p>
-                    <button className="btn" style={{ marginTop: 16, width: "100%" }} onClick={() => window.open("/departments", "_blank")}>
-                      Open Access Hub
-                    </button>
+                <div className="dashboard-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                    <h3 style={{ margin: 0, fontSize: "1rem" }}>Member Composition</h3>
                   </div>
-                )}
-
-                {hasDepartment && powerLevel >= 50 && (
-                  <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                       <h3>{deptName} Department Panel</h3>
-                       <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>domain</span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700 }}>
+                          <span style={{ color: "var(--text-secondary)" }}>Executive Board</span>
+                          <span>12%</span>
+                       </div>
+                       <div style={{ height: 6, background: "var(--surface-container-high)", borderRadius: 3, overflow: "hidden" }}>
+                          <div style={{ width: "12%", height: "100%", background: "var(--primary-green)" }} />
+                       </div>
                     </div>
-                    <p>Quick access to your department's meets, documents, instructions, and active projects.</p>
-                    <button className="btn" style={{ marginTop: 16 }} onClick={() => setActivePanel("department")}>
-                      Open Department Panel
-                    </button>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700 }}>
+                          <span style={{ color: "var(--text-secondary)" }}>Lead Consultants</span>
+                          <span>28%</span>
+                       </div>
+                       <div style={{ height: 6, background: "var(--surface-container-high)", borderRadius: 3, overflow: "hidden" }}>
+                          <div style={{ width: "28%", height: "100%", background: "#3b82f6" }} />
+                       </div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700 }}>
+                          <span style={{ color: "var(--text-secondary)" }}>General Members</span>
+                          <span>60%</span>
+                       </div>
+                       <div style={{ height: 6, background: "var(--surface-container-high)", borderRadius: 3, overflow: "hidden" }}>
+                          <div style={{ width: "60%", height: "100%", background: "var(--outline-variant)" }} />
+                       </div>
+                    </div>
                   </div>
-                )}
+                </div>
 
-                {announcements.length > 0 && (
-                  <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                      <h3>Recent Announcements</h3>
-                      <button className="btn outline" style={{ padding: "4px 12px", fontSize: 12 }} onClick={() => setActivePanel("announcements")}>View All</button>
+                <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                       <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>event_list</span>
+                       <h3 style={{ margin: 0, fontSize: "1rem" }}>Upcoming Schedule</h3>
                     </div>
-                    <div style={{ display: "grid", gap: 12 }}>
-                      {announcements.slice(0, 3).map((a: any) => (
-                        <div key={a.id} style={{
-                          padding: "16px", borderRadius: 12, border: "1px solid var(--border-light)",
-                          background: "var(--surface)",
-                        }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
-                            <strong style={{ fontSize: 14, color: "var(--text-primary)" }}>{a.title}</strong>
-                            <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{a.created_at?.slice(0, 10)}</span>
+                    <button className="btn outline" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => setActivePanel("meets")}>Calendar View</button>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.25rem" }}>
+                    {recentMeets.length === 0 ? (
+                      <p style={{ gridColumn: "1 / -1", fontSize: 13, color: "var(--text-tertiary)", fontStyle: "italic", textAlign: "center", padding: "1rem" }}>No upcoming sessions scheduled.</p>
+                    ) : (
+                      recentMeets.map((m: any, i) => (
+                        <div key={i} style={{ padding: "1rem", borderRadius: 16, background: "var(--surface)", border: "1px solid var(--border-light)", display: "flex", alignItems: "center", gap: 12 }}>
+                          <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--bg-card)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border-light)", boxShadow: "var(--shadow-sm)" }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 20, color: "var(--primary-green)" }}>videocam</span>
                           </div>
-                          <div style={{ fontSize: 13, marginTop: 6, whiteSpace: "pre-wrap", color: "var(--text-secondary)", lineHeight: 1.5 }}>{a.content}</div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.title}</div>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{new Date(m.scheduled_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Announcements */}
+              <div className="members-grid" style={{ marginTop: "1.5rem" }}>
+                <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>campaign</span>
+                      <h3 style={{ margin: 0, fontSize: "1rem" }}>Recent Announcements</h3>
+                    </div>
+                    <button className="btn outline" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => setActivePanel("announcements")}>View All</button>
+                  </div>
+                  {announcements.slice(0, 3).length === 0 ? (
+                    <p style={{ fontSize: 13, color: "var(--text-tertiary)", fontStyle: "italic", padding: "0.5rem 0" }}>No announcements yet.</p>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {announcements.slice(0, 3).map((a: any) => (
+                        <div key={a.id} style={{ padding: "0.875rem 1rem", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", cursor: "pointer" }} onClick={() => setActivePanel("announcements")}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</div>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.content}</div>
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", marginLeft: 12 }}>{a.created_at?.slice(0, 10)}</div>
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Profile Quick Access */}
+              <div className="members-grid" style={{ marginTop: "1.5rem" }}>
+                <div className="dashboard-card" style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div className="avatar-circle" style={{ width: 44, height: 44, fontSize: 18 }}>
+                      {email?.[0].toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{email?.split("@")[0]}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{email} · Power {powerLevel}{deptName ? ` · ${deptName}` : ""}</div>
+                    </div>
                   </div>
-                )}
+                  <button className="btn outline" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => setActivePanel("profile")}>
+                    View Profile
+                  </button>
+                </div>
               </div>
             </>
           )}
@@ -770,10 +897,43 @@ export default function MembersLayout() {
             <>
               <AdminDataLoader authToken={authToken!} setAllUsers={setAllUsers} setAllRoles={setAllRoles} />
               <div className="members-grid">
+                {/* SYSTEM CONFIGURATION */}
+                <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
+                  <div className="section-header">
+                     <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>settings_suggest</span>
+                     <h3>System Configuration</h3>
+                  </div>
+                  <div className="admin-grid-3">
+                    <div className="admin-sub-card">
+                       <div className="admin-sub-label">Role Power Levels</div>
+                       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          {allRoles.map(r => (
+                            <div key={r.id} className="admin-role-row">
+                               <span style={{ fontSize: 13, fontWeight: 600 }}>{r.name}</span>
+                               <span className="admin-power-badge">{r.power_level}</span>
+                            </div>
+                          ))}
+                       </div>
+                    </div>
+                    <div className="admin-sub-card">
+                       <div className="admin-sub-label">Daily Email Quota</div>
+                       <div style={{ flex: 1 }}>
+                          <div className="admin-progress-bar">
+                             <div className="admin-progress-fill" style={{ width: `${Math.min(stats.todayEmailCount, 100)}%`, background: stats.todayEmailCount > 90 ? "#ef4444" : "var(--primary-green)" }} />
+                          </div>
+                          <div className="admin-progress-text">{stats.todayEmailCount} / 100 Sent Today</div>
+                       </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* TOKEN REGISTRY */}
                 <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
-                  <h3>Admin Token Registry</h3>
-                  <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>
+                  <div className="section-header">
+                    <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>key</span>
+                    <h3>Admin Token Registry</h3>
+                  </div>
+                  <p className="card-subtext">
                     Generate tokens for members, leads, or board accounts.
                   </p>
                   <div className="admin-grid-4" style={{ marginTop: 16 }}>
@@ -805,23 +965,23 @@ export default function MembersLayout() {
                   </div>
 
                   {recentToken && (
-                    <div className="dashboard-card" style={{ marginTop: 16, display: "flex", gap: 12, alignItems: "center", padding: "12px", background: "var(--surface)" }}>
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>Latest token: {showRecentToken ? recentToken : maskToken(recentToken)}</span>
+                    <div className="admin-recent-token">
+                      <span>Latest token: {showRecentToken ? recentToken : maskToken(recentToken)}</span>
                       <button className="btn outline" style={{ padding: "6px 12px" }} onClick={async () => { await navigator.clipboard.writeText(recentToken); alert("Token copied"); }}>Copy</button>
                       <button className="btn outline" style={{ padding: "6px 12px" }} onClick={() => setShowRecentToken((v) => !v)}>{showRecentToken ? "Hide" : "Reveal"}</button>
                     </div>
                   )}
 
-                  <div style={{ display: "grid", gap: 10, marginTop: 16, maxHeight: 400, overflowY: "auto", paddingRight: 4 }}>
-                    {adminTokens.length === 0 && <p style={{ fontSize: 13, color: "var(--text-tertiary)" }}>No tokens created yet.</p>}
+                  <div className="admin-token-list">
+                    {adminTokens.length === 0 && <p className="empty-text">No tokens created yet.</p>}
                     {adminTokens.map((item) => (
-                      <div key={item.token} style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--surface)", borderRadius: 10, border: "1px solid var(--border-light)" }}>
-                        <div>
-                          <strong style={{ fontSize: 14 }}>{item.name || item.email}</strong>
-                          <div style={{ color: "var(--text-secondary)", fontSize: 12 }}>{item.email} · {item.role_id}</div>
-                          <div style={{ marginTop: 4, fontFamily: "monospace", fontSize: 11, color: "var(--text-tertiary)" }}>{item.tokenPreview || item.token}</div>
+                      <div key={item.token} className="admin-token-row">
+                        <div className="admin-token-info">
+                          <strong>{item.name || item.email}</strong>
+                          <div className="admin-token-meta">{item.email} · {item.role_id}</div>
+                          <div className="admin-token-preview">{item.tokenPreview || item.token}</div>
                         </div>
-                        <button className="header-action-btn" style={{ color: "#ef4444" }} onClick={async () => {
+                        <button className="header-action-btn admin-delete-btn" onClick={async () => {
                           if (!confirm("Delete this token permanently?")) return;
                           const res = await fetch(apiUrl(`/api/admin-tokens/${item.email}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
                           const data = await res.json();
@@ -834,128 +994,148 @@ export default function MembersLayout() {
                   </div>
                 </div>
 
-                {/* BOARD USER */}
+                {/* ACCOUNT CREATION */}
                 <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
-                  <h3>Create Board Member</h3>
-                  <div className="admin-grid-4" style={{ marginTop: 16 }}>
-                    <input className="input" placeholder="Email" value={boardEmail} onChange={(e) => setBoardEmail(e.target.value)} />
-                    <input className="input" placeholder="Name" value={boardName} onChange={(e) => setBoardName(e.target.value)} />
-                    <select className="input" value={boardRoleId} onChange={(e) => setBoardRoleId(e.target.value)}>
-                      <option value="president">president</option>
-                      <option value="vice_president">vice_president</option>
-                      <option value="technical_director">technical_director</option>
-                      <option value="marketing_director">marketing_director</option>
-                      <option value="secretary">secretary</option>
-                      <option value="lead">Technical Lead</option>
-                      <option value="lead_rnd">R&D Lead</option>
-                      <option value="lead_marketing">Marketing Lead</option>
-                      <option value="lead_social">Social Media Lead</option>
-                      <option value="lead_finance">Finance Lead</option>
-                      <option value="lead_events">Events Lead</option>
-                      <option value="lead_cps">Client Partner Sponsor Lead</option>
-                      <option value="lead_hr">HR Lead</option>
-                    </select>
-                    <select className="input" value={boardDepartmentId} onChange={(e) => setBoardDepartmentId(e.target.value)}>
-                      <option value="">No department</option>
-                      {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                    </select>
-                    <button className="btn" disabled={boardBusy} style={{ gridColumn: "1 / -1" }} onClick={async () => {
-                      if (!authToken || !boardEmail.trim()) { alert("Enter an email first"); return; }
-                      setBoardBusy(true);
-                      try {
-                        const res = await fetch(apiUrl("/api/board-users"), {
-                          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-                          body: JSON.stringify({ email: boardEmail.trim(), name: boardName.trim(), roleId: boardRoleId, departmentId: boardDepartmentId || null, secondaryRoleId: boardSecondaryRoleId || null }),
-                        });
-                        const data = await res.json();
-                        if (data.success) {
-                          setAdminTokens((prev) => [data, ...prev]);
-                          setBoardEmail(""); setBoardName(""); setBoardRoleId("president"); setBoardDepartmentId(""); setBoardSecondaryRoleId("");
-                          setRecentToken(data.token); setShowRecentToken(false);
-                          alert(`Board user created successfully.`);
-                        } else alert(data.error);
-                      } finally { setBoardBusy(false); }
-                    }}>{boardBusy ? "Creating..." : "Create Board User"}</button>
+                  <div className="section-header">
+                    <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>person_add</span>
+                    <h3>Create Accounts</h3>
                   </div>
-                </div>
 
-                {/* ADVISORY BOARD MEMBER */}
-                <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
-                  <h3>Create Advisory Board Member</h3>
-                  <div className="admin-grid-4" style={{ marginTop: 16 }}>
-                    <input className="input" placeholder="Email" value={advisoryEmail} onChange={(e) => setAdvisoryEmail(e.target.value)} />
-                    <input className="input" placeholder="Name" value={advisoryName} onChange={(e) => setAdvisoryName(e.target.value)} />
-                    <select className="input" value={advisoryExTitle} onChange={(e) => setAdvisoryExTitle(e.target.value)}>
-                      <option value="">No ex-title</option>
-                      {EX_TITLES.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <select className="input" value={advisoryMemberDeptId} onChange={(e) => setAdvisoryMemberDeptId(e.target.value)}>
-                      <option value="">Not a club member</option>
-                      {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name} (as member)</option>)}
-                    </select>
-                    <button className="btn" disabled={advisoryBusy} style={{ gridColumn: "1 / -1" }} onClick={async () => {
-                      if (!authToken || !advisoryEmail.trim()) { alert("Enter an email first"); return; }
-                      setAdvisoryBusy(true);
-                      try {
-                        const res = await fetch(apiUrl("/api/advisory-members"), {
-                          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-                          body: JSON.stringify({
-                            email: advisoryEmail.trim(),
-                            name: advisoryName.trim(),
-                            exTitle: advisoryExTitle || null,
-                            memberDeptId: advisoryMemberDeptId || null,
-                          }),
-                        });
-                        const data = await res.json();
-                        if (data.success) {
-                          setAdminTokens((prev) => [data, ...prev]);
-                          setAdvisoryEmail(""); setAdvisoryName(""); setAdvisoryExTitle(""); setAdvisoryMemberDeptId("");
-                          setAdvisoryRecentToken(data.token);
-                          alert(`Advisory member created successfully.`);
-                        } else alert(data.error);
-                      } finally { setAdvisoryBusy(false); }
-                    }}>{advisoryBusy ? "Creating..." : "Create Advisory Member"}</button>
-                  </div>
-                </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                    <div>
+                      <h4 className="admin-form-section-title">Board Member</h4>
+                      <div className="admin-grid-4" style={{ marginTop: 12 }}>
+                        <input className="input" placeholder="Email" value={boardEmail} onChange={(e) => setBoardEmail(e.target.value)} />
+                        <input className="input" placeholder="Name" value={boardName} onChange={(e) => setBoardName(e.target.value)} />
+                        <select className="input" value={boardRoleId} onChange={(e) => setBoardRoleId(e.target.value)}>
+                          <option value="president">president</option>
+                          <option value="vice_president">vice_president</option>
+                          <option value="technical_director">technical_director</option>
+                          <option value="marketing_director">marketing_director</option>
+                          <option value="secretary">secretary</option>
+                          <option value="lead">Technical Lead</option>
+                          <option value="lead_rnd">R&D Lead</option>
+                          <option value="lead_marketing">Marketing Lead</option>
+                          <option value="lead_social">Social Media Lead</option>
+                          <option value="lead_finance">Finance Lead</option>
+                          <option value="lead_events">Events Lead</option>
+                          <option value="lead_cps">Client Partner Sponsor Lead</option>
+                          <option value="lead_hr">HR Lead</option>
+                        </select>
+                        <select className="input" value={boardDepartmentId} onChange={(e) => setBoardDepartmentId(e.target.value)}>
+                          <option value="">No department</option>
+                          {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
+                        <button className="btn" disabled={boardBusy} style={{ gridColumn: "1 / -1" }} onClick={async () => {
+                          if (!authToken || !boardEmail.trim()) { alert("Enter an email first"); return; }
+                          setBoardBusy(true);
+                          try {
+                            const res = await fetch(apiUrl("/api/board-users"), {
+                              method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                              body: JSON.stringify({ email: boardEmail.trim(), name: boardName.trim(), roleId: boardRoleId, departmentId: boardDepartmentId || null, secondaryRoleId: boardSecondaryRoleId || null }),
+                            });
+                            const data = await res.json();
+                            if (data.success) {
+                              setAdminTokens((prev) => [data, ...prev]);
+                              setBoardEmail(""); setBoardName(""); setBoardRoleId("president"); setBoardDepartmentId(""); setBoardSecondaryRoleId("");
+                              setRecentToken(data.token); setShowRecentToken(false);
+                              alert(`Board user created successfully.`);
+                            } else alert(data.error);
+                          } finally { setBoardBusy(false); }
+                        }}>{boardBusy ? "Creating..." : "Create Board User"}</button>
+                      </div>
+                    </div>
 
-                {/* MEMBER */}
-                <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
-                  <h3>Create Member</h3>
-                  <div className="admin-grid-4" style={{ marginTop: 16 }}>
-                    <input className="input" placeholder="Email" value={memberEmail} onChange={(e) => setMemberEmail(e.target.value)} />
-                    <input className="input" placeholder="Name" value={memberName} onChange={(e) => setMemberName(e.target.value)} />
-                    <select className="input" value={memberDepartmentId} onChange={(e) => setMemberDepartmentId(e.target.value)}>
-                      <option value="">No department</option>
-                      {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                    </select>
-                    <button className="btn" disabled={memberBusy} onClick={async () => {
-                      if (!authToken || !memberEmail.trim()) { alert("Enter an email first"); return; }
-                      setMemberBusy(true);
-                      try {
-                        const res = await fetch(apiUrl("/api/members"), {
-                          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-                          body: JSON.stringify({ email: memberEmail.trim(), name: memberName.trim() || memberEmail.trim().split("@")[0], departmentId: memberDepartmentId || null }),
-                        });
-                        const data = await res.json();
-                        if (data.success) { setMemberEmail(""); setMemberName(""); setMemberDepartmentId(""); setRecentToken(data.token); setShowRecentToken(false); alert("Member created successfully."); }
-                        else alert(data.error);
-                      } finally { setMemberBusy(false); }
-                    }}>{memberBusy ? "Creating..." : "Create Member"}</button>
+                    <div className="admin-form-divider" />
+
+                    <div>
+                      <h4 className="admin-form-section-title">Advisory Board Member</h4>
+                      <div className="admin-grid-4" style={{ marginTop: 12 }}>
+                        <input className="input" placeholder="Email" value={advisoryEmail} onChange={(e) => setAdvisoryEmail(e.target.value)} />
+                        <input className="input" placeholder="Name" value={advisoryName} onChange={(e) => setAdvisoryName(e.target.value)} />
+                        <select className="input" value={advisoryExTitle} onChange={(e) => setAdvisoryExTitle(e.target.value)}>
+                          <option value="">No ex-title</option>
+                          {EX_TITLES.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <select className="input" value={advisoryMemberDeptId} onChange={(e) => setAdvisoryMemberDeptId(e.target.value)}>
+                          <option value="">Not a club member</option>
+                          {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name} (as member)</option>)}
+                        </select>
+                        <button className="btn" disabled={advisoryBusy} style={{ gridColumn: "1 / -1" }} onClick={async () => {
+                          if (!authToken || !advisoryEmail.trim()) { alert("Enter an email first"); return; }
+                          setAdvisoryBusy(true);
+                          try {
+                            const res = await fetch(apiUrl("/api/advisory-members"), {
+                              method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                              body: JSON.stringify({
+                                email: advisoryEmail.trim(),
+                                name: advisoryName.trim(),
+                                exTitle: advisoryExTitle || null,
+                                memberDeptId: advisoryMemberDeptId || null,
+                              }),
+                            });
+                            const data = await res.json();
+                            if (data.success) {
+                              setAdminTokens((prev) => [data, ...prev]);
+                              setAdvisoryEmail(""); setAdvisoryName(""); setAdvisoryExTitle(""); setAdvisoryMemberDeptId("");
+                              setAdvisoryRecentToken(data.token);
+                              alert(`Advisory member created successfully.`);
+                            } else alert(data.error);
+                          } finally { setAdvisoryBusy(false); }
+                        }}>{advisoryBusy ? "Creating..." : "Create Advisory Member"}</button>
+                      </div>
+                      {advisoryRecentToken && (
+                        <div className="admin-recent-token" style={{ marginTop: 12 }}>
+                          <span>Advisory token: {maskToken(advisoryRecentToken)}</span>
+                          <button className="btn outline" style={{ padding: "6px 12px" }} onClick={async () => { await navigator.clipboard.writeText(advisoryRecentToken); alert("Token copied"); }}>Copy</button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="admin-form-divider" />
+
+                    <div>
+                      <h4 className="admin-form-section-title">Member</h4>
+                      <div className="admin-grid-4" style={{ marginTop: 12 }}>
+                        <input className="input" placeholder="Email" value={memberEmail} onChange={(e) => setMemberEmail(e.target.value)} />
+                        <input className="input" placeholder="Name" value={memberName} onChange={(e) => setMemberName(e.target.value)} />
+                        <select className="input" value={memberDepartmentId} onChange={(e) => setMemberDepartmentId(e.target.value)}>
+                          <option value="">No department</option>
+                          {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
+                        <button className="btn" disabled={memberBusy} onClick={async () => {
+                          if (!authToken || !memberEmail.trim()) { alert("Enter an email first"); return; }
+                          setMemberBusy(true);
+                          try {
+                            const res = await fetch(apiUrl("/api/members"), {
+                              method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                              body: JSON.stringify({ email: memberEmail.trim(), name: memberName.trim() || memberEmail.trim().split("@")[0], departmentId: memberDepartmentId || null }),
+                            });
+                            const data = await res.json();
+                            if (data.success) { setMemberEmail(""); setMemberName(""); setMemberDepartmentId(""); setRecentToken(data.token); setShowRecentToken(false); alert("Member created successfully."); }
+                            else alert(data.error);
+                          } finally { setMemberBusy(false); }
+                        }}>{memberBusy ? "Creating..." : "Create Member"}</button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 {/* SIGNUP REQUESTS */}
                 <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
-                  <h3>Pending Signup Requests</h3>
-                  {pendingRequests.length === 0 ? <p style={{ fontSize: 13, color: "var(--text-tertiary)", marginTop: 8 }}>No pending requests.</p> : (
-                    <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+                  <div className="section-header">
+                     <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>person_check</span>
+                     <h3>Pending Signup Requests</h3>
+                  </div>
+                  {pendingRequests.length === 0 ? <p className="empty-text">No pending requests.</p> : (
+                    <div style={{ display: "grid", gap: 10 }}>
                       {pendingRequests.map((r) => (
-                        <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 16, background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border-light)" }}>
+                        <div key={r.id} className="admin-pending-row">
                           <div>
-                            <strong style={{ fontSize: 14 }}>{r.name}</strong>
-                            <div style={{ color: "var(--text-secondary)", fontSize: 12 }}>{r.email}</div>
+                            <strong>{r.name}</strong>
+                            <div className="admin-token-meta">{r.email}</div>
                             {r.department_id && (
-                              <div style={{ fontSize: 11, marginTop: 2, color: "var(--primary-green)", fontWeight: 600 }}>
+                              <div className="admin-dept-badge">
                                 {departments.find((d: any) => d.id === r.department_id)?.name || r.department_id}
                               </div>
                             )}
@@ -969,7 +1149,7 @@ export default function MembersLayout() {
                               if (data.success && data.token) alert(`User approved!`);
                               setPendingRequests(pendingRequests.filter((p) => p.id !== r.id));
                             }}>Approve</button>
-                            <button className="btn outline" style={{ padding: "6px 12px" }} onClick={async () => {
+                            <button className="btn outline reject-btn" onClick={async () => {
                               await fetch(apiUrl(`/api/signup-requests/${r.id}/reject`), {
                                 method: "POST", headers: { Authorization: `Bearer ${authToken}` },
                               });
@@ -982,22 +1162,84 @@ export default function MembersLayout() {
                   )}
                 </div>
 
+                {/* ROLE TRANSFER REQUESTS */}
+                <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
+                  <div className="section-header">
+                     <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>swap_horiz</span>
+                     <h3>Initiate Role Transfer</h3>
+                  </div>
+                  <p className="card-subtext">
+                    Initiate a formal role transfer between members. Requires approval from the recipient.
+                  </p>
+                  <div className="admin-grid-4">
+                    <select className="input" value={transferFromUserId} onChange={(e) => setTransferFromUserId(e.target.value)}>
+                      <option value="">Transfer from...</option>
+                      {allUsers.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.role_name})</option>)}
+                    </select>
+                    <select className="input" value={transferToUserId} onChange={(e) => setTransferToUserId(e.target.value)}>
+                      <option value="">Transfer to...</option>
+                      {allUsers.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                    <select className="input" value={transferRoleId} onChange={(e) => setTransferRoleId(e.target.value)}>
+                      <option value="">Select target role...</option>
+                      {allRoles.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+                    <button className="btn" disabled={transferBusy} onClick={async () => {
+                      if (!transferFromUserId || !transferToUserId || !transferRoleId) return alert("All fields required");
+                      setTransferBusy(true);
+                      try {
+                        const res = await fetch(apiUrl("/api/role-transfers"), {
+                          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                          body: JSON.stringify({ fromUserId: transferFromUserId, toUserId: transferToUserId, roleId: transferRoleId }),
+                        });
+                        const data = await res.json();
+                        if (data.success) { alert("Transfer request initiated."); setTransferFromUserId(""); setTransferToUserId(""); setTransferRoleId(""); }
+                        else alert(data.error);
+                      } finally { setTransferBusy(false); }
+                    }}>Initiate</button>
+                  </div>
+
+                  {roleTransfers.length > 0 && (
+                    <div className="admin-transfer-section">
+                       <div className="admin-sub-label">Pending Transfers</div>
+                       {roleTransfers.map((rt: any) => (
+                         <div key={rt.id} className="admin-transfer-row">
+                            <div className="admin-transfer-users">
+                               <span>{rt.from_name}</span>
+                               <span className="material-symbols-outlined" style={{ fontSize: 16, color: "var(--text-tertiary)" }}>arrow_forward</span>
+                               <span>{rt.to_name}</span>
+                               <span className="admin-transfer-role">Role: {rt.role_name}</span>
+                            </div>
+                            <span className="admin-status-pending">PENDING</span>
+                         </div>
+                       ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* DANGER ZONE */}
                 <div className="dashboard-card" style={{ gridColumn: "1 / -1", borderColor: "#ef4444" }}>
-                  <h3 style={{ color: "#ef4444" }}>Danger Zone</h3>
-                  <div className="admin-grid-2" style={{ marginTop: 16 }}>
-                    <div style={{ background: "var(--surface)", padding: 16, borderRadius: 12, border: "1px solid var(--border-light)" }}>
-                      <h4 style={{ margin: 0, fontSize: 14 }}>Change Role</h4>
-                      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                        <select className="input" style={{ padding: "0.75rem" }} value={dangerUserId} onChange={(e) => setDangerUserId(e.target.value)}>
-                          <option value="">Select user</option>
+                  <div className="section-header">
+                     <span className="material-symbols-outlined" style={{ color: "#ef4444" }}>warning</span>
+                     <h3 style={{ color: "#ef4444" }}>Danger Zone</h3>
+                  </div>
+                  <div className="admin-grid-2">
+                    <div className="admin-sub-card">
+                      <h4 className="admin-form-section-title" style={{ marginBottom: 12 }}>Change Role / Department</h4>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <select className="input" value={dangerUserId} onChange={(e) => setDangerUserId(e.target.value)}>
+                          <option value="">Select member...</option>
                           {allUsers.map((u: any) => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
                         </select>
-                        <select className="input" style={{ padding: "0.75rem" }} value={dangerNewRoleId} onChange={(e) => setDangerNewRoleId(e.target.value)}>
-                          <option value="">Select new role</option>
+                        <select className="input" value={dangerNewRoleId} onChange={(e) => setDangerNewRoleId(e.target.value)}>
+                          <option value="">New role...</option>
                           {allRoles.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
                         </select>
-                        <button className="btn" style={{ background: "#ef4444" }} disabled={dangerBusy} onClick={async () => {
+                        <select className="input" value={dangerNewDeptId} onChange={(e) => setDangerNewDeptId(e.target.value)}>
+                          <option value="">Assign Department...</option>
+                          {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
+                        <button className="btn danger-btn" disabled={dangerBusy} onClick={async () => {
                           if (!dangerUserId || !dangerNewRoleId) return;
                           setDangerBusy(true);
                           try {
@@ -1006,30 +1248,60 @@ export default function MembersLayout() {
                               body: JSON.stringify({ newRoleId: dangerNewRoleId, departmentId: dangerNewDeptId || null }),
                             });
                             const data = await res.json();
-                            if (data.success) { alert("Role updated"); setDangerUserId(""); setDangerNewRoleId(""); }
+                            if (data.success) { alert("Access updated."); setDangerUserId(""); setDangerNewRoleId(""); setDangerNewDeptId(""); }
                             else alert(data.error);
                           } finally { setDangerBusy(false); }
-                        }}>Update Role</button>
+                        }}>Apply Changes</button>
                       </div>
                     </div>
 
-                    <div style={{ background: "var(--surface)", padding: 16, borderRadius: 12, border: "1px solid var(--border-light)" }}>
-                      <h4 style={{ margin: 0, fontSize: 14 }}>Delete User</h4>
-                      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                        <select className="input" style={{ padding: "0.75rem" }} value={deleteUserId} onChange={(e) => setDeleteUserId(e.target.value)}>
-                          <option value="">Select user</option>
-                          {allUsers.filter((u: any) => u.power_level < 100).map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                        </select>
-                        <button className="btn" style={{ background: "#ef4444" }} disabled={deleteBusy} onClick={async () => {
-                          if (!deleteUserId || !confirm("Delete user?")) return;
-                          setDeleteBusy(true);
-                          try {
-                            const res = await fetch(apiUrl(`/api/members/${deleteUserId}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
-                            const data = await res.json();
-                            if (data.success) { alert("User deleted"); setDeleteUserId(""); }
-                            else alert(data.error);
-                          } finally { setDeleteBusy(false); }
-                        }}>Delete User</button>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                      <div className="admin-sub-card">
+                        <h4 className="admin-form-section-title" style={{ marginBottom: 12 }}>Move to Advisory Board</h4>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          <select className="input" value={dangerAdvUserId} onChange={(e) => setDangerAdvUserId(e.target.value)}>
+                            <option value="">Select member...</option>
+                            {allUsers.filter(u => u.role_id !== 'advisory').map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          </select>
+                          <select className="input" value={dangerAdvExTitle} onChange={(e) => setDangerAdvExTitle(e.target.value)}>
+                            <option value="">Select Ex-Title...</option>
+                            {EX_TITLES.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                          <button className="btn outline danger-outline-btn" disabled={dangerAdvBusy} onClick={async () => {
+                            if (!dangerAdvUserId || !dangerAdvExTitle) return alert("Select member and title");
+                            if (!confirm("Move this member to Advisory Board?")) return;
+                            setDangerAdvBusy(true);
+                            try {
+                              const res = await fetch(apiUrl(`/api/members/${dangerAdvUserId}/role`), {
+                                method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                                body: JSON.stringify({ newRoleId: "advisory", exTitle: dangerAdvExTitle }),
+                              });
+                              const data = await res.json();
+                              if (data.success) { alert("Moved to Advisory Board."); setDangerAdvUserId(""); setDangerAdvExTitle(""); }
+                              else alert(data.error);
+                            } finally { setDangerAdvBusy(false); }
+                          }}>Move to Advisory</button>
+                        </div>
+                      </div>
+
+                      <div className="admin-sub-card">
+                        <h4 className="admin-form-section-title" style={{ marginBottom: 12 }}>Revoke Access</h4>
+                        <div style={{ display: "flex", gap: 10 }}>
+                          <select className="input" value={deleteUserId} onChange={(e) => setDeleteUserId(e.target.value)}>
+                            <option value="">Select member...</option>
+                            {allUsers.filter((u: any) => u.power_level < 100).map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          </select>
+                          <button className="btn danger-btn" disabled={deleteBusy} onClick={async () => {
+                            if (!deleteUserId || !confirm("Delete user account permanently?")) return;
+                            setDeleteBusy(true);
+                            try {
+                              const res = await fetch(apiUrl(`/api/members/${deleteUserId}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                              const data = await res.json();
+                              if (data.success) { alert("Account deleted."); setDeleteUserId(""); }
+                              else alert(data.error);
+                            } finally { setDeleteBusy(false); }
+                          }}>Delete</button>
+                        </div>
                       </div>
                     </div>
                   </div>

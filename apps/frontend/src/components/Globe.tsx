@@ -279,11 +279,10 @@ const Globe = () => {
           polygonStrokeColor={(d: any) =>
             d.properties.ISO_A3 === 'IND' ? '#8dc63f' : 'rgba(100, 100, 100, 0.3)'
           }
-          polygonLabel={({ properties: d }: any) => `
-            <div class="globe-label">
-              <b>${d.ADMIN || d.ST_NM}</b>
-            </div>
-          `}
+          polygonLabel={({ properties: d }: any) => {
+            const name = (d.ADMIN || d.ST_NM || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+            return `<div class="globe-label"><b>${name}</b></div>`;
+          }}
           onPolygonHover={() => {}}
 
           onGlobeClick={handleGlobeClick}

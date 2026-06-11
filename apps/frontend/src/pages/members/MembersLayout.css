@@ -446,6 +446,291 @@
   }
 }
 
+/* ─── ADMIN CONSOLE HELPERS ─── */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+.section-header h3 {
+  margin: 0;
+}
+
+.admin-sub-card {
+  background: var(--surface);
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-sub-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  letter-spacing: 0.3px;
+}
+
+.admin-role-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.admin-power-badge {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--primary-green);
+  background: var(--accent-bg);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.admin-progress-bar {
+  height: 8px;
+  background: var(--surface-container-high);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.admin-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.admin-progress-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+}
+
+.admin-maintenance-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.admin-maintenance-status {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 4px;
+}
+.admin-maintenance-status[data-active="true"] {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+.admin-maintenance-status[data-active="false"] {
+  color: var(--text-secondary);
+  background: var(--surface-container-high);
+}
+
+.admin-token-row {
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface);
+  border-radius: 10px;
+  border: 1px solid var(--border-light);
+}
+
+.admin-token-info strong {
+  font-size: 14px;
+}
+.admin-token-info .admin-token-meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.admin-token-info .admin-token-preview {
+  margin-top: 4px;
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* ─── ADMIN GRID VARIANTS ─── */
+.admin-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.admin-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+}
+
+.admin-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+}
+
+.dashboard-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 900px) {
+  .admin-grid-2,
+  .admin-grid-3 {
+    grid-template-columns: 1fr;
+  }
+  .admin-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── ADMIN CONSOLE TEXT HELPERS ─── */
+.card-subtext {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.empty-text {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.admin-recent-token {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: var(--surface);
+  border-radius: 10px;
+  border: 1px solid var(--border-light);
+  margin-top: 16px;
+}
+.admin-recent-token span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-token-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.admin-delete-btn {
+  color: #ef4444 !important;
+}
+
+.admin-form-section-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.admin-form-divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: 0.25rem 0;
+}
+
+.admin-pending-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: var(--surface);
+  border-radius: 12px;
+  border: 1px solid var(--border-light);
+}
+.admin-pending-row strong {
+  font-size: 14px;
+}
+.admin-pending-row .admin-token-meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.admin-dept-badge {
+  font-size: 11px;
+  margin-top: 2px;
+  color: var(--primary-green);
+  font-weight: 600;
+}
+
+.reject-btn {
+  border-color: #ef4444 !important;
+  color: #ef4444 !important;
+}
+
+.danger-btn {
+  background: #ef4444 !important;
+}
+
+.danger-outline-btn {
+  border-color: #ef4444 !important;
+  color: #ef4444 !important;
+}
+
+.admin-transfer-section {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-transfer-row {
+  padding: 12px 16px;
+  background: var(--surface);
+  border-radius: 12px;
+  border: 1px solid var(--border-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.admin-transfer-users {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.admin-transfer-users span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-transfer-role {
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin-left: 12px;
+  font-weight: 400;
+}
+
+.admin-status-pending {
+  font-size: 10px;
+  font-weight: 800;
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
 /* ─── UTILITIES ─── */
 .card-glass {
   background: rgba(var(--bg-card-rgb), 0.8);

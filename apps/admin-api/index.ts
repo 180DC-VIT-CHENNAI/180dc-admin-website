@@ -52,11 +52,7 @@ function logError(context: string, err: any, c?: any) {
 
 function errorResponse(c: any, message: string, status: number) {
   if (isProduction(c)) {
-    const generic: Record<number, string> = {
-      400: "Bad request", 401: "Unauthorized", 403: "Forbidden",
-      404: "Not found", 409: "Conflict", 500: "Internal server error",
-    };
-    return c.json({ error: generic[status] || "An error occurred" }, status);
+    return c.json({ error: "An error occurred" }, status);
   }
   return c.json({ error: message }, status);
 }
@@ -95,7 +91,7 @@ async function checkRateLimit(c: any, endpoint: string, maxRequests: number, win
     }
     const elapsed = (now.getTime() - new Date(row.window_start + "Z").getTime()) / 1000;
     if (elapsed > windowSeconds) {
-      await c.env.DB.prepare("UPDATE rate_limits SET count = 1, window_start = ? WHERE ip = ? AND endpoint = ?").bind(ip, endpoint, now.toISOString()).run();
+      await c.env.DB.prepare("UPDATE rate_limits SET count = 1, window_start = ? WHERE ip = ? AND endpoint = ?").bind(now.toISOString(), ip, endpoint).run();
       return { allowed: true, retryAfter: 0 };
     }
     if (row.count >= maxRequests) {
@@ -746,18 +742,26 @@ app.use("*", async (c, next) => {
 
   // Allow unauthenticated routes: public signup + dev-login (handles its own auth)
   const url = new URL(c.req.url);
+
+  // Allow login endpoints (no Bearer token required)
+  if (
+    url.pathname === "/api/dev-login" ||
+    url.pathname === "/api/auth/clerk-login"
+  ) {
+    await next();
+    return;
+  }
+
   if (
     (url.pathname === "/api/signup-requests" && c.req.method === "POST") ||
     url.pathname === "/api/consulting-request" ||
-    url.pathname === "/api/dev-login" ||
     url.pathname === "/api/auth/forgot-token" ||
     url.pathname === "/api/departments" ||
     url.pathname === "/api/projects/completed" ||
     (url.pathname.startsWith("/api/content") && c.req.method === "GET") ||
     url.pathname === "/api/recruitment/register" ||
     url.pathname === "/api/recruitment/login" ||
-    url.pathname === "/api/recruitment/open-domains" ||
-    url.pathname === "/api/auth/clerk-login"
+    url.pathname === "/api/recruitment/open-domains"
   ) {
     await next();
     return;
@@ -768,7 +772,7 @@ app.use("*", async (c, next) => {
   let tokenRow: any = null;
   try {
     const authHeader = c.req.header("Authorization") || "";
-    if (authHeader.startsWith("Bearer ")) {
+    if (authHeader.trim().toLowerCase().startsWith("bearer ")) {
       const token = authHeader.slice(7).trim();
       tokenRow = await c.env.DB.prepare(
         "SELECT token, email, name, role_id, revoked_at, expires_at, active_role_id FROM admin_tokens WHERE token = ?",
@@ -924,6 +928,9 @@ app.post("/api/members", async (c) => {
   try {
     requireBoard(c);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const email = validateEmail(body.email);
     const name = sanitizeStr(body.name);
     const departmentId = sanitizeStr(body.departmentId) || null;
@@ -1114,6 +1121,9 @@ app.post("/api/auth/forgot-token", async (c) => {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const email = validateEmail(body.email);
     if (!email) {
       return c.json({ error: "Valid email is required" }, 400);
@@ -1146,7 +1156,14 @@ app.post("/api/auth/forgot-token", async (c) => {
 app.post("/api/auth/clerk-login", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkLoginRateLimit(c, "clerk_login", 20, 60);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many login attempts. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const clerkToken = sanitizeStr(body.clerkToken, MAX_CLERK_TOKEN_LEN);
     if (!clerkToken) {
       return c.json({ error: "Missing clerkToken" }, 400);
@@ -1218,11 +1235,18 @@ app.post("/api/auth/clerk-login", async (c) => {
 app.post("/api/auth/link-clerk", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "link_clerk", 5, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
     const user: any = c.get("user");
     if (!user) {
       return c.json({ error: "Unauthorized" }, 401);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const clerkUserId = sanitizeStr(body.clerkUserId);
     if (!clerkUserId) {
       return c.json({ error: "Missing clerkUserId" }, 400);
@@ -1246,6 +1270,10 @@ app.post("/api/auth/link-clerk", async (c) => {
 app.post("/api/auth/unlink-clerk", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "unlink_clerk", 5, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
     const user: any = c.get("user");
     if (!user) {
       return c.json({ error: "Unauthorized" }, 401);
@@ -1288,6 +1316,33 @@ app.post("/api/auth/rotate-token", async (c) => {
 });
 
 // ---------------------------------------------------------
+// CHAT — Lock / unlock all rooms
+// ---------------------------------------------------------
+app.post("/api/chat/rooms/lock-all", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden" }, 403);
+    await c.env.DB.prepare("UPDATE chat_room_settings SET enabled = 0").run();
+    return c.json({ success: true, locked: true });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+app.post("/api/chat/rooms/unlock-all", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden" }, 403);
+    await c.env.DB.prepare("UPDATE chat_room_settings SET enabled = 1").run();
+    return c.json({ success: true, locked: false });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
 // DASHBOARD BOOTSTRAP (single server payload for the members page)
 // ---------------------------------------------------------
 app.get("/api/dashboard", async (c) => {
@@ -1315,6 +1370,29 @@ app.get("/api/dashboard", async (c) => {
       created_by: t.created_by, created_at: t.created_at, revoked_at: t.revoked_at,
     }));
 
+    // Dashboard stats
+    const [{ count: membersCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM users").all().then((r: any) => r.results);
+    const [{ count: projectsCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM projects WHERE status != 'completed'").all().then((r: any) => r.results);
+    
+    // Upcoming meets (total count)
+    const [{ count: clubMeetsCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM club_meets WHERE scheduled_at > CURRENT_TIMESTAMP").all().then((r: any) => r.results);
+    const [{ count: deptMeetsCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM department_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (department_id = ? OR ? >= 100)").bind(user.department_id || "", user.power_level).all().then((r: any) => r.results);
+    const [{ count: interMeetsCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM inter_dept_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (',' || departments || ',' LIKE '%,' || ? || ',%' OR ? >= 100)").bind(user.department_id || "", user.power_level).all().then((r: any) => r.results);
+    
+    const totalUpcomingMeets = (clubMeetsCount || 0) + (deptMeetsCount || 0) + (interMeetsCount || 0);
+
+    // Recent meets for preview
+    const deptId = user.department_id || "";
+    const clubMeetsRecent = await c.env.DB.prepare("SELECT 'club' as type, title, scheduled_at, meet_link FROM club_meets WHERE scheduled_at > CURRENT_TIMESTAMP").all().then((r: any) => r.results || []);
+    const deptMeetsRecent = await c.env.DB.prepare("SELECT 'department' as type, title, scheduled_at, meet_link FROM department_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (department_id = ? OR ? >= 100)").bind(deptId, user.power_level).all().then((r: any) => r.results || []);
+    const interMeetsRecent = await c.env.DB.prepare("SELECT 'inter-department' as type, title, scheduled_at, meet_link FROM inter_dept_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (',' || departments || ',' LIKE '%,' || ? || ',%' OR ? >= 100)").bind(deptId, user.power_level).all().then((r: any) => r.results || []);
+    const recentMeets = [...clubMeetsRecent, ...deptMeetsRecent, ...interMeetsRecent]
+      .sort((a: any, b: any) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+      .slice(0, 3);
+
+    // Announcements
+    const announcements = await c.env.DB.prepare("SELECT * FROM announcements ORDER BY created_at DESC LIMIT 20").all();
+
     return c.json({
       success: true,
       user: {
@@ -1327,20 +1405,28 @@ app.get("/api/dashboard", async (c) => {
         oauthEnabled: !!user.oauth_enabled,
         clerkUserId: user.clerk_user_id || null,
       },
+      stats: {
+        membersCount,
+        projectsCount,
+        upcomingMeetsCount: totalUpcomingMeets,
+        announcementsCount: (announcements.results || []).length,
+        todayEmailCount: await getTodayEmailCount(c.env.DB),
+      },
+      recentMeets,
       pendingRequests: pendingRequests.results || [],
       adminTokens: maskedTokens,
       roleTransfers: (await c.env.DB.prepare(
         "SELECT rt.*, fu.name as from_name, fu.email as from_email, tu.name as to_name, tu.email as to_email, r.name as role_name FROM role_transfers rt LEFT JOIN users fu ON rt.from_user_id = fu.id LEFT JOIN users tu ON rt.to_user_id = tu.id LEFT JOIN roles r ON rt.role_id = r.id WHERE rt.status = 'pending' ORDER BY rt.created_at DESC",
       ).all()).results || [],
       departments: (await c.env.DB.prepare("SELECT id, name, description FROM departments ORDER BY name ASC").all()).results || [],
-      announcements: (await c.env.DB.prepare("SELECT * FROM announcements ORDER BY created_at DESC LIMIT 20").all()).results || [],
+      announcements: announcements.results || [],
       flags: {
         canAccessHub: user.power_level >= 50,
         canManageBoard: user.power_level >= 100,
       },
     });
   } catch (e: any) {
-    return errorResponse(c, e.message, 403);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -1356,6 +1442,9 @@ app.post("/api/admin-tokens", async (c) => {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const email = validateEmail(body.email);
     const roleId = sanitizeStr(body.roleId) || "member";
     const name = sanitizeStr(body.name) || email?.split?.("@")?.[0] || "member";
@@ -1407,6 +1496,25 @@ app.delete("/api/admin-tokens/:email", async (c) => {
   }
 });
 
+app.post("/api/admin-tokens/:email/revoke", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const email = c.req.param("email");
+    if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return c.json({ error: "Invalid email" }, 400);
+    }
+    const row: any = await c.env.DB.prepare("SELECT email, revoked_at FROM admin_tokens WHERE email = ?").bind(email).first();
+    if (!row) return c.json({ error: "Token not found for this email" }, 404);
+    if (row.revoked_at) return c.json({ error: "Token already revoked" }, 409);
+    await c.env.DB.prepare("UPDATE admin_tokens SET revoked_at = datetime('now') WHERE email = ?").bind(email).run();
+    await addAuditLog(c, "token_revoked", "admin_token", email, "Token revoked for " + email);
+    return c.json({ success: true, message: "Token revoked." });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
 // ---------------------------------------------------------
 // BOARD USERS (Create or update a board account + issue token)
 // ---------------------------------------------------------
@@ -1420,6 +1528,9 @@ app.post("/api/board-users", async (c) => {
     }
 
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const email = validateEmail(body.email);
     const name =
       sanitizeStr(body.name) || email?.split?.("@")?.[0] || "board-member";
@@ -1511,6 +1622,9 @@ app.post("/api/advisory-members", async (c) => {
     }
 
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const email = validateEmail(body.email);
     const name = sanitizeStr(body.name) || email?.split?.("@")?.[0] || "advisory-member";
     const exTitle = sanitizeStr(body.exTitle) || null;
@@ -1571,6 +1685,9 @@ app.put("/api/members/:id/role", async (c) => {
     requireBoard(c);
     const targetUserId = c.req.param("id");
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const newRoleId = sanitizeStr(body.newRoleId);
     const departmentId = sanitizeStr(body.departmentId);
     const secondaryRoleId = sanitizeStr(body.secondaryRoleId) || null;
@@ -1603,7 +1720,14 @@ app.put("/api/members/:id/role", async (c) => {
 app.post("/api/roles", async (c) => {
   try {
     requireBoard(c);
+    const rl = await checkRateLimit(c, "create_role", 10, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const roleId = sanitizeStr(body.roleId);
     const name = sanitizeStr(body.name);
     const powerLevel = body.powerLevel;
@@ -1730,6 +1854,9 @@ app.post("/api/role-transfers", async (c) => {
     await ensureTables(c.env.DB);
     requireBoard(c);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const fromUserId = sanitizeStr(body.fromUserId);
     const toUserId = sanitizeStr(body.toUserId);
     const roleId = sanitizeStr(body.roleId);
@@ -1942,6 +2069,9 @@ app.post("/api/signup-requests", async (c) => {
       return c.json({ error: "Too many signup requests. Try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const name = sanitizeStr(body.name);
     const email = validateEmail(body.email);
     const message = sanitizeStr(body.message, MAX_MSG_LEN);
@@ -2110,6 +2240,9 @@ app.post("/api/departments/:id/meets", async (c) => {
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const meetLink = sanitizeStr(body.meetLink);
     const description = sanitizeStr(body.description);
@@ -2151,6 +2284,9 @@ app.post("/api/departments/:id/documents", async (c) => {
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const description = sanitizeStr(body.description);
     const fileUrl = sanitizeStr(body.fileUrl);
@@ -2186,6 +2322,9 @@ app.post("/api/departments/:id/instructions", async (c) => {
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const content = sanitizeStr(body.content);
     const priority = sanitizeStr(body.priority) || "medium";
@@ -2220,6 +2359,9 @@ app.post("/api/departments/:id/projects", async (c) => {
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const name = sanitizeStr(body.name);
     const description = sanitizeStr(body.description);
     const deadline = body.deadline || null;
@@ -2241,6 +2383,9 @@ app.put("/api/departments/:id/projects/:projectId/status", async (c) => {
     canAccessDept(c, deptId);
     const projectId = c.req.param("projectId");
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const status = sanitizeStr(body.status) || "upcoming";
     await c.env.DB.prepare("UPDATE department_projects SET status = ? WHERE id = ? AND department_id = ?").bind(status, projectId, deptId).run();
     return c.json({ success: true, message: "Project status updated" });
@@ -2313,6 +2458,9 @@ app.post("/api/club-meets", async (c) => {
       return c.json({ error: "Forbidden: Lead or above only" }, 403);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const meetLink = sanitizeStr(body.meetLink);
     const description = sanitizeStr(body.description);
@@ -2369,6 +2517,9 @@ app.post("/api/inter-dept-meets", async (c) => {
       return c.json({ error: "Forbidden: Lead or above only" }, 403);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const meetLink = sanitizeStr(body.meetLink);
     const description = sanitizeStr(body.description);
@@ -2378,8 +2529,10 @@ app.post("/api/inter-dept-meets", async (c) => {
       return c.json({ error: "Missing title, scheduledAt, or departments" }, 400);
     }
     if (meetLink && !isValidUrl(meetLink)) return c.json({ error: "Invalid meet link URL" }, 400);
-    const deptsStr = Array.isArray(departments) ? departments.join(",") : String(departments);
-    const deptArray = Array.isArray(departments) ? departments : departments.split(",");
+    const rawDepts = Array.isArray(departments) ? departments : departments.split(",");
+    const deptArray = rawDepts.map((d: string) => String(d).trim()).filter(Boolean);
+    const deptsStr = deptArray.join(",");
+    if (deptArray.length === 0) return c.json({ error: "At least one department is required" }, 400);
     const meetId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
       "INSERT INTO inter_dept_meets (id, title, meet_link, description, scheduled_at, departments, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -2527,7 +2680,14 @@ app.post("/api/announcements", async (c) => {
     if (user.power_level < 100) {
       return c.json({ error: "Forbidden: President or VP only" }, 403);
     }
+    const rl = await checkRateLimit(c, "create_announcement", 5, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many announcements. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const content = sanitizeStr(body.content);
     if (!title || !content) return c.json({ error: "Missing title or content" }, 400);
@@ -2610,7 +2770,14 @@ app.post("/api/projects", async (c) => {
     if (user.power_level < 100) {
       return c.json({ error: "Forbidden: President or VP only" }, 403);
     }
+    const rl = await checkRateLimit(c, "create_project", 10, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many projects. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const name = sanitizeStr(body.name);
     const description = sanitizeStr(body.description, MAX_PROJECT_DESC_LEN);
     const companyOrg = sanitizeStr(body.companyOrg);
@@ -2621,6 +2788,8 @@ app.post("/api/projects", async (c) => {
     if (!Array.isArray(departmentIds) || departmentIds.length === 0) {
       return c.json({ error: "Select at least one department" }, 400);
     }
+    const sanitizedDeptIds = departmentIds.map((d: any) => String(d).trim()).filter(Boolean);
+    if (sanitizedDeptIds.length === 0) return c.json({ error: "Invalid department selection" }, 400);
     if (!yearInput && !deadline) {
       return c.json({ error: "Provide either a year or a deadline date" }, 400);
     }
@@ -2641,13 +2810,13 @@ app.post("/api/projects", async (c) => {
       "INSERT INTO projects (id, name, description, company_org, year, deadline, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
     ).bind(projectId, name, description || null, companyOrg || null, year, deadline, user.id).run();
 
-    for (const deptId of departmentIds) {
+    for (const deptId of sanitizedDeptIds) {
       await c.env.DB.prepare(
         "INSERT OR IGNORE INTO project_departments (project_id, department_id) VALUES (?, ?)",
       ).bind(projectId, deptId).run();
     }
 
-    await sendProjectAssignmentEmail(c, name, departmentIds);
+    await sendProjectAssignmentEmail(c, name, sanitizedDeptIds);
 
     return c.json({ success: true, message: "Project created", projectId });
   } catch (e: any) {
@@ -2680,6 +2849,9 @@ app.post("/api/projects/:id/roles", async (c) => {
     const user: any = c.get("user");
     const projectId = c.req.param("id");
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const userId = sanitizeStr(body.userId);
     const roleName = sanitizeStr(body.roleName);
     if (!userId || !roleName) return c.json({ error: "Missing userId or roleName" }, 400);
@@ -2773,6 +2945,9 @@ app.post("/api/projects/:id/tasks", async (c) => {
     const user: any = c.get("user");
     await canManageProjectTasks(c, projectId);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const description = sanitizeStr(body.description);
     const assignedTo = sanitizeStr(body.assignedTo);
@@ -2794,6 +2969,9 @@ app.put("/api/projects/:id/tasks/:taskId", async (c) => {
     const user: any = c.get("user");
     await canManageProjectTasks(c, projectId);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const status = sanitizeStr(body.status);
     if (!status || !["pending", "completed"].includes(status)) {
       return c.json({ error: "Invalid status" }, 400);
@@ -2888,6 +3066,9 @@ app.post("/api/recruitment/register", async (c) => {
       return c.json({ error: "Too many requests. Please try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const name = sanitizeStr(body.name);
     const email = validateEmail(body.email);
     const password = sanitizeStr(body.password);
@@ -2932,6 +3113,9 @@ app.post("/api/recruitment/login", async (c) => {
       return c.json({ error: "Too many requests. Please try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const email = validateEmail(body.email);
     const password = sanitizeStr(body.password);
     if (!email || !password) {
@@ -2988,6 +3172,9 @@ app.post("/api/recruitment/applications", async (c) => {
     const applicantId = sessionApplicant.id;
 
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const name = sanitizeStr(body.name);
     const email = validateEmail(body.email);
     const year = sanitizeStr(body.year);
@@ -3126,6 +3313,9 @@ app.post("/api/recruitment/admin/evaluation-criteria", async (c) => {
     await ensureTables(c.env.DB);
     canAccessRecruitAdmin(c);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const roundId = sanitizeStr(body.roundId);
     const name = sanitizeStr(body.name);
     const maxScore = body.maxScore;
@@ -3172,6 +3362,9 @@ app.post("/api/recruitment/admin/evaluations", async (c) => {
     canAccessRecruitAdmin(c);
     const user: any = c.get("user");
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const applicationId = sanitizeStr(body.applicationId);
     const criterionId = sanitizeStr(body.criterionId);
     const score = body.score;
@@ -3217,6 +3410,9 @@ app.put("/api/recruitment/admin/applications/:id/status", async (c) => {
     canAccessRecruitAdmin(c);
     const id = c.req.param("id");
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const status = sanitizeStr(body.status);
 
     if (!status || !["pending", "shortlisted", "selected", "rejected"].includes(status)) {
@@ -3237,6 +3433,9 @@ app.post("/api/recruitment/admin/bulk-shortlist", async (c) => {
     await ensureTables(c.env.DB);
     canAccessRecruitAdmin(c);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const count = body.count;
     const roundId = sanitizeStr(body.roundId);
     if (!roundId || typeof count !== "number" || count < 1) {
@@ -3288,17 +3487,21 @@ app.put("/api/recruitment/admin/settings", async (c) => {
     await ensureTables(c.env.DB);
     requireBoard(c);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const openDomains = body.openDomains;
     if (!Array.isArray(openDomains)) {
       return c.json({ error: "openDomains must be an array of domain names" }, 400);
     }
+    const sanitizedDomains = openDomains.map((d: any) => String(d).trim()).filter(Boolean);
     const user: any = c.get("user");
     await c.env.DB.prepare("UPDATE recruitment_domain_settings SET is_open = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP").bind(user.id).run();
-    if (openDomains.length > 0) {
-      const placeholders = openDomains.map(() => "?").join(",");
+    if (sanitizedDomains.length > 0) {
+      const placeholders = sanitizedDomains.map(() => "?").join(",");
       await c.env.DB.prepare(
         `UPDATE recruitment_domain_settings SET is_open = 1, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE domain_name IN (${placeholders})`,
-      ).bind(user.id, ...openDomains).run();
+      ).bind(user.id, ...sanitizedDomains).run();
     }
     return c.json({ success: true, message: "Recruitment settings updated" });
   } catch (e: any) {
@@ -3332,6 +3535,9 @@ app.post("/api/consulting-request", async (c) => {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const name = sanitizeStr(body.name);
     const email = validateEmail(body.email);
     const phone = sanitizeStr(body.phone);
@@ -3382,6 +3588,9 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
     if (request.status !== "pending") return c.json({ error: "Request already processed" }, 400);
 
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const emailSubject = sanitizeStr(body.emailSubject);
     const emailBody = sanitizeStr(body.emailBody, MAX_MSG_LEN * 2);
 
@@ -3447,6 +3656,9 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
     if (request.status !== "pending") return c.json({ error: "Request already processed" }, 400);
 
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const emailSubject = sanitizeStr(body.emailSubject);
     const emailBody = sanitizeStr(body.emailBody, MAX_MSG_LEN * 2);
 
@@ -3530,6 +3742,9 @@ app.post("/api/send-email", async (c) => {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const to = sanitizeStr(body.to, MAX_MSG_LEN);
     const subject = sanitizeStr(body.subject);
     const htmlBody = sanitizeStr(body.body, MAX_MSG_LEN * 2);
@@ -3543,8 +3758,13 @@ app.post("/api/send-email", async (c) => {
 
     // Support multiple recipients separated by comma/semicolon
     const recipients = to.split(/[;,]+/).map((e: string) => e.trim()).filter(Boolean);
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const validRecipients = recipients.filter((e: string) => EMAIL_RE.test(e));
+    if (validRecipients.length === 0) {
+      return c.json({ error: "No valid email addresses provided" }, 400);
+    }
 
-    for (const recipient of recipients) {
+    for (const recipient of validRecipients) {
       await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
@@ -3575,7 +3795,7 @@ app.post("/api/send-email", async (c) => {
       });
     }
 
-    return c.json({ success: true, message: `Email sent to ${recipients.length} recipient(s)` });
+    return c.json({ success: true, message: `Email sent to ${validRecipients.length} recipient(s)` }, 200);
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -3644,6 +3864,9 @@ app.post("/api/chat/init", async (c) => {
     if (!user) return c.json({ error: "Unauthorized" }, 401);
 
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const room = body.room || "advisory";
 
     // Check if room is enabled
@@ -3707,8 +3930,8 @@ app.get("/api/chat/archive", async (c) => {
     if (!user) return c.json({ error: "Unauthorized" }, 401);
 
     const room = c.req.query("room") || "advisory";
-    const before = parseInt(c.req.query("before") || String(Date.now()));
-    const limit = Math.min(parseInt(c.req.query("limit") || "50"), 200);
+    const before = parseInt(c.req.query("before") || String(Date.now()), 10);
+    const limit = Math.min(parseInt(c.req.query("limit") || "50", 10), 200);
 
     // Same room access validation as /api/chat/init
     const canAccessAdvisory = user.role_id === "advisory" || user.power_level >= 50;
@@ -3724,9 +3947,12 @@ app.get("/api/chat/archive", async (c) => {
 
     if (!c.env.ARCHIVE_DB) return c.json({ messages: [] });
 
+    // Sanitize room to prevent glob/pattern injection
+    const allowedRoom = typeof room === "string" ? room.replace(/[^a-z0-9\-]/gi, "") : "advisory";
+
     const { results } = await c.env.ARCHIVE_DB.prepare(
       "SELECT * FROM chat_archive WHERE room = ? AND created_at < ? ORDER BY created_at DESC LIMIT ?"
-    ).bind(room, before, limit).all();
+    ).bind(allowedRoom, before, limit).all();
 
     const messages = (results || []).map((r: any) => ({
       id: r.id,
@@ -3871,8 +4097,14 @@ app.post("/api/club-files/upload", async (c) => {
     const maxSize = 100 * 1024 * 1024;
     if (file.size > maxSize) return c.json({ error: "File too large (max 100MB)" }, 400);
 
+    const ALLOWED_EXTENSIONS = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|jpg|jpeg|png|gif|webp|svg|zip|rar|7z|txt|csv|mp4|mov|avi|mkv|mp3|wav)$/i;
+    const fileName = file.name || "";
+    if (!ALLOWED_EXTENSIONS.test(fileName)) {
+      return c.json({ error: "File type not allowed" }, 400);
+    }
+
     const id = crypto.randomUUID().replace(/-/g, "");
-    const ext = file.name.split(".").pop() || "";
+    const ext = fileName.split(".").pop() || "";
     const r2Key = `${category}/${id}.${ext}`;
 
     const customMetadata: Record<string, string> = {
@@ -3937,7 +4169,7 @@ app.get("/api/club-files/:id/download", async (c) => {
 app.delete("/api/club-files/:id", async (c) => {
   try {
     const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+    if (!user || user.power_level < 50) return c.json({ error: "Forbidden" }, 403);
 
     const id = c.req.param("id");
     const listed = await c.env.CLUB_FILES.list();
