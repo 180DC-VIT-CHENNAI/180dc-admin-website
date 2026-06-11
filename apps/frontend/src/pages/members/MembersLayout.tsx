@@ -258,10 +258,11 @@ export default function MembersLayout() {
         try {
           const clerkJwt = await getToken();
           if (!clerkJwt) return;
+          const clerkUserEmail = clerk.user?.primaryEmailAddress?.emailAddress || null;
           const res = await fetch(apiUrl("/api/auth/clerk-login"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ clerkToken: clerkJwt }),
+            body: JSON.stringify({ clerkToken: clerkJwt, email: clerkUserEmail }),
           });
           const data = await res.json();
           if (data.success) {

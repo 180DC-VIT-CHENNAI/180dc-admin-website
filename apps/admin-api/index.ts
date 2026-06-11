@@ -1180,9 +1180,27 @@ app.post("/api/auth/clerk-login", async (c) => {
       return c.json({ error: "Invalid Clerk token: missing user ID" }, 401);
     }
 
-    const user: any = await c.env.DB.prepare(
+    // Try lookup by clerk_user_id first (already linked)
+    let user: any = await c.env.DB.prepare(
       "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.clerk_user_id = ?",
     ).bind(clerkUserId).first();
+
+    // If not found by clerk_user_id, try by email (auto-link)
+    if (!user) {
+      const email = sanitizeStr(body.email, 255);
+      if (email) {
+        user = await c.env.DB.prepare(
+          "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
+        ).bind(email).first();
+
+        if (user) {
+          await c.env.DB.prepare(
+            "UPDATE users SET clerk_user_id = ?, oauth_enabled = 1 WHERE id = ?",
+          ).bind(clerkUserId, user.id).run();
+          user.oauth_enabled = 1;
+        }
+      }
+    }
 
     if (!user) {
       return c.json({
