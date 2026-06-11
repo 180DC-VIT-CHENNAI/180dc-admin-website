@@ -231,12 +231,10 @@ export default function MembersLayout() {
           if (data.departments) setDepartments(data.departments);
           setDashboardReady(true);
         } else {
-          sessionStorage.clear();
-          setAuthToken(null);
+          setDashboardReady(true);
         }
       } catch {
-        sessionStorage.clear();
-        setAuthToken(null);
+        setDashboardReady(true);
       }
     }
     loadDashboard();
@@ -251,15 +249,24 @@ export default function MembersLayout() {
     const pending = sessionStorage.getItem("clnk");
 
     async function handleClerkCallback() {
-      // Don't auto-login after explicit logout
-      if (sessionStorage.getItem("loggedOut")) return;
+      // If Clerk re-authenticated after logout, clear the flag
+      if (sessionStorage.getItem("loggedOut")) {
+        if (authToken) return; // already logged in with a token
+        sessionStorage.removeItem("loggedOut"); // fresh Clerk session after logout — proceed
+      }
 
       // Login flow: Clerk session exists but no token session
       if (!authToken) {
         setOauthLoading(true);
         try {
-          const clerkJwt = await getToken();
-          if (!clerkJwt) { setOauthLoading(false); return; }
+          // Retry getToken() a few times — Clerk may not have the JWT ready after OAuth redirect
+          let clerkJwt: string | null = null;
+          for (let attempt = 0; attempt < 5; attempt++) {
+            clerkJwt = await getToken();
+            if (clerkJwt) break;
+            await new Promise(r => setTimeout(r, 500));
+          }
+          if (!clerkJwt) { setOauthLoading(false); setOauthStatusMsg("Google sign-in is taking longer than expected. Try again."); return; }
           const clerkUserEmail = clerk.user?.primaryEmailAddress?.emailAddress || null;
           const res = await fetch(apiUrl("/api/auth/clerk-login"), {
             method: "POST",
