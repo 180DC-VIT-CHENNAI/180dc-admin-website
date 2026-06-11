@@ -12,9 +12,11 @@ interface MembersLoginProps {
     departmentId?: string,
     roleId?: string,
   ) => void;
+  oauthLoading?: boolean;
+  oauthError?: string | null;
 }
 
-export default function MembersLogin({ onLogin }: MembersLoginProps) {
+export default function MembersLogin({ onLogin, oauthLoading, oauthError }: MembersLoginProps) {
   const { isDark, toggle: toggleTheme } = useTheme();
   const clerk = useClerk();
   const [token, setToken] = useState("");
@@ -233,6 +235,27 @@ export default function MembersLogin({ onLogin }: MembersLoginProps) {
           &copy; 2026 180 Degrees Consulting. All rights reserved.
         </p>
       </div>
+
+      {oauthError && (
+        <div style={{ position: "fixed", bottom: "1.5rem", left: "50%", transform: "translateX(-50%)", zIndex: 999, background: "var(--bg-card)", padding: "0.75rem 1.25rem", borderRadius: 12, border: "1px solid var(--danger, #e74c3c)", boxShadow: "var(--shadow-lg)", color: "var(--text-primary)", fontSize: 14, maxWidth: 480, textAlign: "center" }}>
+          {oauthError}
+        </div>
+      )}
+
+      {oauthLoading && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 998,
+          background: "rgba(0,0,0,0.5)",
+          backdropFilter: "blur(3px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "1rem",
+        }}>
+          <div style={{ background: "var(--bg-card)", padding: "2rem", borderRadius: 24, textAlign: "center", boxShadow: "var(--shadow-lg)" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 36, display: "block", marginBottom: "1rem" }}>sync</span>
+            <p style={{ margin: 0, fontSize: 15, color: "var(--text-secondary)" }}>Completing sign in...</p>
+          </div>
+        </div>
+      )}
 
       {dualRolePending && (
         <div style={{

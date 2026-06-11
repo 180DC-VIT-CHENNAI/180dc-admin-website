@@ -117,6 +117,7 @@ export default function MembersLayout() {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["General", "Chats", "Departments", "Management", "Admin"]));
   const [roomSettings, setRoomSettings] = useState<Record<string, boolean>>({});
   const [oauthEnabled, setOauthEnabled] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState(false);
   const [oauthStatusMsg, setOauthStatusMsg] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -255,9 +256,10 @@ export default function MembersLayout() {
 
       // Login flow: Clerk session exists but no token session
       if (!authToken) {
+        setOauthLoading(true);
         try {
           const clerkJwt = await getToken();
-          if (!clerkJwt) return;
+          if (!clerkJwt) { setOauthLoading(false); return; }
           const clerkUserEmail = clerk.user?.primaryEmailAddress?.emailAddress || null;
           const res = await fetch(apiUrl("/api/auth/clerk-login"), {
             method: "POST",
@@ -265,15 +267,16 @@ export default function MembersLayout() {
             body: JSON.stringify({ clerkToken: clerkJwt, email: clerkUserEmail }),
           });
           const data = await res.json();
+          setOauthLoading(false);
           if (data.success) {
             handleLogin(data.token, data.email, data.powerLevel, data.departmentId, data.roleId);
-            setOauthStatusMsg("Logged in with Google");
-            setTimeout(() => setOauthStatusMsg(null), 4000);
+            setOauthStatusMsg(null);
           } else {
             setOauthStatusMsg(data.error || "Google login failed");
           }
           return;
         } catch {
+          setOauthLoading(false);
           setOauthStatusMsg("Google login failed. Try again.");
           return;
         }
@@ -338,7 +341,7 @@ export default function MembersLayout() {
       label: "General",
       items: [
         { id: "dashboard", label: "Dashboard", minPower: 0, icon: "dashboard" },
-        { id: "members", label: "Members", minPower: 10, icon: "groups" },
+        { id: "members", label: "Members", minPower: 0, icon: "groups" },
         { id: "profile", label: "Profile", minPower: 0, icon: "person" },
         { id: "club-files", label: "Club Files", minPower: 10, icon: "folder_open" },
       ],
@@ -418,7 +421,7 @@ export default function MembersLayout() {
     });
   }
 
-  if (!authToken) return <MembersLogin onLogin={handleLogin} />;
+  if (!authToken) return <MembersLogin onLogin={handleLogin} oauthLoading={oauthLoading} oauthError={oauthStatusMsg} />;
   if (!dashboardReady) {
     return (
       <div style={{ backgroundColor: "var(--bg-primary)", minHeight: "100vh", width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
