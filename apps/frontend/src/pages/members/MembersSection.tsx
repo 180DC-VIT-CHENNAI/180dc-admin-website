@@ -85,71 +85,107 @@ export default function MembersSection({ authToken }: { authToken: string; power
 
   if (loading) {
     return (
-      <div className="members-grid">
-        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-          <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: 14 }}>Loading members...</p>
+      <div style={{ display: "flex", justifyContent: "center", padding: "4rem" }}>
+        <div style={{ textAlign: "center" }}>
+          <div className="avatar-circle" style={{ margin: "0 auto 1rem", animation: "pulse 2s infinite" }}>
+            <span className="material-symbols-outlined">hourglass_empty</span>
+          </div>
+          <p style={{ color: "var(--text-secondary)" }}>Loading members directory...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Members</h2>
-        <button className="btn" onClick={handleExport}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      <div style={{ 
+        display: "flex", flexWrap: "wrap", alignItems: "center", 
+        justifyContent: "space-between", gap: "1rem" 
+      }}>
+        <div style={{ flex: 1, minWidth: 300, position: "relative" }}>
+          <span className="material-symbols-outlined" style={{ 
+            position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
+            color: "var(--text-tertiary)", fontSize: 20
+          }}>search</span>
+          <input
+            className="input"
+            placeholder="Search by name, email, role, or department..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={{ width: "100%", paddingLeft: "2.75rem" }}
+          />
+        </div>
+        <button className="btn outline" onClick={handleExport} style={{ gap: 8 }}>
+          <span className="material-symbols-outlined">download</span>
           Export CSV
         </button>
       </div>
-      <div className="card-doodle" style={{ marginBottom: 20 }}>
-        <input
-          className="input"
-          placeholder="Search by name, email, role, or department..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          style={{ width: "100%" }}
-        />
-        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 10 }}>
-          Showing {filtered.length} member{filtered.length !== 1 ? "s" : ""}
-          {filtered.length !== members.length && ` (filtered from ${members.length})`}
-        </div>
+
+      <div style={{ fontSize: 13, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6 }}>
+        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>info</span>
+        Showing {filtered.length} member{filtered.length !== 1 ? "s" : ""}
+        {filtered.length !== members.length && ` (filtered from ${members.length})`}
       </div>
-      <div className="members-grid" style={{ gap: 16 }}>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
         {deptKeys.length === 0 && (
-          <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-            <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: 14 }}>No members match your search.</p>
+          <div className="dashboard-card" style={{ textAlign: "center", padding: "3rem" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 48, color: "var(--text-tertiary)", marginBottom: "1rem" }}>person_search</span>
+            <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: 15 }}>No members match your search criteria.</p>
           </div>
         )}
         {deptKeys.map((key) => (
-          <div key={key} className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
-                {key === "__none" ? "No Department" : (DEPT_NAMES[key] || key)}
+          <div key={key}>
+            <div style={{ 
+              display: "flex", alignItems: "center", gap: 12, marginBottom: "1rem",
+              paddingBottom: "0.5rem", borderBottom: "1px solid var(--border-light)"
+            }}>
+              <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "var(--text-primary)" }}>
+                {key === "__none" ? "Unassigned Members" : (DEPT_NAMES[key] || key)}
               </h3>
-              <span style={{ fontSize: 13, color: "var(--text-light)" }}>
-                {deptGroups[key].length} member{deptGroups[key].length !== 1 ? "s" : ""}
+              <span style={{ 
+                fontSize: 11, fontWeight: 800, background: "var(--surface-container-high)", 
+                color: "var(--text-secondary)", padding: "2px 8px", borderRadius: 12,
+                textTransform: "uppercase"
+              }}>
+                {deptGroups[key].length}
               </span>
             </div>
-            <div style={{ display: "grid", gap: 8 }}>
+            
+            <div className="dashboard-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}>
               {deptGroups[key].map((m: any) => (
                 <div
                   key={m.id}
-                  style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "0.65rem 0.9rem", background: "var(--bg-secondary)",
-                    borderRadius: 10, border: "1px solid var(--border-light)",
+                  className="dashboard-card"
+                  style={{ 
+                    display: "flex", gap: "1rem", alignItems: "center",
+                    padding: "1rem", transition: "all 0.2s"
                   }}
                 >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{m.name}</span>
+                  <div className="avatar-circle" style={{ 
+                    width: 44, height: 44, flexShrink: 0, 
+                    fontSize: 14, background: "var(--surface-container-high)", color: "var(--text-primary)" 
+                  }}>
+                    {m.name?.[0].toUpperCase()}
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{m.name}</span>
                       {testAccounts.has(m.email) && (
-                        <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 5, background: "var(--accent)", color: "#fff", fontWeight: 600, lineHeight: "18px" }}>test account</span>
+                        <span style={{ 
+                          fontSize: 9, padding: "1px 6px", borderRadius: 4, 
+                          background: "var(--accent-bg)", color: "var(--accent)", 
+                          fontWeight: 800, textTransform: "uppercase" 
+                        }}>Test</span>
                       )}
                     </div>
-                    <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 2 }}>{m.email}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis" }}>{m.email}</div>
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--primary-green)", textAlign: "right", whiteSpace: "nowrap" }}>
+                  <div style={{ 
+                    fontSize: 11, fontWeight: 700, color: "var(--primary-green)", 
+                    background: "rgba(141, 198, 63, 0.1)", padding: "4px 8px", 
+                    borderRadius: 6, whiteSpace: "nowrap" 
+                  }}>
                     {m.role_name}
                   </div>
                 </div>

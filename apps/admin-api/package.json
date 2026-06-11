@@ -7,11 +7,12 @@
     "deploy": "wrangler deploy index.ts"
   },
   "dependencies": {
+    "@clerk/backend": "^3.5.0",
     "hono": "^4.6.1"
   },
   "devDependencies": {
-    "wrangler": "^3.0.0",
+    "@cloudflare/workers-types": "^4.20230419.0",
     "typescript": "^5.0.0",
-    "@cloudflare/workers-types": "^4.20230419.0"
+    "wrangler": "^3.0.0"
   }
 }

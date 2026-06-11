@@ -20,7 +20,7 @@ export default function SendMailSection({ authToken }: { authToken: string }) {
         if (d.success) setUsers(d.data || []);
       } catch { /* ignore */ } finally { setLoading(false); }
     })();
-  }, []);
+  }, [authToken]);
 
   const roles = [...new Set(users.map((u) => u.role_name).filter(Boolean))].sort();
 
@@ -76,87 +76,93 @@ export default function SendMailSection({ authToken }: { authToken: string }) {
     } catch { alert("Failed to send. Please try again."); } finally { setSending(false); }
   }
 
-  if (loading) return <p>Loading members...</p>;
+  if (loading) return <div style={{ textAlign: "center", padding: "4rem", color: "var(--text-tertiary)" }}>Loading members...</div>;
 
   return (
-    <>
-      <h2 style={{ marginTop: 0 }}>Send Mail</h2>
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       <div className="members-grid">
-        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-          <h3>Select Recipients</h3>
+        <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1.5rem" }}>
+             <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>groups</span>
+             <h3 style={{ margin: 0 }}>Select Recipients</h3>
+          </div>
 
-          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-            <input className="input" placeholder="Search by name, email, or role..."
-              value={search} onChange={(e) => setSearch(e.target.value)}
-              style={{ flex: 1, minWidth: 180 }} />
-            <select className="input" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}
-              style={{ width: "auto", minWidth: 140 }}>
+          <div style={{ display: "flex", gap: 10, marginBottom: "1.5rem", flexWrap: "wrap" }}>
+            <div style={{ position: "relative", flex: 2, minWidth: 260 }}>
+               <span className="material-symbols-outlined" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 20, color: "var(--text-tertiary)" }}>search</span>
+               <input className="input" style={{ paddingLeft: "2.5rem" }} placeholder="Search members..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+            <select className="input" style={{ flex: 1, minWidth: 160 }} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
               <option value="">All Roles</option>
               {roles.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 13 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
-              <input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length}
-                onChange={toggleAll} />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem", padding: "0 4px" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+              <input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length} onChange={toggleAll} style={{ accentColor: "var(--primary-green)" }} />
               Select All ({filtered.length})
             </label>
-            <span style={{ color: "var(--text-secondary)" }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "var(--primary-green)", background: "var(--accent-bg)", padding: "2px 10px", borderRadius: 20 }}>
               {selected.size} selected
             </span>
           </div>
 
-          <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--border-light)", borderRadius: 8, padding: 4 }}>
+          <div style={{ maxHeight: 300, overflowY: "auto", border: "1px solid var(--border-light)", borderRadius: 16, padding: 8, background: "var(--surface-container-low)" }}>
             {filtered.map((u) => (
               <label key={u.email} style={{
-                display: "flex", alignItems: "center", gap: 8, padding: "6px 8px",
-                cursor: "pointer", borderRadius: 4, fontSize: 13,
+                display: "flex", alignItems: "center", gap: 12, padding: "10px 12px",
+                cursor: "pointer", borderRadius: 10, transition: "background 0.2s",
+                background: selected.has(u.email) ? "var(--bg-card)" : "transparent",
+                border: `1px solid ${selected.has(u.email) ? "var(--border-light)" : "transparent"}`
               }}>
-                <input type="checkbox" checked={selected.has(u.email)} onChange={() => toggle(u.email)} />
-                <span style={{ fontWeight: 600, minWidth: 140 }}>{u.name}</span>
-                <span style={{ color: "var(--text-secondary)" }}>{u.email}</span>
-                <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--primary-green)" }}>{u.role_name}</span>
+                <input type="checkbox" checked={selected.has(u.email)} onChange={() => toggle(u.email)} style={{ accentColor: "var(--primary-green)" }} />
+                <div className="avatar-circle" style={{ width: 32, height: 32, fontSize: 12 }}>{u.name?.[0]}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                   <div style={{ fontSize: 14, fontWeight: 600 }}>{u.name}</div>
+                   <div style={{ fontSize: 12, color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis" }}>{u.email}</div>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase" }}>{u.role_name}</span>
               </label>
             ))}
             {filtered.length === 0 && (
-              <p style={{ padding: "1rem", textAlign: "center", color: "var(--text-secondary)", fontSize: 13 }}>No members match your search.</p>
+              <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-tertiary)" }}>No members match your search.</div>
             )}
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>
-              Additional Recipients (manual email entry, comma/semicolon separated)
-            </label>
-            <input className="input" placeholder="email1@example.com, email2@example.com"
-              value={manualEmails} onChange={(e) => setManualEmails(e.target.value)} />
-          </div>
-
-          <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-secondary)" }}>
-            <strong>To:</strong> {getToValue() || "(none selected)"}
+          <div style={{ marginTop: "1.5rem" }}>
+            <label style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, display: "block", color: "var(--text-tertiary)" }}>ADDITIONAL RECIPIENTS (SEPARATED BY COMMA)</label>
+            <input className="input" placeholder="e.g. guest@example.com, external@test.com" value={manualEmails} onChange={(e) => setManualEmails(e.target.value)} />
           </div>
         </div>
 
-        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-          <h3>Compose Email</h3>
-          <div style={{ display: "grid", gap: 12 }}>
+        <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1.5rem" }}>
+             <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>alternate_email</span>
+             <h3 style={{ margin: 0 }}>Compose Message</h3>
+          </div>
+          
+          <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
             <div>
-              <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Subject</label>
-              <input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} />
+              <label style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, display: "block", color: "var(--text-tertiary)" }}>SUBJECT</label>
+              <input className="input" placeholder="Enter email subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
             </div>
             <div>
-              <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, display: "block" }}>Body</label>
-              <textarea className="input" rows={10} value={body} onChange={(e) => setBody(e.target.value)}
-                style={{ resize: "vertical", fontFamily: "monospace", fontSize: 13 }} />
+              <label style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, display: "block", color: "var(--text-tertiary)" }}>BODY</label>
+              <textarea className="input" rows={12} placeholder="Write your message here..." value={body} onChange={(e) => setBody(e.target.value)} style={{ resize: "vertical", lineHeight: 1.6 }} />
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn" disabled={sending} onClick={handleSend}>
-                {sending ? "Sending..." : "Send Email"}
-              </button>
+            
+            <div style={{ padding: "1rem", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--border-light)", fontSize: 13, color: "var(--text-secondary)" }}>
+               <strong>Preview Recipients:</strong> {getToValue() || <span style={{ fontStyle: "italic", opacity: 0.6 }}>No recipients selected</span>}
             </div>
+
+            <button className="btn" style={{ padding: "12px", gap: 10 }} disabled={sending} onClick={handleSend}>
+              <span className="material-symbols-outlined">send</span>
+              {sending ? "Sending..." : "Dispatch Email"}
+            </button>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

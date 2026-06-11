@@ -16,46 +16,71 @@ export default function CreateProjectSection({ authToken, departments, onCreated
   }
 
   return (
-    <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
-      <div className="admin-grid-3">
-        <input className="input" placeholder="Project name" value={name} onChange={(e) => setName(e.target.value)} />
-        <input className="input" placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
-        <input className="input" placeholder="Company / Org" value={companyOrg} onChange={(e) => setCompanyOrg(e.target.value)} />
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      {busy && <FullPageLoader message="Creating project and sending emails..." />}
+      
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
+        <div style={{ flex: 1 }}>
+           <label style={{ display: "block", fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase" }}>Project Name</label>
+           <input className="input" placeholder="e.g. Website Redesign" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div style={{ flex: 1 }}>
+           <label style={{ display: "block", fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase" }}>Company / Org</label>
+           <input className="input" placeholder="e.g. 180DC VIT" value={companyOrg} onChange={(e) => setCompanyOrg(e.target.value)} />
+        </div>
       </div>
-      <div className="admin-grid-2">
-        <input className="input" placeholder="Year (e.g. 2025, 2026, 2027)" value={projectYear} onChange={(e) => setProjectYear(e.target.value)} />
-        <input className="input" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "1rem" }}>
+        <div>
+           <label style={{ display: "block", fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase" }}>Year</label>
+           <input className="input" placeholder="e.g. 2025" value={projectYear} onChange={(e) => setProjectYear(e.target.value)} />
+        </div>
+        <div>
+           <label style={{ display: "block", fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase" }}>Deadline</label>
+           <input className="input" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+        </div>
       </div>
-      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: -8 }}>
-        Fill either year OR date. If both are provided, the date takes precedence.
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {departments.map((d: any) => (
-          <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, cursor: "pointer" }}>
-            <input type="checkbox" checked={selectedDepts.includes(d.id)} onChange={() => toggleDept(d.id)} />
-            {d.name}
-          </label>
-        ))}
-      </div>
+
       <div>
-        {busy && <FullPageLoader message="Creating project and sending emails..." />}
-        <button className="btn" disabled={busy} onClick={async () => {
-          if (!name.trim()) return alert("Project name required");
-          if (selectedDepts.length === 0) return alert("Select at least one department");
-          if (!projectYear.trim() && !deadline) return alert("Provide either a year or a deadline date");
-          if (projectYear.trim() && !/^\d{4}$/.test(projectYear.trim())) return alert("Year must be a 4-digit year (e.g. 2025, 2026, 2027)");
-          setBusy(true);
-          try {
-            const res = await fetch(apiUrl("/api/projects"), {
-              method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-              body: JSON.stringify({ name: name.trim(), description: description.trim() || null, companyOrg: companyOrg.trim() || null, year: projectYear.trim() || null, deadline: deadline || null, departmentIds: selectedDepts }),
-            });
-            const data = await res.json();
-            if (data.success) { setName(""); setDescription(""); setCompanyOrg(""); setProjectYear(""); setDeadline(""); setSelectedDepts([]); if (onCreated) onCreated(); alert("Project created. Emails sent to department leads."); }
-            else alert(data.error);
-          } finally { setBusy(false); }
-        }}>{busy ? "Creating..." : "Create Project"}</button>
+         <label style={{ display: "block", fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", marginBottom: 8, textTransform: "uppercase" }}>Description</label>
+         <textarea className="input" placeholder="Detailed project scope and objectives..." rows={3} value={description} onChange={(e) => setDescription(e.target.value)} style={{ resize: "none" }} />
       </div>
+
+      <div>
+        <label style={{ display: "block", fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", marginBottom: 12, textTransform: "uppercase" }}>Assigned Departments</label>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {departments.map((d: any) => (
+            <label key={d.id} style={{ 
+              display: "flex", alignItems: "center", gap: 8, cursor: "pointer", 
+              padding: "6px 12px", background: selectedDepts.includes(d.id) ? "var(--accent-bg)" : "var(--bg-card)", 
+              border: `1px solid ${selectedDepts.includes(d.id) ? "var(--primary-green)" : "var(--border-light)"}`, 
+              borderRadius: 8, transition: "all 0.2s" 
+            }}>
+              <input type="checkbox" checked={selectedDepts.includes(d.id)} onChange={() => toggleDept(d.id)} style={{ accentColor: "var(--primary-green)" }} />
+              <span style={{ fontSize: 13, fontWeight: selectedDepts.includes(d.id) ? 700 : 500 }}>{d.name}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <button className="btn" style={{ marginTop: "0.5rem", padding: "12px" }} disabled={busy} onClick={async () => {
+        if (!name.trim()) return alert("Project name required");
+        if (selectedDepts.length === 0) return alert("Select at least one department");
+        if (!projectYear.trim() && !deadline) return alert("Provide either a year or a deadline date");
+        setBusy(true);
+        try {
+          const res = await fetch(apiUrl("/api/projects"), {
+            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+            body: JSON.stringify({ name: name.trim(), description: description.trim() || null, companyOrg: companyOrg.trim() || null, year: projectYear.trim() || null, deadline: deadline || null, departmentIds: selectedDepts }),
+          });
+          const data = await res.json();
+          if (data.success) { setName(""); setDescription(""); setCompanyOrg(""); setProjectYear(""); setDeadline(""); setSelectedDepts([]); if (onCreated) onCreated(); alert("Project created successfully."); }
+          else alert(data.error);
+        } finally { setBusy(false); }
+      }}>
+        <span className="material-symbols-outlined">rocket_launch</span>
+        Launch Project
+      </button>
     </div>
   );
 }

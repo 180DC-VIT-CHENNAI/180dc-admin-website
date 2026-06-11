@@ -152,24 +152,29 @@ const RecruitmentsPanel = ({ authToken, powerLevel = 0 }: Props) => {
     } finally { setBulkBusy(false); }
   }
 
-  return (
-    <div>
-      <header style={{ borderBottom: "1px solid var(--border-light)", paddingBottom: "1rem", marginBottom: "1.5rem" }}>
-        <h2 style={{ margin: 0 }}>Recruitments</h2>
-        <p style={{ margin: "0.25rem 0 0", color: "var(--text-secondary)", fontSize: 14 }}>
-          Manage applications, evaluate candidates, and shortlist
-        </p>
-      </header>
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'shortlisted': return { bg: 'rgba(16, 185, 129, 0.1)', text: '#10b981' };
+      case 'rejected': return { bg: 'rgba(239, 68, 68, 0.1)', text: '#ef4444' };
+      case 'selected': return { bg: 'rgba(59, 130, 246, 0.1)', text: '#3b82f6' };
+      default: return { bg: 'var(--surface-container-high)', text: 'var(--text-secondary)' };
+    }
+  };
 
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
       <div className="members-grid">
         {/* Domain Settings (President/VP only) */}
         {isBoard && (
-          <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-            <h3>Recruitment Settings</h3>
-            <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-              Toggle which domains are open for applications. Only domains marked as open will appear on the application form.
+          <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1.5rem" }}>
+               <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>toggle_on</span>
+               <h3 style={{ margin: 0 }}>Open Domains</h3>
+            </div>
+            <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: "1.5rem" }}>
+              Toggle which domains are open for applications. Only domains marked as open will appear on the public application form.
             </p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.5rem" }}>
               {domainSettings.map((ds: any) => (
                 <button
                   key={ds.domain_name}
@@ -186,215 +191,259 @@ const RecruitmentsPanel = ({ authToken, powerLevel = 0 }: Props) => {
                     } finally { setSettingsBusy(false); }
                   }}
                   disabled={settingsBusy}
-                  className="btn"
+                  className={`btn ${ds.is_open ? "" : "outline"}`}
                   style={{
-                    padding: "0.4rem 1rem", fontSize: 13,
-                    background: ds.is_open ? "var(--primary-green)" : "var(--bg-secondary)",
+                    padding: "8px 16px", fontSize: 13, gap: 8,
+                    background: ds.is_open ? "var(--primary-green)" : "transparent",
                     color: ds.is_open ? "#fff" : "var(--text-secondary)",
-                    border: ds.is_open ? "none" : "1px solid var(--border-light)",
+                    borderColor: ds.is_open ? "transparent" : "var(--outline-variant)"
                   }}
                 >
-                  {ds.is_open ? "✓ " : "✕ "}{ds.domain_name}
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{ds.is_open ? "check_circle" : "circle"}</span>
+                  {ds.domain_name}
                 </button>
               ))}
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn outline" style={{ fontSize: 13, padding: "0.4rem 1rem" }} disabled={settingsBusy} onClick={async () => {
+            <div style={{ display: "flex", gap: 12 }}>
+              <button className="btn outline" style={{ fontSize: 13 }} disabled={settingsBusy} onClick={async () => {
                 const allOpen = domainSettings.map((d: any) => ({ ...d, is_open: 1 }));
                 setDomainSettings(allOpen);
                 setSettingsBusy(true);
-                try {
-                  await fetch(apiUrl("/api/recruitment/admin/settings"), {
-                    method: "PUT", headers,
-                    body: JSON.stringify({ openDomains: ALL_DOMAINS }),
-                  });
-                } finally { setSettingsBusy(false); }
+                try { await fetch(apiUrl("/api/recruitment/admin/settings"), { method: "PUT", headers, body: JSON.stringify({ openDomains: ALL_DOMAINS }) }); } finally { setSettingsBusy(false); }
               }}>Select All</button>
-              <button className="btn outline" style={{ fontSize: 13, padding: "0.4rem 1rem" }} disabled={settingsBusy} onClick={async () => {
+              <button className="btn outline" style={{ fontSize: 13 }} disabled={settingsBusy} onClick={async () => {
                 const allClosed = domainSettings.map((d: any) => ({ ...d, is_open: 0 }));
                 setDomainSettings(allClosed);
                 setSettingsBusy(true);
-                try {
-                  await fetch(apiUrl("/api/recruitment/admin/settings"), {
-                    method: "PUT", headers,
-                    body: JSON.stringify({ openDomains: [] }),
-                  });
-                } finally { setSettingsBusy(false); }
+                try { await fetch(apiUrl("/api/recruitment/admin/settings"), { method: "PUT", headers, body: JSON.stringify({ openDomains: [] }) }); } finally { setSettingsBusy(false); }
               }}>Deselect All</button>
             </div>
           </div>
         )}
 
         {/* Evaluation Criteria */}
-        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-          <h3>Evaluation Criteria</h3>
-          <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-            Define the criteria for evaluating round 1 applications.
-          </p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1.5rem" }}>
+             <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>checklist</span>
+             <h3 style={{ margin: 0 }}>Evaluation Criteria</h3>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.5rem" }}>
             {criteria.map(c => (
-              <span key={c.id} className="floating-note" style={{ fontSize: 13, padding: "0.3rem 0.8rem", transform: "none" }}>
-                {c.name} (max {c.max_score})
-              </span>
+              <div key={c.id} style={{ 
+                padding: "8px 16px", borderRadius: 12, background: "var(--surface)", 
+                border: "1px solid var(--border-light)", fontSize: 13, display: "flex", alignItems: "center", gap: 8
+              }}>
+                <span style={{ fontWeight: 700 }}>{c.name}</span>
+                <span style={{ color: "var(--text-tertiary)" }}>•</span>
+                <span style={{ color: "var(--primary-green)", fontWeight: 800 }}>Max {c.max_score}</span>
+              </div>
             ))}
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input className="input" style={{ flex: 1, minWidth: 150 }} placeholder="Criterion name (e.g. Communication)" value={newCriterionName} onChange={e => setNewCriterionName(e.target.value)} />
-            <input className="input" style={{ width: 100 }} type="number" placeholder="Max score" value={newCriterionMax} onChange={e => setNewCriterionMax(e.target.value)} />
-            <button className="btn" style={{ padding: "0.5rem 1rem" }} disabled={criteriaBusy} onClick={addCriterion}>{criteriaBusy ? "Adding..." : "Add Criterion"}</button>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="card-doodle" style={{ gridColumn: "1 / -1", padding: "1rem 1.5rem", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <strong style={{ fontSize: 14 }}>Filters:</strong>
-          <select className="input" style={{ width: "auto", minWidth: 140 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-            <option value="">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="shortlisted">Shortlisted</option>
-            <option value="selected">Selected</option>
-            <option value="rejected">Rejected</option>
-          </select>
-          <select className="input" style={{ width: "auto", minWidth: 140 }} value={domainFilter} onChange={e => setDomainFilter(e.target.value)}>
-            <option value="">All Domains</option>
-            {ALL_DOMAINS.map(d => <option key={d} value={d}>{d}</option>)}
-          </select>
-          <div style={{ flex: 1 }} />
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span style={{ fontSize: 13 }}>Auto-shortlist top</span>
-            <input className="input" style={{ width: 60 }} type="number" value={bulkCount} onChange={e => setBulkCount(e.target.value)} />
-            <button className="btn outline" style={{ padding: "0.4rem 0.8rem", fontSize: 13 }} disabled={bulkBusy} onClick={bulkShortlist}>
-              {bulkBusy ? "..." : "Shortlist"}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", background: "var(--surface-container-low)", padding: "1rem", borderRadius: 16 }}>
+            <input className="input" style={{ flex: 2, minWidth: 200 }} placeholder="Criterion name (e.g. Communication)" value={newCriterionName} onChange={e => setNewCriterionName(e.target.value)} />
+            <input className="input" style={{ flex: 1, minWidth: 100 }} type="number" placeholder="Max score" value={newCriterionMax} onChange={e => setNewCriterionMax(e.target.value)} />
+            <button className="btn" style={{ gap: 8 }} disabled={criteriaBusy} onClick={addCriterion}>
+              <span className="material-symbols-outlined">add</span>
+              Add Criterion
             </button>
           </div>
         </div>
 
+        {/* Filters */}
+        <div style={{ gridColumn: "1 / -1", display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "flex-end" }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+             <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6, color: "var(--text-tertiary)" }}>STATUS</label>
+             <select className="input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                <option value="">All Applications</option>
+                <option value="pending">Pending</option>
+                <option value="shortlisted">Shortlisted</option>
+                <option value="selected">Selected</option>
+                <option value="rejected">Rejected</option>
+             </select>
+          </div>
+          <div style={{ flex: 1, minWidth: 200 }}>
+             <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 6, color: "var(--text-tertiary)" }}>DOMAIN</label>
+             <select className="input" value={domainFilter} onChange={e => setDomainFilter(e.target.value)}>
+                <option value="">All Domains</option>
+                {ALL_DOMAINS.map(d => <option key={d} value={d}>{d}</option>)}
+             </select>
+          </div>
+          <div className="dashboard-card" style={{ padding: "0.5rem 1rem", flex: 2, minWidth: 300, display: "flex", alignItems: "center", gap: 12 }}>
+             <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>auto_awesome</span>
+             <span style={{ fontSize: 13, fontWeight: 600 }}>Auto-shortlist top</span>
+             <input className="input" style={{ width: 60, padding: "4px 8px" }} type="number" value={bulkCount} onChange={e => setBulkCount(e.target.value)} />
+             <span style={{ fontSize: 13, fontWeight: 600 }}>by score</span>
+             <button className="btn outline" style={{ marginLeft: "auto", fontSize: 12, padding: "6px 12px" }} disabled={bulkBusy} onClick={bulkShortlist}>Run Process</button>
+          </div>
+        </div>
+
         {/* Applications table */}
-        <div className="card-doodle" style={{ gridColumn: "1 / -1", overflowX: "auto" }}>
-          <h3>Applications ({applications.length})</h3>
-          {loading ? <p style={{ color: "var(--text-secondary)" }}>Loading...</p> : applications.length === 0 ? (
-            <p style={{ color: "var(--text-secondary)" }}>No applications match the filters.</p>
-          ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <div className="dashboard-card" style={{ gridColumn: "1 / -1", padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+             <h3 style={{ margin: 0, fontSize: "1rem" }}>Applicants ({applications.length})</h3>
+             <button className="header-action-btn" onClick={loadApplications}><span className="material-symbols-outlined">refresh</span></button>
+          </div>
+          
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr style={{ borderBottom: "2px solid var(--border-light)", textAlign: "left" }}>
-                  <th style={{ padding: "0.5rem 0.75rem" }}>Name</th>
-                  <th style={{ padding: "0.5rem 0.75rem" }}>Email</th>
-                  <th style={{ padding: "0.5rem 0.75rem" }}>Year</th>
-                  <th style={{ padding: "0.5rem 0.75rem" }}>Domain (P/S)</th>
-                  <th style={{ padding: "0.5rem 0.75rem" }}>Status</th>
-                  <th style={{ padding: "0.5rem 0.75rem" }}>Actions</th>
+                <tr style={{ textAlign: "left", background: "var(--surface)", borderBottom: "1px solid var(--border-light)" }}>
+                  <th style={{ padding: "12px 1.5rem", fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Candidate</th>
+                  <th style={{ padding: "12px 1rem", fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Year/Course</th>
+                  <th style={{ padding: "12px 1rem", fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Domain Choices</th>
+                  <th style={{ padding: "12px 1rem", fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Status</th>
+                  <th style={{ padding: "12px 1.5rem", width: 150 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {applications.map(app => (
-                  <tr key={app.id} style={{ borderBottom: "1px solid var(--border-light)", verticalAlign: "top" }}>
-                    <td style={{ padding: "0.5rem 0.75rem", fontWeight: 600 }}>{app.name}</td>
-                    <td style={{ padding: "0.5rem 0.75rem", color: "var(--text-secondary)" }}>{app.email}</td>
-                    <td style={{ padding: "0.5rem 0.75rem" }}>{app.year}</td>
-                    <td style={{ padding: "0.5rem 0.75rem" }}>
-                      <div>{app.primary_domain}</div>
-                      {app.secondary_domain && <div style={{ fontSize: 11, color: "var(--text-light)" }}>+ {app.secondary_domain}</div>}
-                    </td>
-                    <td style={{ padding: "0.5rem 0.75rem" }}>
-                      <span className={`floating-note`} style={{
-                        fontSize: 11, padding: "0.15rem 0.5rem", transform: "none",
-                        background: app.status === "shortlisted" ? "#d4edda" : app.status === "rejected" ? "#f8d7da" : app.status === "selected" ? "#cce5ff" : "#fff",
-                      }}>
-                        {app.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: "0.5rem 0.75rem" }}>
-                      <div style={{ display: "flex", gap: 4, flexDirection: "column" }}>
-                        <button className="btn outline" style={{ padding: "0.2rem 0.6rem", fontSize: 11 }} onClick={() => openApplication(app)}>Evaluate</button>
-                        <select className="input" style={{ padding: "0.2rem 0.4rem", fontSize: 11, width: "auto" }} defaultValue="" onChange={e => { if (e.target.value) updateStatus(app.id, e.target.value); }}>
-                          <option value="" disabled>Set status</option>
-                          <option value="shortlisted">Shortlist</option>
-                          <option value="selected">Select</option>
-                          <option value="rejected">Reject</option>
-                          <option value="pending">Reset to Pending</option>
-                        </select>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {loading ? (
+                  <tr><td colSpan={5} style={{ padding: "4rem", textAlign: "center", color: "var(--text-tertiary)" }}>Loading applicants...</td></tr>
+                ) : applications.length === 0 ? (
+                  <tr><td colSpan={5} style={{ padding: "4rem", textAlign: "center", color: "var(--text-tertiary)" }}>No applications found.</td></tr>
+                ) : applications.map(app => {
+                  const sColor = getStatusColor(app.status);
+                  return (
+                    <tr key={app.id} style={{ borderBottom: "1px solid var(--border-light)", transition: "background 0.2s" }}>
+                      <td style={{ padding: "1rem 1.5rem" }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{app.name}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>{app.email}</div>
+                      </td>
+                      <td style={{ padding: "1rem" }}>
+                        <div style={{ fontSize: 13 }}>Year {app.year}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>{app.course}</div>
+                      </td>
+                      <td style={{ padding: "1rem" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                           <span style={{ fontSize: 12, fontWeight: 600 }}>1. {app.primary_domain}</span>
+                           {app.secondary_domain && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>2. {app.secondary_domain}</span>}
+                        </div>
+                      </td>
+                      <td style={{ padding: "1rem" }}>
+                        <span style={{ 
+                          fontSize: 10, fontWeight: 800, textTransform: "uppercase", padding: "4px 10px", borderRadius: 20,
+                          background: sColor.bg, color: sColor.text, border: `1px solid ${sColor.text}33`
+                        }}>{app.status}</span>
+                      </td>
+                      <td style={{ padding: "1rem 1.5rem", textAlign: "right" }}>
+                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                           <button className="btn outline" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => openApplication(app)}>Review</button>
+                           <select className="input" style={{ width: "auto", padding: "4px 8px", fontSize: 11 }} defaultValue="" onChange={e => { if (e.target.value) updateStatus(app.id, e.target.value); }}>
+                             <option value="" disabled>Action</option>
+                             <option value="shortlisted">Shortlist</option>
+                             <option value="selected">Select</option>
+                             <option value="rejected">Reject</option>
+                             <option value="pending">Reset</option>
+                           </select>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
-          )}
+          </div>
         </div>
       </div>
 
       {/* Evaluation Modal */}
       {selectedApp && (
-        <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000,
-          display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem",
-        }} onClick={() => setSelectedApp(null)}>
-          <div className="card-doodle" style={{
-            maxWidth: 700, width: "100%", maxHeight: "90vh", overflowY: "auto",
-          }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-              <div>
-                <h3 style={{ margin: 0 }}>{selectedApp.application.name}</h3>
-                <p style={{ margin: "0.25rem 0 0", color: "var(--text-secondary)", fontSize: 14 }}>
-                  {selectedApp.application.email} · {selectedApp.application.year} · {selectedApp.application.course}
-                </p>
-              </div>
-              <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={() => setSelectedApp(null)}>Close</button>
-            </div>
-
-            <div style={{ display: "grid", gap: 8, marginBottom: 16, fontSize: 14 }}>
-              <div><strong>Primary Domain:</strong> {selectedApp.application.primary_domain}</div>
-              {selectedApp.application.secondary_domain && <div><strong>Secondary Domain:</strong> {selectedApp.application.secondary_domain}</div>}
-              <div><strong>Why join 180DC:</strong> {selectedApp.application.why_join}</div>
-              <div><strong>Why this domain:</strong> {selectedApp.application.why_domain}</div>
-              {selectedApp.application.prior_experience && <div><strong>Prior Experience:</strong> {selectedApp.application.prior_experience}</div>}
-              {selectedApp.application.portfolio_link && <div><strong>Portfolio:</strong> <a href={selectedApp.application.portfolio_link} target="_blank">{selectedApp.application.portfolio_link}</a></div>}
-              <div><strong>Current Status:</strong> {selectedApp.application.status}</div>
-            </div>
-
-            <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 16 }}>
-              <h4 style={{ margin: "0 0 12px" }}>Evaluation Scores</h4>
-              {selectedApp.criteria.length === 0 ? (
-                <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>No criteria defined yet. Add criteria above.</p>
-              ) : (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {selectedApp.criteria.map((c: any) => (
-                    <div key={c.id} className="card-doodle" style={{ padding: "0.8rem 1rem", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                      <div style={{ flex: 1, minWidth: 120 }}>
-                        <strong style={{ fontSize: 13 }}>{c.name}</strong>
-                        <span style={{ fontSize: 11, color: "var(--text-light)", marginLeft: 4 }}>max {c.max_score}</span>
-                      </div>
-                      <input
-                        className="input"
-                        style={{ width: 80, padding: "0.4rem 0.6rem", fontSize: 13 }}
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        max={c.max_score}
-                        placeholder="Score"
-                        value={evalData[c.id] ?? ""}
-                        onChange={e => setEvalData(prev => ({ ...prev, [c.id]: e.target.value }))}
-                      />
-                      <input
-                        className="input"
-                        style={{ flex: 1, minWidth: 120, padding: "0.4rem 0.6rem", fontSize: 13 }}
-                        placeholder="Comment (optional)"
-                        value={evalComments[c.id] ?? ""}
-                        onChange={e => setEvalComments(prev => ({ ...prev, [c.id]: e.target.value }))}
-                      />
-                      <button className="btn" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={() => saveEvaluation(c.id)}>Save</button>
-                    </div>
-                  ))}
+        <div style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
+          <div onClick={() => setSelectedApp(null)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }} />
+          <div style={{ position: "relative", maxWidth: 800, width: "100%", maxHeight: "90vh", overflow: "hidden", background: "var(--bg-card)", borderRadius: 24, border: "1px solid var(--border-light)", boxShadow: "var(--shadow-lg)", display: "flex", flexDirection: "column" }}>
+             <div style={{ padding: "1.5rem", borderBottom: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                   <h3 style={{ margin: 0, fontWeight: 800 }}>{selectedApp.application.name}</h3>
+                   <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>Reviewing round 1 application</div>
                 </div>
-              )}
-            </div>
+                <button onClick={() => setSelectedApp(null)} className="header-action-btn"><span className="material-symbols-outlined">close</span></button>
+             </div>
+             
+             <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1.5rem", marginBottom: "2rem" }}>
+                   <div className="dashboard-card" style={{ padding: "1rem" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", marginBottom: 8 }}>PRIMARY DOMAIN</div>
+                      <div style={{ fontWeight: 600 }}>{selectedApp.application.primary_domain}</div>
+                   </div>
+                   <div className="dashboard-card" style={{ padding: "1rem" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", marginBottom: 8 }}>SECONDARY DOMAIN</div>
+                      <div style={{ fontWeight: 600 }}>{selectedApp.application.secondary_domain || "None"}</div>
+                   </div>
+                   <div className="dashboard-card" style={{ padding: "1rem" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", marginBottom: 8 }}>CONTACT</div>
+                      <div style={{ fontSize: 13 }}>{selectedApp.application.email}</div>
+                      <div style={{ fontSize: 13, marginTop: 4 }}>{selectedApp.application.whatsapp_number}</div>
+                   </div>
+                </div>
 
-            <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 16, marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className="btn" style={{ padding: "0.4rem 1rem", fontSize: 13, background: "#28a745" }} onClick={() => updateStatus(selectedApp.application.id, "shortlisted")}>Shortlist</button>
-              <button className="btn" style={{ padding: "0.4rem 1rem", fontSize: 13, background: "#007bff" }} onClick={() => updateStatus(selectedApp.application.id, "selected")}>Select</button>
-              <button className="btn outline" style={{ padding: "0.4rem 1rem", fontSize: 13, borderColor: "#e74c3c", color: "#e74c3c" }} onClick={() => updateStatus(selectedApp.application.id, "rejected")}>Reject</button>
-            </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                   <section>
+                      <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Why join 180DC?</h4>
+                      <div style={{ padding: "1rem", background: "var(--surface)", borderRadius: 12, fontSize: 14, lineHeight: 1.6 }}>{selectedApp.application.why_join}</div>
+                   </section>
+                   <section>
+                      <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Why this domain?</h4>
+                      <div style={{ padding: "1rem", background: "var(--surface)", borderRadius: 12, fontSize: 14, lineHeight: 1.6 }}>{selectedApp.application.why_domain}</div>
+                   </section>
+                   {selectedApp.application.prior_experience && (
+                     <section>
+                        <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Prior Experience</h4>
+                        <div style={{ padding: "1rem", background: "var(--surface)", borderRadius: 12, fontSize: 14, lineHeight: 1.6 }}>{selectedApp.application.prior_experience}</div>
+                     </section>
+                   )}
+                   {selectedApp.application.portfolio_link && (
+                     <section>
+                        <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Portfolio / External Links</h4>
+                        <a href={selectedApp.application.portfolio_link} target="_blank" rel="noreferrer" className="btn outline" style={{ gap: 8 }}>
+                           <span className="material-symbols-outlined" style={{ fontSize: 18 }}>open_in_new</span>
+                           View Portfolio
+                        </a>
+                     </section>
+                   )}
+                </div>
+
+                <div style={{ marginTop: "3rem", borderTop: "1px solid var(--border-light)", paddingTop: "2rem" }}>
+                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1.5rem" }}>
+                      <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>grade</span>
+                      <h3 style={{ margin: 0 }}>Evaluation Scoring</h3>
+                   </div>
+                   
+                   <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                      {criteria.map((c: any) => (
+                        <div key={c.id} className="dashboard-card" style={{ padding: "1.25rem", background: "var(--surface-container-low)" }}>
+                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                              <div>
+                                 <div style={{ fontWeight: 700, fontSize: 14 }}>{c.name}</div>
+                                 <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>Max Score: {c.max_score}</div>
+                              </div>
+                              <input 
+                                className="input" 
+                                type="number" 
+                                style={{ width: 80, textAlign: "center", fontSize: "1.1rem", fontWeight: 700 }} 
+                                placeholder="0"
+                                value={evalData[c.id] ?? ""}
+                                onChange={e => setEvalData(prev => ({ ...prev, [c.id]: e.target.value }))}
+                              />
+                           </div>
+                           <textarea 
+                             className="input" 
+                             placeholder="Internal notes/comments for this criterion..." 
+                             rows={2} 
+                             style={{ resize: "none", fontSize: 13 }}
+                             value={evalComments[c.id] ?? ""}
+                             onChange={e => setEvalComments(prev => ({ ...prev, [c.id]: e.target.value }))}
+                           />
+                           <button className="btn" style={{ marginTop: 12, fontSize: 12, padding: "6px 16px" }} onClick={() => saveEvaluation(c.id)}>Save Criterion</button>
+                        </div>
+                      ))}
+                   </div>
+                </div>
+             </div>
+
+             <div style={{ padding: "1.25rem 1.5rem", borderTop: "1px solid var(--border-light)", background: "var(--bg-card)", display: "flex", gap: 12 }}>
+                <button className="btn" style={{ background: "#10b981" }} onClick={() => updateStatus(selectedApp.application.id, "shortlisted")}>Shortlist Candidate</button>
+                <button className="btn outline" style={{ borderColor: "#ef4444", color: "#ef4444" }} onClick={() => updateStatus(selectedApp.application.id, "rejected")}>Reject</button>
+                <button className="btn outline" style={{ marginLeft: "auto" }} onClick={() => setSelectedApp(null)}>Cancel</button>
+             </div>
           </div>
         </div>
       )}

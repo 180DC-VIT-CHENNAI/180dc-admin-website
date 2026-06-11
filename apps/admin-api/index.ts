@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
+import { verifyToken } from "@clerk/backend";
 
 type Bindings = {
   DB: any;
@@ -9,6 +10,7 @@ type Bindings = {
   AUTH_SESSIONS: any;
   ENVIRONMENT?: string;
   RESEND_API_KEY?: string;
+  CLERK_SECRET_KEY?: string;
 };
 
 type Variables = {
@@ -19,6 +21,7 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_STR_LEN = 255;
+const MAX_CLERK_TOKEN_LEN = 8192;
 const MAX_MSG_LEN = 2000;
 const MAX_PROJECT_DESC_LEN = 5000;
 
@@ -583,6 +586,8 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE users ADD COLUMN secondary_role_id TEXT"); } catch { console.warn("Migration: secondary_role_id may already exist"); }
   try { await db.exec("ALTER TABLE admin_tokens ADD COLUMN active_role_id TEXT"); } catch { console.warn("Migration: active_role_id may already exist"); }
   try { await db.exec("ALTER TABLE users ADD COLUMN ex_title TEXT"); } catch { console.warn("Migration: ex_title may already exist"); }
+  try { await db.exec("ALTER TABLE users ADD COLUMN clerk_user_id TEXT"); } catch { console.warn("Migration: clerk_user_id may already exist"); }
+  try { await db.exec("ALTER TABLE users ADD COLUMN oauth_enabled INTEGER DEFAULT 0"); } catch { console.warn("Migration: oauth_enabled may already exist"); }
   try { await db.exec("DROP TABLE IF EXISTS chat_messages"); } catch { console.warn("Migration: drop chat_messages"); }
   try { await db.exec("DROP INDEX IF EXISTS idx_chat_messages_room_ts"); } catch { console.warn("Migration: drop chat index"); }
 }
@@ -751,7 +756,8 @@ app.use("*", async (c, next) => {
     (url.pathname.startsWith("/api/content") && c.req.method === "GET") ||
     url.pathname === "/api/recruitment/register" ||
     url.pathname === "/api/recruitment/login" ||
-    url.pathname === "/api/recruitment/open-domains"
+    url.pathname === "/api/recruitment/open-domains" ||
+    url.pathname === "/api/auth/clerk-login"
   ) {
     await next();
     return;
@@ -1135,6 +1141,129 @@ app.post("/api/auth/forgot-token", async (c) => {
 });
 
 // ---------------------------------------------------------
+// CLERK LOGIN (public — verifies Clerk JWT, returns session)
+// ---------------------------------------------------------
+app.post("/api/auth/clerk-login", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const body = await c.req.json();
+    const clerkToken = sanitizeStr(body.clerkToken, MAX_CLERK_TOKEN_LEN);
+    if (!clerkToken) {
+      return c.json({ error: "Missing clerkToken" }, 400);
+    }
+
+    const clerkSecret = c.env.CLERK_SECRET_KEY;
+    if (!clerkSecret) {
+      return c.json({ error: "Clerk not configured on server" }, 500);
+    }
+
+    const jwtPayload = await verifyToken(clerkToken, { secretKey: clerkSecret });
+    const clerkUserId = jwtPayload.sub;
+    if (!clerkUserId) {
+      return c.json({ error: "Invalid Clerk token: missing user ID" }, 401);
+    }
+
+    const user: any = await c.env.DB.prepare(
+      "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.clerk_user_id = ?",
+    ).bind(clerkUserId).first();
+
+    if (!user) {
+      return c.json({
+        error: "Google login not linked to any 180DC member. Log in with a token first and enable Google login in your profile settings.",
+      }, 403);
+    }
+
+    if (!user.oauth_enabled) {
+      return c.json({
+        error: "Google login is disabled for this account. Enable it in your profile settings.",
+      }, 403);
+    }
+
+    // Create or reuse an admin token for this session
+    const existingToken: any = await c.env.DB.prepare(
+      "SELECT token FROM admin_tokens WHERE email = ? AND revoked_at IS NULL",
+    ).bind(user.email).first();
+
+    let sessionToken: string;
+    if (existingToken) {
+      sessionToken = existingToken.token;
+    } else {
+      sessionToken = crypto.randomUUID().replace(/-/g, "");
+      await c.env.DB.prepare(
+        "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
+      ).bind(sessionToken, user.email, user.name, user.role_id, user.id).run();
+    }
+
+    return c.json({
+      success: true,
+      token: sessionToken,
+      email: user.email,
+      name: user.name,
+      roleId: user.role_id || "member",
+      roleName: user.role_name || null,
+      powerLevel: user.power_level ?? 10,
+      departmentId: user.department_id || null,
+    });
+  } catch (e: any) {
+    if (e.message?.includes("JWT") || e.message?.includes("token")) {
+      return c.json({ error: "Invalid or expired Clerk token" }, 401);
+    }
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// LINK CLERK (authenticated — links Clerk user ID to member)
+// ---------------------------------------------------------
+app.post("/api/auth/link-clerk", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const body = await c.req.json();
+    const clerkUserId = sanitizeStr(body.clerkUserId);
+    if (!clerkUserId) {
+      return c.json({ error: "Missing clerkUserId" }, 400);
+    }
+
+    await c.env.DB.prepare(
+      "UPDATE users SET clerk_user_id = ?, oauth_enabled = 1 WHERE id = ?",
+    ).bind(clerkUserId, user.id).run();
+
+    await addAuditLog(c, "clerk_linked", "user", user.id, "Clerk account linked for " + user.email);
+
+    return c.json({ success: true, message: "Google login enabled successfully" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// UNLINK CLERK (authenticated — disconnects Google login)
+// ---------------------------------------------------------
+app.post("/api/auth/unlink-clerk", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    await c.env.DB.prepare(
+      "UPDATE users SET clerk_user_id = NULL, oauth_enabled = 0 WHERE id = ?",
+    ).bind(user.id).run();
+
+    await addAuditLog(c, "clerk_unlinked", "user", user.id, "Clerk account unlinked for " + user.email);
+
+    return c.json({ success: true, message: "Google login disabled" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
 // TOKEN ROTATION (any authenticated user can rotate their own token)
 // ---------------------------------------------------------
 app.post("/api/auth/rotate-token", async (c) => {
@@ -1195,6 +1324,8 @@ app.get("/api/dashboard", async (c) => {
         roleName: user.role_name,
         powerLevel: user.power_level,
         departmentId: user.department_id || null,
+        oauthEnabled: !!user.oauth_enabled,
+        clerkUserId: user.clerk_user_id || null,
       },
       pendingRequests: pendingRequests.results || [],
       adminTokens: maskedTokens,

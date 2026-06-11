@@ -20,7 +20,7 @@ export default function ConsultingRequestsSection({ authToken }: { authToken: st
     } catch { /* ignore */ } finally { setLoading(false); }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [authToken]);
 
   function openAcceptModal(req: any) {
     setRejectModal(null);
@@ -96,140 +96,121 @@ export default function ConsultingRequestsSection({ authToken }: { authToken: st
     } catch { alert("Failed to send. Please try again."); } finally { setSending(false); }
   }
 
-  if (loading) return <p>Loading consulting requests...</p>;
+  if (loading) return <div style={{ textAlign: "center", padding: "4rem", color: "var(--text-tertiary)" }}>Loading requests...</div>;
 
   const pending = requests.filter((r: any) => r.status === "pending");
   const accepted = requests.filter((r: any) => r.status === "accepted");
   const rejected = requests.filter((r: any) => r.status === "rejected");
 
   return (
-    <>
-      <h2 style={{ marginTop: 0 }}>Consulting Requests</h2>
-      <div className="members-grid">
+    <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+      {requests.length === 0 && (
+        <div className="dashboard-card" style={{ textAlign: "center", padding: "4rem" }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 48, color: "var(--text-tertiary)", marginBottom: "1rem" }}>business_center</span>
+          <p style={{ color: "var(--text-secondary)", margin: 0 }}>No consulting requests received yet.</p>
+        </div>
+      )}
 
-        {requests.length === 0 && (
-          <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-            <p style={{ color: "var(--text-secondary)" }}>No consulting requests yet.</p>
+      {pending.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+             <h3 style={{ margin: 0, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#f59e0b", fontWeight: 800 }}>Pending Review ({pending.length})</h3>
+             <div style={{ flex: 1, height: 1, background: "rgba(245, 158, 11, 0.2)" }} />
           </div>
-        )}
-
-        {pending.length > 0 && (
-          <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-            <h3>Pending Requests ({pending.length})</h3>
-            <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-              {pending.map((req: any) => (
-                <div key={req.id} className="card-doodle" style={{ padding: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <strong style={{ fontSize: 16 }}>{req.name}</strong>
-                      <div style={{ color: "var(--text-secondary)", fontSize: 13, marginTop: 2 }}>{req.email} · {req.phone}</div>
-                      <div style={{ fontSize: 13, color: "var(--primary-green)", marginTop: 2 }}>{req.organization}{req.role_in_org ? ` — ${req.role_in_org}` : ""}</div>
-                      <div style={{ marginTop: 8, padding: "0.6rem 0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", fontSize: 13, color: "var(--text-secondary)", whiteSpace: "pre-wrap" }}>
-                        {req.requirement}
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--text-light)", marginTop: 6 }}>
-                        Submitted: {new Date(req.created_at).toLocaleString()}
-                      </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {pending.map((req: any) => (
+              <div key={req.id} className="dashboard-card" style={{ padding: "1.5rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 260 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                       <div className="avatar-circle" style={{ width: 40, height: 40, background: "var(--surface-container-high)", color: "var(--text-primary)" }}>{req.name[0]}</div>
+                       <div>
+                          <div style={{ fontSize: 16, fontWeight: 700 }}>{req.name}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{req.email} • {req.phone}</div>
+                       </div>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
-                      <button className="btn" style={{ padding: "0.4rem 1rem", fontSize: 13 }}
-                        onClick={() => openAcceptModal(req)}>
-                        Accept
-                      </button>
-                      <button className="btn outline" style={{ padding: "0.4rem 1rem", fontSize: 13 }}
-                        onClick={() => openRejectModal(req)}>
-                        Reject
-                      </button>
+                    <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--primary-green)" }}>
+                       <span className="material-symbols-outlined" style={{ fontSize: 18 }}>business</span>
+                       {req.organization} {req.role_in_org && `(${req.role_in_org})`}
+                    </div>
+                    <div style={{ marginTop: "1rem", padding: "1rem", background: "var(--surface)", borderRadius: 12, border: "1px solid var(--border-light)", fontSize: 14, lineHeight: 1.6, color: "var(--text-secondary)" }}>
+                      {req.requirement}
+                    </div>
+                    <div style={{ marginTop: 12, fontSize: 11, color: "var(--text-tertiary)", display: "flex", alignItems: "center", gap: 4 }}>
+                       <span className="material-symbols-outlined" style={{ fontSize: 14 }}>schedule</span>
+                       Submitted on {new Date(req.created_at).toLocaleString()}
                     </div>
                   </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="btn" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => openAcceptModal(req)}>Accept</button>
+                    <button className="btn outline" style={{ padding: "8px 16px", fontSize: 13, borderColor: "#ef4444", color: "#ef4444" }} onClick={() => openRejectModal(req)}>Reject</button>
+                  </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
+      )}
 
-        {accepted.length > 0 && (
-          <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-            <h3>Accepted ({accepted.length})</h3>
-            <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-              {accepted.map((req: any) => (
-                <div key={req.id} style={{ padding: "0.6rem 0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <strong style={{ fontSize: 14 }}>{req.name}</strong>
-                    <span style={{ fontSize: 12, color: "var(--text-secondary)", marginLeft: 8 }}>{req.organization}</span>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, fontWeight: 600, background: "var(--primary-green)", color: "#fff" }}>
-                      Accepted
-                    </span>
-                    <button className="btn outline" style={{ padding: "2px 8px", fontSize: 11, color: "#e74c3c", borderColor: "#e74c3c" }} onClick={async () => {
-                      if (!confirm("Delete this accepted request?")) return;
-                      try {
-                        const res = await fetch(apiUrl(`/api/consulting-requests/${req.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
-                        const d = await res.json();
-                        if (d.success) load();
-                        else alert(d.error);
-                      } catch { alert("Failed to delete"); }
-                    }}>Delete</button>
-                  </div>
-                </div>
-              ))}
+      {(accepted.length > 0 || rejected.length > 0) && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "2rem" }}>
+          {accepted.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <h3 style={{ margin: 0, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#10b981", fontWeight: 800 }}>Accepted ({accepted.length})</h3>
+                  <div style={{ flex: 1, height: 1, background: "rgba(16, 185, 129, 0.2)" }} />
+               </div>
+               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {accepted.map((req: any) => (
+                    <div key={req.id} style={{ padding: "12px 16px", borderRadius: 16, background: "var(--bg-card)", border: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                       <div>
+                          <div style={{ fontSize: 14, fontWeight: 700 }}>{req.name}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{req.organization}</div>
+                       </div>
+                       <button className="header-action-btn" style={{ color: "#ef4444" }} onClick={async () => {
+                         if (!confirm("Delete record?")) return;
+                         await fetch(apiUrl(`/api/consulting-requests/${req.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                         load();
+                       }}><span className="material-symbols-outlined">delete</span></button>
+                    </div>
+                  ))}
+               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {rejected.length > 0 && (
-          <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-            <h3>Rejected ({rejected.length})</h3>
-            <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-              {rejected.map((req: any) => (
-                <div key={req.id} style={{ padding: "0.6rem 0.8rem", background: "var(--bg-secondary)", borderRadius: 8, border: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <strong style={{ fontSize: 14 }}>{req.name}</strong>
-                    <span style={{ fontSize: 12, color: "var(--text-secondary)", marginLeft: 8 }}>{req.organization}</span>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, fontWeight: 600, background: "#e74c3c", color: "#fff" }}>
-                      Rejected
-                    </span>
-                    <button className="btn outline" style={{ padding: "2px 8px", fontSize: 11, color: "#e74c3c", borderColor: "#e74c3c" }} onClick={async () => {
-                      if (!confirm("Delete this rejected request?")) return;
-                      try {
-                        const res = await fetch(apiUrl(`/api/consulting-requests/${req.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
-                        const d = await res.json();
-                        if (d.success) load();
-                        else alert(d.error);
-                      } catch { alert("Failed to delete"); }
-                    }}>Delete</button>
-                  </div>
-                </div>
-              ))}
+          {rejected.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <h3 style={{ margin: 0, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-tertiary)", fontWeight: 800 }}>Archived ({rejected.length})</h3>
+                  <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} />
+               </div>
+               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {rejected.map((req: any) => (
+                    <div key={req.id} style={{ padding: "12px 16px", borderRadius: 16, background: "var(--bg-card)", border: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center", opacity: 0.7 }}>
+                       <div>
+                          <div style={{ fontSize: 14, fontWeight: 700 }}>{req.name}</div>
+                          <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{req.organization}</div>
+                       </div>
+                       <button className="header-action-btn" style={{ color: "#ef4444" }} onClick={async () => {
+                         if (!confirm("Delete record?")) return;
+                         await fetch(apiUrl(`/api/consulting-requests/${req.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
+                         load();
+                       }}><span className="material-symbols-outlined">delete</span></button>
+                    </div>
+                  ))}
+               </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {acceptModal && (
-        <EmailModal
-          item={acceptModal}
-          title="Accept Request"
-          onClose={() => setAcceptModal(null)}
-          onSend={handleAccept}
-          modalRef={emailModalRef}
-          sending={sending}
-        />
+        <EmailModal item={acceptModal} title="Accept Consulting Request" onClose={() => setAcceptModal(null)} onSend={handleAccept} modalRef={emailModalRef} sending={sending} />
       )}
 
       {rejectModal && (
-        <EmailModal
-          item={rejectModal}
-          title="Reject Request"
-          onClose={() => setRejectModal(null)}
-          onSend={handleReject}
-          modalRef={emailModalRef}
-          sending={sending}
-        />
+        <EmailModal item={rejectModal} title="Decline Consulting Request" onClose={() => setRejectModal(null)} onSend={handleReject} modalRef={emailModalRef} sending={sending} />
       )}
-    </>
+    </div>
   );
 }

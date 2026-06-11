@@ -42,8 +42,6 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
   const [newInstContent, setNewInstContent] = useState("");
   const [newInstPriority, setNewInstPriority] = useState("medium");
 
-
-
   const headers = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${authToken}`,
@@ -68,143 +66,154 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
     }
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { loadOverview() }, [departmentId]);
 
-  if (loading) return <div className="card-doodle">Loading department...</div>;
+  if (loading) return <div style={{ textAlign: "center", padding: "4rem", color: "var(--text-tertiary)" }}>Loading {departmentName} Panel...</div>;
 
   return (
-    <div>
-      <header
-        style={{
-          borderBottom: "1px solid var(--border-light)",
-          paddingBottom: "1rem",
-          marginBottom: "2rem",
-        }}
-      >
-        <h2 style={{ margin: 0 }}>{departmentName} Department</h2>
-        <p style={{ margin: "0.25rem 0 0", color: "var(--text-secondary)" }}>
-          Manage meets, documents, instructions, and projects
-        </p>
-      </header>
-
+    <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
       <div className="members-grid">
         {/* DEPARTMENT MEMBERS */}
-        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-          <h3>Department Members ({members.length})</h3>
-          {members.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No members in this department.</p>}
-          <div style={{ display: "grid", gap: 6 }}>
+        <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1.5rem" }}>
+             <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>groups</span>
+             <h3 style={{ margin: 0 }}>Team Directory ({members.length})</h3>
+          </div>
+          
+          <div className="dashboard-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
             {members.map((m) => (
-              <div key={m.id} className="card-doodle" style={{ padding: "0.6rem 1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <strong style={{ fontSize: 14 }}>{m.name}</strong>
-                  <span style={{ marginLeft: 8, fontSize: 12, color: "var(--primary-green)" }}>{m.role_name}</span>
+              <div key={m.id} style={{ 
+                padding: "1rem", borderRadius: 16, background: "var(--surface)", 
+                border: "1px solid var(--border-light)", display: "flex", alignItems: "center", gap: 12
+              }}>
+                <div className="avatar-circle" style={{ width: 36, height: 36, fontSize: 12 }}>{m.name[0]}</div>
+                <div style={{ minWidth: 0 }}>
+                   <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</div>
+                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--primary-green)", textTransform: "uppercase" }}>{m.role_name}</div>
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{m.email}</div>
               </div>
             ))}
           </div>
+          {members.length === 0 && <p style={{ textAlign: "center", color: "var(--text-tertiary)", padding: "2rem" }}>No members found in this department.</p>}
         </div>
 
         {/* SCHEDULED MEETS */}
-        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-          <h3>Scheduled Google Meets</h3>
-          {meets.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No meets scheduled yet.</p>}
-          <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+        <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1.5rem" }}>
+             <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>videocam</span>
+             <h3 style={{ margin: 0 }}>Department Meetings</h3>
+          </div>
+          
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: "1.5rem" }}>
             {meets.map((m) => (
-              <div key={m.id} className="card-doodle" style={{ padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <strong>{m.title}</strong>
-                  <div style={{ color: "var(--text-secondary)", fontSize: 14 }}>{m.scheduled_at?.slice(0, 16).replace("T", " ")}</div>
-                  {m.description && <div style={{ fontSize: 14, marginTop: 4 }}>{m.description}</div>}
-                  {m.meet_link && (
-                    <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={() => window.open(m.meet_link, "_blank", "noopener,noreferrer")}>
-                      Open Link
-                    </button>
-                  )}
+              <div key={m.id} style={{ 
+                padding: "1.25rem", borderRadius: 16, background: "var(--surface)", 
+                border: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                   <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--bg-card)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border-light)" }}>
+                      <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>event</span>
+                   </div>
+                   <div>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{m.title}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{new Date(m.scheduled_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 12 }} onClick={async () => {
+                <div style={{ display: "flex", gap: 8 }}>
+                  {m.meet_link && <button className="btn outline" style={{ padding: "6px 12px", fontSize: 12 }} onClick={() => window.open(m.meet_link, "_blank")}>Join</button>}
+                  <button className="header-action-btn" title="Notify Team" onClick={async () => {
                     setSendingEmail(m.id);
                     const res = await fetch(apiUrl(`/api/meets/department_meet/${m.id}/send-notification`), { method: "POST", headers });
                     const data = await res.json();
                     setSendingEmail(null);
-                    if (data.success) alert(`Email sent to ${data.emailsSent} members${data.emailsQueued > 0 ? ` (${data.emailsQueued} queued for tomorrow)` : ""}`);
+                    if (data.success) alert(`Email sent.`);
                     else alert(data.error);
-                  }} disabled={sendingEmail === m.id}>{sendingEmail === m.id ? "Sending..." : "Send Email"}</button>
-                  <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13 }} onClick={async () => {
+                  }} disabled={sendingEmail === m.id}><span className="material-symbols-outlined">mail</span></button>
+                  <button className="header-action-btn" style={{ color: "#ef4444" }} onClick={async () => {
+                    if (!confirm("Delete meet?")) return;
                     await fetch(apiUrl(`/api/departments/${departmentId}/meets/${m.id}`), { method: "DELETE", headers });
                     setMeets(meets.filter((x) => x.id !== m.id));
-                  }}>Delete</button>
+                  }}><span className="material-symbols-outlined">delete</span></button>
                 </div>
               </div>
             ))}
+            {meets.length === 0 && <p style={{ textAlign: "center", color: "var(--text-tertiary)", padding: "1.5rem", border: "1px dashed var(--outline-variant)", borderRadius: 16 }}>No meetings scheduled.</p>}
           </div>
-          <div className="admin-grid-4" style={{ marginTop: 0 }}>
-            <input className="input" placeholder="Meet title" value={newMeetTitle} onChange={(e) => setNewMeetTitle(e.target.value)} />
-            <input className="input" placeholder="Meet link (optional)" value={newMeetLink} onChange={(e) => setNewMeetLink(e.target.value)} />
-            <input className="input" type="datetime-local" value={newMeetWhen} onChange={(e) => setNewMeetWhen(e.target.value)} />
-            <button className="btn" disabled={scheduling} onClick={async () => {
-              if (!newMeetTitle || !newMeetWhen) return alert("Title and date required");
-              setScheduling(true);
-              try {
-                const res = await fetch(apiUrl(`/api/departments/${departmentId}/meets`), {
-                  method: "POST", headers, body: JSON.stringify({ title: newMeetTitle, meetLink: newMeetLink, scheduledAt: newMeetWhen }),
-                });
-                const data = await res.json();
-                if (data.success) { setNewMeetTitle(""); setNewMeetLink(""); setNewMeetWhen(""); loadOverview(); alert("Meet created. Emails sent."); }
-                else alert(data.error);
-              } finally { setScheduling(false); }
-            }}>{scheduling ? "Adding..." : "Add Meet"}</button>
-            {scheduling && <FullPageLoader message="Creating meet and sending emails..." />}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, background: "var(--surface-container-low)", padding: "1.25rem", borderRadius: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Schedule New Meet</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+              <input className="input" placeholder="Meet title" value={newMeetTitle} onChange={(e) => setNewMeetTitle(e.target.value)} />
+              <input className="input" placeholder="Google Meet link" value={newMeetLink} onChange={(e) => setNewMeetLink(e.target.value)} />
+              <input className="input" type="datetime-local" value={newMeetWhen} onChange={(e) => setNewMeetWhen(e.target.value)} />
+              <button className="btn" disabled={scheduling} onClick={async () => {
+                if (!newMeetTitle || !newMeetWhen) return alert("Title and date required");
+                setScheduling(true);
+                try {
+                  const res = await fetch(apiUrl(`/api/departments/${departmentId}/meets`), { method: "POST", headers, body: JSON.stringify({ title: newMeetTitle, meetLink: newMeetLink, scheduledAt: newMeetWhen }) });
+                  const data = await res.json();
+                  if (data.success) { setNewMeetTitle(""); setNewMeetLink(""); setNewMeetWhen(""); loadOverview(); alert("Meet created."); } else alert(data.error);
+                } finally { setScheduling(false); }
+              }}>{scheduling ? "Adding..." : "Add Meet"}</button>
+            </div>
+            {scheduling && <FullPageLoader message="Scheduling..." />}
           </div>
         </div>
 
         {/* INSTRUCTIONS */}
-        <div className="card-doodle" style={{ gridColumn: "1 / -1" }}>
-          <h3>Instructions</h3>
-          {instructions.length === 0 && <p style={{ color: "var(--text-secondary)" }}>No instructions yet.</p>}
-          <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+        <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1.5rem" }}>
+             <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>menu_book</span>
+             <h3 style={{ margin: 0 }}>Team Instructions</h3>
+          </div>
+          
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: "1.5rem" }}>
             {instructions.map((inst) => (
-              <div key={inst.id} className="card-doodle" style={{ padding: 16, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div key={inst.id} style={{ 
+                padding: "1.25rem", borderRadius: 16, background: "var(--surface)", 
+                border: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "flex-start"
+              }}>
                 <div style={{ flex: 1 }}>
-                  <strong>{inst.title}</strong>
-                  <span className={`floating-note`} style={{ marginLeft: 8, fontSize: 12, padding: "0.2rem 0.6rem", transform: "none" }}>
-                    {inst.priority}
-                  </span>
-                  <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{inst.content}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                     <strong style={{ fontSize: 15 }}>{inst.title}</strong>
+                     <span style={{ 
+                       fontSize: 10, fontWeight: 800, textTransform: "uppercase", padding: "2px 8px", borderRadius: 4,
+                       background: inst.priority === "high" || inst.priority === "urgent" ? "rgba(239, 68, 68, 0.1)" : "rgba(59, 130, 246, 0.1)",
+                       color: inst.priority === "high" || inst.priority === "urgent" ? "#ef4444" : "#3b82f6"
+                     }}>{inst.priority}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{inst.content}</div>
                 </div>
-                <button className="btn outline" style={{ padding: "0.3rem 0.8rem", fontSize: 13, marginLeft: 12 }} onClick={async () => {
+                <button className="header-action-btn" style={{ color: "#ef4444", marginLeft: 12 }} onClick={async () => {
+                  if (!confirm("Delete instruction?")) return;
                   await fetch(apiUrl(`/api/departments/${departmentId}/instructions/${inst.id}`), { method: "DELETE", headers });
                   setInstructions(instructions.filter((x) => x.id !== inst.id));
-                }}>Delete</button>
+                }}><span className="material-symbols-outlined">delete</span></button>
               </div>
             ))}
+            {instructions.length === 0 && <p style={{ textAlign: "center", color: "var(--text-tertiary)", padding: "1.5rem", border: "1px dashed var(--outline-variant)", borderRadius: 16 }}>No instructions published.</p>}
           </div>
-          <div style={{ display: "flex", gap: 8, flexDirection: "column" }}>
-            <div className="admin-grid-4" style={{ marginTop: 0 }}>
-              <input className="input" placeholder="Instruction title" value={newInstTitle} onChange={(e) => setNewInstTitle(e.target.value)} />
-              <select className="input" value={newInstPriority} onChange={(e) => setNewInstPriority(e.target.value)}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </div>
-            <textarea className="input" placeholder="Instruction content" rows={3} value={newInstContent} onChange={(e) => setNewInstContent(e.target.value)} />
-            <button className="btn" onClick={async () => {
-              if (!newInstTitle || !newInstContent) return alert("Title and content required");
-              const res = await fetch(apiUrl(`/api/departments/${departmentId}/instructions`), {
-                method: "POST", headers, body: JSON.stringify({ title: newInstTitle, content: newInstContent, priority: newInstPriority }),
-              });
-              const data = await res.json();
-              if (data.success) { setNewInstTitle(""); setNewInstContent(""); setNewInstPriority("medium"); loadOverview(); }
-              else alert(data.error);
-            }}>Add Instruction</button>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, background: "var(--surface-container-low)", padding: "1.25rem", borderRadius: 20 }}>
+             <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-tertiary)", textTransform: "uppercase" }}>Create Instruction</div>
+             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10 }}>
+                <input className="input" placeholder="Brief title" value={newInstTitle} onChange={(e) => setNewInstTitle(e.target.value)} />
+                <select className="input" value={newInstPriority} onChange={(e) => setNewInstPriority(e.target.value)} style={{ width: "auto" }}>
+                  <option value="low">Low Priority</option>
+                  <option value="medium">Medium Priority</option>
+                  <option value="high">High Priority</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+             </div>
+             <textarea className="input" placeholder="Write detailed instructions for your team members..." rows={4} value={newInstContent} onChange={(e) => setNewInstContent(e.target.value)} style={{ resize: "none" }} />
+             <button className="btn" onClick={async () => {
+               if (!newInstTitle || !newInstContent) return alert("Title and content required");
+               const res = await fetch(apiUrl(`/api/departments/${departmentId}/instructions`), { method: "POST", headers, body: JSON.stringify({ title: newInstTitle, content: newInstContent, priority: newInstPriority }) });
+               const data = await res.json();
+               if (data.success) { setNewInstTitle(""); setNewInstContent(""); setNewInstPriority("medium"); loadOverview(); } else alert(data.error);
+             }}>Publish Instruction</button>
           </div>
         </div>
-
-
       </div>
     </div>
   );

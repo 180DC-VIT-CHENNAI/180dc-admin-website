@@ -21,10 +21,10 @@ export default function RoomSettingsPanel({ authToken, powerLevel, departmentId,
   const canManageAll = powerLevel >= 100;
 
   const rooms = [
-    { id: "general", label: "General Chat" },
-    { id: "advisory", label: "Advisory Chat" },
-    { id: "board", label: "Board Chat" },
-    ...departments.map((d: any) => ({ id: `dept-${d.id}`, label: `${d.name} Chat` })),
+    { id: "general", label: "General Chat", icon: "forum" },
+    { id: "advisory", label: "Advisory Chat", icon: "admin_panel_settings" },
+    { id: "board", label: "Board Chat", icon: "shield_person" },
+    ...departments.map((d: any) => ({ id: `dept-${d.id}`, label: `${d.name} Chat`, icon: "chat_bubble" })),
   ].filter(r => {
     if (canManageAll) return true;
     if (!r.id.startsWith("dept-")) return false;
@@ -54,39 +54,55 @@ export default function RoomSettingsPanel({ authToken, powerLevel, departmentId,
   }
 
   return (
-    <div>
-      <h2 style={{ marginTop: 0 }}>Chat Room Settings</h2>
-      <div className="card-doodle">
-        <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 16 }}>
-          Enable or disable chat rooms. Disabled rooms are hidden from the sidebar.
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <div className="dashboard-card">
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1.5rem" }}>
+           <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>tune</span>
+           <h3 style={{ margin: 0 }}>Chat Management</h3>
+        </div>
+        <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: "1.5rem" }}>
+          Control which chat rooms are active and visible in the portal. Disabled rooms will be hidden from all members.
         </p>
-        <div style={{ display: "grid", gap: 8 }}>
+        
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {rooms.map(r => (
             <div key={r.id} style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "0.6rem 0.8rem", background: "var(--bg-secondary)",
-              borderRadius: 8, border: "1px solid var(--border-light)",
+              padding: "1rem 1.25rem", background: "var(--surface)",
+              borderRadius: 16, border: "1px solid var(--border-light)",
             }}>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>{r.label}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                 <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--bg-card)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border-light)", color: "var(--text-secondary)" }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{r.icon}</span>
+                 </div>
+                 <span style={{ fontSize: 14, fontWeight: 700 }}>{r.label}</span>
+              </div>
+              
               <button
                 onClick={() => toggle(r.id)}
                 disabled={busy === r.id}
+                className={`btn ${settings[r.id] === false ? "outline" : ""}`}
                 style={{
-                  padding: "0.3rem 0.8rem", fontSize: 12, minWidth: 64,
+                  padding: "6px 16px", fontSize: 12, minWidth: 100, gap: 8,
                   background: settings[r.id] === false ? "transparent" : "var(--primary-green)",
                   color: settings[r.id] === false ? "var(--text-secondary)" : "#fff",
-                  border: `1px solid ${settings[r.id] === false ? "var(--border-light)" : "var(--primary-green)"}`,
-                  borderRadius: 6, cursor: busy === r.id ? "default" : "pointer",
-                  fontWeight: 500,
+                  borderColor: settings[r.id] === false ? "var(--outline-variant)" : "transparent"
                 }}
               >
-                {busy === r.id ? "..." : settings[r.id] === false ? "Disabled" : "Enabled"}
+                {busy === r.id ? (
+                  <span className="material-symbols-outlined" style={{ fontSize: 16, animation: "spin 2s linear infinite" }}>sync</span>
+                ) : (
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{settings[r.id] === false ? "toggle_off" : "toggle_on"}</span>
+                )}
+                {settings[r.id] === false ? "Disabled" : "Active"}
               </button>
             </div>
           ))}
         </div>
         {rooms.length === 0 && (
-          <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>No rooms available to manage.</p>
+          <div style={{ textAlign: "center", padding: "3rem", border: "1px dashed var(--outline-variant)", borderRadius: 16 }}>
+             <p style={{ color: "var(--text-secondary)", margin: 0 }}>No rooms available to manage with your current permissions.</p>
+          </div>
         )}
       </div>
     </div>
