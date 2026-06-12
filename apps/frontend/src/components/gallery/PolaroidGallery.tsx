@@ -181,4 +181,3 @@ export function PolaroidGallery({ onClose }: { onClose?: () => void }) {
   );
 }
 
-export default PolaroidGallery;

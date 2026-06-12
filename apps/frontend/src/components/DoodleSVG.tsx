@@ -25,43 +25,10 @@ export const ScribbleStar = ({ className = '', style = {} }: { className?: strin
   </svg>
 );
 
-export const ScribbleZigzag = ({ className = '', style = {} }: { className?: string; style?: React.CSSProperties }) => (
-  <svg className={`doodle-svg ${className}`} style={style} viewBox="0 0 100 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M5 20 L20 5 L35 35 L50 5 L65 35 L80 5 L95 20" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-  </svg>
-);
-
 export const ScribbleSquiggle = ({ className = '', style = {} }: { className?: string; style?: React.CSSProperties }) => (
   <svg className={`doodle-svg ${className}`} style={style} viewBox="0 0 100 30" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M5 15 Q15 5, 25 15 T45 15 T65 15 T85 15 T95 15" stroke="currentColor" strokeWidth="3" strokeLinecap="round" fill="none" />
   </svg>
-);
-
-export const ScribbleBox = ({ className = '', style = {} }: { className?: string; style?: React.CSSProperties }) => (
-  <svg className={`doodle-svg ${className}`} style={style} viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M10 15 L70 10 L75 65 L15 70 Z" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-  </svg>
-);
-
-export const ScribbleHeart = ({ className = '', style = {} }: { className?: string; style?: React.CSSProperties }) => (
-  <svg className={`doodle-svg ${className}`} style={style} viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M30 52 C30 52, 5 38, 5 22 C5 12, 12 5, 22 5 C27 5, 30 10, 30 10 C30 10, 33 5, 38 5 C48 5, 55 12, 55 22 C55 38, 30 52, 30 52 Z" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-  </svg>
-);
-
-export const DoodleDivider = ({ className = '', style = {} }: { className?: string; style?: React.CSSProperties }) => (
-  <svg className={`doodle-svg ${className}`} style={style} viewBox="0 0 200 30" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M10 15 Q50 5, 100 15 T190 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
-    <circle cx="30" cy="15" r="3" fill="currentColor" />
-    <circle cx="100" cy="15" r="3" fill="currentColor" />
-    <circle cx="170" cy="15" r="3" fill="currentColor" />
-  </svg>
-);
-
-export const FloatingNote = ({ text, className = '', style = {} }: { text: string; className?: string; style?: React.CSSProperties }) => (
-  <div className={`floating-note ${className}`} style={style}>
-    <span className="note-text">{text}</span>
-  </div>
 );
 
 export const GrainOverlay = () => (
