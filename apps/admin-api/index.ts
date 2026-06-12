@@ -841,6 +841,13 @@ app.use("*", async (c, next) => {
 /**
  * Helper to check if current user is President/VP (Power == 100)
  */
+const requireMember = (c: any) => {
+  const user = c.get("user");
+  if (user.power_level < 10) {
+    throw new Error("Forbidden: Requires member privileges.");
+  }
+};
+
 const requireBoard = (c: any) => {
   const user = c.get("user");
   if (user.power_level < 100) {
@@ -1830,7 +1837,7 @@ app.get("/api/members/export", async (c) => {
 app.get("/api/members-directory", async (c) => {
   try {
     await ensureTables(c.env.DB);
-    requireBoard(c);
+    requireMember(c);
     const rows = await c.env.DB.prepare(
       "SELECT u.id, u.name, u.email, u.role_id, u.department_id, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id ORDER BY r.power_level DESC, u.name ASC",
     ).all();
