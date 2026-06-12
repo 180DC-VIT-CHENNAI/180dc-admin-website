@@ -15,6 +15,7 @@ export interface PolaroidEvent {
   vineLength: 'short' | 'mid' | 'long';
   left: number;
   top: number;
+  emoji?: string;
   photos: Photo[];
 }
 

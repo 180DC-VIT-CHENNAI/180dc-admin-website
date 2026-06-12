@@ -115,6 +115,7 @@ export default function MembersLayout() {
   const [dangerAdvBusy, setDangerAdvBusy] = useState(false);
 
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["General", "Chats", "Departments", "Management", "Admin"]));
+  const [mobileSheetSection, setMobileSheetSection] = useState<string | null>(null);
   const [roomSettings, setRoomSettings] = useState<Record<string, boolean>>({});
   const [oauthEnabled, setOauthEnabled] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
@@ -1325,23 +1326,58 @@ export default function MembersLayout() {
 
       {/* MOBILE BOTTOM NAV */}
       <nav className="mobile-bottom-nav">
-        <button className={`mobile-nav-item ${activePanel === "dashboard" ? "active" : ""}`} onClick={() => setActivePanel("dashboard")}>
-          <span className="material-symbols-outlined">dashboard</span>
-          <span>Home</span>
-        </button>
-        <button className={`mobile-nav-item ${activePanel === "projects" ? "active" : ""}`} onClick={() => setActivePanel("projects")}>
-          <span className="material-symbols-outlined">account_tree</span>
-          <span>Projects</span>
-        </button>
-        <button className={`mobile-nav-item ${activePanel.startsWith("chat") ? "active" : ""}`} onClick={() => setActivePanel("chat_general")}>
-          <span className="material-symbols-outlined">forum</span>
-          <span>Chats</span>
-        </button>
-        <button className={`mobile-nav-item ${activePanel === "profile" ? "active" : ""}`} onClick={() => setActivePanel("profile")}>
-          <span className="material-symbols-outlined">person</span>
-          <span>Profile</span>
-        </button>
+        {navSections.map((section) => {
+          const visible = section.items.filter((n) => powerLevel >= n.minPower);
+          if (visible.length === 0) return null;
+          const sectionActive = visible.some((n) =>
+            n.deptId ? (activePanel === "department" && activeDeptId === n.deptId) : activePanel === n.id
+          );
+          return (
+            <button
+              key={section.label}
+              className={`mobile-nav-item ${sectionActive ? "active" : ""}`}
+              onClick={() => setMobileSheetSection(mobileSheetSection === section.label ? null : section.label)}
+            >
+              <span className="material-symbols-outlined">{visible[0]?.icon || "apps"}</span>
+              <span>{section.label || "Links"}</span>
+            </button>
+          );
+        })}
       </nav>
+
+      {/* MOBILE SECTION SHEET */}
+      {mobileSheetSection && (
+        <div className="mobile-sheet-overlay" onClick={() => setMobileSheetSection(null)}>
+          <div className="mobile-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="mobile-sheet-handle" />
+            <p className="mobile-sheet-title">{mobileSheetSection}</p>
+            <div className="mobile-sheet-items">
+              {navSections
+                .find((s) => s.label === mobileSheetSection)
+                ?.items.filter((n) => powerLevel >= n.minPower)
+                .map((item) => {
+                  const isItemActive = item.deptId
+                    ? (activePanel === "department" && activeDeptId === item.deptId)
+                    : activePanel === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      className={`mobile-sheet-item ${isItemActive ? "active" : ""}`}
+                      onClick={() => {
+                        if (item.deptId) { setActiveDeptId(item.deptId); setActivePanel("department"); }
+                        else setActivePanel(item.id);
+                        setMobileSheetSection(null);
+                      }}
+                    >
+                      <span className="material-symbols-outlined">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* FAB */}
       {powerLevel >= 100 && activePanel === "dashboard" && (
