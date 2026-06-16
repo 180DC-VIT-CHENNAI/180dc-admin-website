@@ -3640,9 +3640,32 @@ app.post("/api/blogs/upload-image", async (c) => {
       httpMetadata: { contentType: typedFile.type },
     });
 
-    const publicUrl = `https://pub-180dc-blog-images.180dc.shop/${key}`;
+    const url = `/api/blogs/images/${key}`;
 
-    return c.json({ success: true, url: publicUrl, key });
+    return c.json({ success: true, url, key });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 1b. Serve blog image from R2 (public)
+app.get("/api/blogs/images/:key", async (c) => {
+  try {
+    const key = c.req.param("key");
+    if (!key || key.includes("..")) return c.json({ error: "Invalid key" }, 400);
+
+    const rl = await checkRateLimit(c, "blog_image_serve", 200, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded" }, 429);
+
+    const obj = await c.env.BLOG_IMAGES.get(key);
+    if (!obj) return c.json({ error: "Image not found" }, 404);
+
+    const headers = new Headers();
+    headers.set("Content-Type", obj.httpMetadata?.contentType || "image/jpeg");
+    headers.set("Cache-Control", "public, max-age=86400");
+    headers.set("X-Content-Type-Options", "nosniff");
+
+    return new Response(obj.body, { headers });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
