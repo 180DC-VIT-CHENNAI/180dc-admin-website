@@ -122,6 +122,7 @@ export default function MembersLayout() {
   const [oauthEnabled, setOauthEnabled] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [oauthStatusMsg, setOauthStatusMsg] = useState<string | null>(null);
+  const [maintenanceMode, setMaintenanceMode] = useState<{ enabled: boolean; message: string } | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
@@ -180,6 +181,13 @@ export default function MembersLayout() {
       })
       .catch((err) => console.error("Failed to fetch room settings:", err));
   }, [authToken]);
+
+  useEffect(() => {
+    fetch(apiUrl("/api/admin/maintenance"))
+      .then(r => r.json())
+      .then(d => setMaintenanceMode({ enabled: !!d.enabled, message: d.message || "" }))
+      .catch(() => setMaintenanceMode({ enabled: false, message: "" }));
+  }, []);
 
   const maskToken = (token: string) =>
     token.length <= 8 ? `${token.slice(0, 3)}…` : `${token.slice(0, 6)}…${token.slice(-4)}`;
@@ -434,6 +442,24 @@ export default function MembersLayout() {
   }
 
   if (!authToken) return <MembersLogin onLogin={handleLogin} oauthLoading={oauthLoading} oauthError={oauthStatusMsg} />;
+
+  if (maintenanceMode?.enabled && powerLevel < 100) {
+    return (
+      <div style={{ backgroundColor: "var(--bg-primary)", minHeight: "100vh", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div className="card-doodle" style={{ maxWidth: 480, textAlign: "center", padding: 40 }}>
+          <span style={{ fontSize: 48, display: "block", marginBottom: 16 }}>🔧</span>
+          <h2 style={{ margin: "0 0 12px" }}>Under Maintenance</h2>
+          <p style={{ color: "var(--text-secondary)", margin: 0, lineHeight: 1.6 }}>
+            {maintenanceMode.message || "The members portal is currently under maintenance. Please check back later."}
+          </p>
+          <button className="btn" style={{ marginTop: 24 }} onClick={() => { sessionStorage.clear(); setAuthToken(null); }}>
+            Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!dashboardReady) {
     return (
       <div style={{ backgroundColor: "var(--bg-primary)", minHeight: "100vh", width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -852,7 +878,11 @@ export default function MembersLayout() {
           )}
 
           {activePanel === "sendmail" && powerLevel >= 100 && (
-            <SendMailSection authToken={authToken!} />
+            <SendMailSection authToken={authToken!} onEmailSent={async () => {
+              const res = await fetch(apiUrl("/api/dashboard"), { headers: { Authorization: `Bearer ${authToken}` } });
+              const data = await res.json();
+              if (data.stats) setStats(data.stats);
+            }} />
           )}
 
           {activePanel === "announcements" && (
@@ -946,6 +976,42 @@ export default function MembersLayout() {
                              <div className="admin-progress-fill" style={{ width: `${Math.min(stats.todayEmailCount, 100)}%`, background: stats.todayEmailCount > 90 ? "#ef4444" : "var(--primary-green)" }} />
                           </div>
                           <div className="admin-progress-text">{stats.todayEmailCount} / 100 Sent Today</div>
+                       </div>
+                    </div>
+                    <div className="admin-sub-card">
+                       <div className="admin-sub-label">Maintenance Mode</div>
+                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                             <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                                {maintenanceMode?.enabled ? "Active — members blocked" : "Disabled"}
+                             </span>
+                             <span style={{
+                               width: 10, height: 10, borderRadius: "50%",
+                               background: maintenanceMode?.enabled ? "#ef4444" : "var(--primary-green)",
+                               display: "inline-block",
+                             }} />
+                          </div>
+                          <button
+                            className="btn outline"
+                            style={{ padding: "6px 12px", fontSize: 12 }}
+                            onClick={async () => {
+                              const enable = !maintenanceMode?.enabled;
+                              const msg = enable ? (prompt("Maintenance message (optional):") || "").trim() : "";
+                              const res = await fetch(apiUrl("/api/admin/maintenance"), {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+                                body: JSON.stringify({ enabled: enable, message: msg || undefined }),
+                              });
+                              const data = await res.json();
+                              if (data.success) {
+                                setMaintenanceMode({ enabled: data.enabled, message: data.message });
+                              } else {
+                                alert(data.error || "Failed to toggle maintenance mode");
+                              }
+                            }}
+                          >
+                            {maintenanceMode?.enabled ? "Disable" : "Enable"}
+                          </button>
                        </div>
                     </div>
                   </div>

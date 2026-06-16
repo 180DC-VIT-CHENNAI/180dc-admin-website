@@ -606,6 +606,7 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
     CREATE TABLE IF NOT EXISTS chat_room_settings (room TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1);
     CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, title TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, content TEXT NOT NULL, excerpt TEXT, image_url TEXT, author_id TEXT NOT NULL, author_name TEXT NOT NULL, status TEXT DEFAULT 'pending', is_published INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME);
+    CREATE TABLE IF NOT EXISTS maintenance_mode (id INTEGER PRIMARY KEY DEFAULT 1, enabled INTEGER DEFAULT 0, message TEXT DEFAULT 'Site is under maintenance. Please check back later.', updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     `);
   await runMigrations(db);
 }
@@ -648,6 +649,7 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE users ADD COLUMN oauth_enabled INTEGER DEFAULT 0"); } catch { console.warn("Migration: oauth_enabled may already exist"); }
   try { await db.exec("DROP TABLE IF EXISTS chat_messages"); } catch { console.warn("Migration: drop chat_messages"); }
   try { await db.exec("DROP INDEX IF EXISTS idx_chat_messages_room_ts"); } catch { console.warn("Migration: drop chat index"); }
+  try { await db.exec("INSERT OR IGNORE INTO maintenance_mode (id, enabled, message) VALUES (1, 0, 'Site is under maintenance. Please check back later.')"); } catch { console.warn("Migration: maintenance_mode seed"); }
 }
 
 let currentEnv: any = null;
@@ -816,7 +818,8 @@ app.use("*", async (c, next) => {
     url.pathname === "/api/recruitment/login" ||
     url.pathname === "/api/recruitment/open-domains" ||
     url.pathname === "/api/blogs" ||
-    (url.pathname.startsWith("/api/blogs/") && c.req.method === "GET" && !url.pathname.startsWith("/api/blogs/admin"))
+    (url.pathname.startsWith("/api/blogs/") && c.req.method === "GET" && !url.pathname.startsWith("/api/blogs/admin")) ||
+    (url.pathname === "/api/admin/maintenance" && c.req.method === "GET")
   ) {
     await next();
     return;
@@ -887,6 +890,11 @@ app.use("*", async (c, next) => {
       user.role_name = activeRole.name;
       user.power_level = activeRole.power_level;
     }
+  }
+
+  const mm: any = await c.env.DB.prepare("SELECT enabled, message FROM maintenance_mode WHERE id = 1").first();
+  if (mm && mm.enabled === 1 && user.power_level < 100) {
+    return c.json({ error: mm.message || "Site is under maintenance." }, 503);
   }
 
   c.set("user", user);
@@ -4205,6 +4213,11 @@ app.post("/api/send-email", async (c) => {
     const apiKey = c.env.RESEND_API_KEY;
     if (!apiKey) return c.json({ error: "Email not configured" }, 500);
 
+    const currentCount = await getTodayEmailCount(c.env.DB);
+    if (currentCount >= 100) {
+      return c.json({ error: "Daily email quota reached (100 emails). Try again after 24 hours." }, 429);
+    }
+
     // Support multiple recipients separated by comma/semicolon
     const recipients = to.split(/[;,]+/).map((e: string) => e.trim()).filter(Boolean);
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -4244,6 +4257,7 @@ app.post("/api/send-email", async (c) => {
       });
     }
 
+    await incrementEmailCount(c.env.DB);
     return c.json({ success: true, message: `Email sent to ${validRecipients.length} recipient(s)` }, 200);
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4633,6 +4647,46 @@ app.delete("/api/club-files/:id", async (c) => {
 
     await c.env.CLUB_FILES.delete(targetKey);
     return c.json({ success: true });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// MAINTENANCE MODE (President/VP only)
+// ---------------------------------------------------------
+
+// GET /api/admin/maintenance — check maintenance status
+app.get("/api/admin/maintenance", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const mm: any = await c.env.DB.prepare("SELECT enabled, message FROM maintenance_mode WHERE id = 1").first();
+    return c.json({ enabled: mm?.enabled === 1, message: mm?.message || "" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// POST /api/admin/maintenance — toggle maintenance mode (power >= 100)
+app.post("/api/admin/maintenance", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
+
+    const body = await c.req.json();
+    const enabled = body.enabled === true ? 1 : 0;
+    const message = typeof body.message === "string" && body.message.trim().length > 0
+      ? body.message.trim().slice(0, 500)
+      : "Site is under maintenance. Please check back later.";
+
+    await c.env.DB.prepare("UPDATE maintenance_mode SET enabled = ?, message = ?, updated_by = ?, updated_at = datetime('now') WHERE id = 1")
+      .bind(enabled, message, user.email).run();
+
+    await addAuditLog(c, "maintenance_toggle", "maintenance", "1",
+      "Maintenance mode " + (enabled ? "enabled" : "disabled"));
+
+    return c.json({ success: true, enabled: enabled === 1, message });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }

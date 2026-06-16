@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { apiUrl } from "../../lib/api";
 
-export default function SendMailSection({ authToken }: { authToken: string }) {
+export default function SendMailSection({ authToken, onEmailSent }: { authToken: string; onEmailSent?: () => void }) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -72,6 +72,7 @@ export default function SendMailSection({ authToken }: { authToken: string }) {
         setManualEmails("");
         setSubject("");
         setBody("");
+        if (onEmailSent) onEmailSent();
       } else alert(d.error);
     } catch { alert("Failed to send. Please try again."); } finally { setSending(false); }
   }
