@@ -16,7 +16,6 @@ interface MembersLoginProps {
   oauthError?: string | null;
 }
 
-// fallow-ignore-next-line complexity
 export default function MembersLogin({ onLogin, oauthLoading, oauthError }: MembersLoginProps) {
   const { isDark, toggle: toggleTheme } = useTheme();
   const clerk = useClerk();
@@ -63,7 +62,6 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
     }
   };
 
-  // fallow-ignore-next-line complexity
   const handleForgotToken = async () => {
     if (!forgotEmail) return;
     setForgotLoading(true);

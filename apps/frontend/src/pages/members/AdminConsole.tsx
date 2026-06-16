@@ -119,7 +119,6 @@ interface AdminConsoleProps {
   stats: { membersCount: number; projectsCount: number; upcomingMeetsCount: number; announcementsCount: number; todayEmailCount: number };
 }
 
-// fallow-ignore-next-line complexity
 export default function AdminConsole({
   authToken,
   setAllUsers,
@@ -264,7 +263,6 @@ export default function AdminConsole({
                 <button
                   className="btn outline"
                   style={{ padding: "6px 12px", fontSize: 12 }}
-                  // fallow-ignore-next-line complexity
                   onClick={async () => {
                     const enable = !maintenanceMode?.enabled;
                     const msg = enable ? (prompt("Maintenance message (optional):") || "").trim() : "";
@@ -290,7 +288,6 @@ export default function AdminConsole({
     );
   }
 
-  // fallow-ignore-next-line complexity
   function renderTokenRegistry() {
     return (
       <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
@@ -361,7 +358,6 @@ export default function AdminConsole({
     );
   }
 
-  // fallow-ignore-next-line complexity
   function renderCreateAccounts() {
     return (
       <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
@@ -395,7 +391,6 @@ export default function AdminConsole({
                 <option value="">No department</option>
                 {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
-              // fallow-ignore-next-line complexity
               <button className="btn" disabled={boardBusy} style={{ gridColumn: "1 / -1" }} onClick={async () => {
                 if (!authToken || !boardEmail.trim()) { alert("Enter an email first"); return; }
                 setBoardBusy(true);
@@ -431,7 +426,6 @@ export default function AdminConsole({
                 <option value="">Not a club member</option>
                 {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name} (as member)</option>)}
               </select>
-              // fallow-ignore-next-line complexity
               <button className="btn" disabled={advisoryBusy} style={{ gridColumn: "1 / -1" }} onClick={async () => {
                 if (!authToken || !advisoryEmail.trim()) { alert("Enter an email first"); return; }
                 setAdvisoryBusy(true);
@@ -474,7 +468,6 @@ export default function AdminConsole({
                 <option value="">No department</option>
                 {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
-              // fallow-ignore-next-line complexity
               <button className="btn" disabled={memberBusy} onClick={async () => {
                 if (!authToken || !memberEmail.trim()) { alert("Enter an email first"); return; }
                 setMemberBusy(true);
@@ -539,7 +532,6 @@ export default function AdminConsole({
     );
   }
 
-  // fallow-ignore-next-line complexity
   function renderRoleTransfers() {
     return (
       <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
@@ -563,7 +555,6 @@ export default function AdminConsole({
             <option value="">Select target role...</option>
             {allRoles.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
-          // fallow-ignore-next-line complexity
           <button className="btn" disabled={transferBusy} onClick={async () => {
             if (!transferFromUserId || !transferToUserId || !transferRoleId) return alert("All fields required");
             setTransferBusy(true);
@@ -599,7 +590,6 @@ export default function AdminConsole({
     );
   }
 
-  // fallow-ignore-next-line complexity
   function renderDangerZone() {
     return (
       <div className="dashboard-card" style={{ gridColumn: "1 / -1", borderColor: "#ef4444" }}>
@@ -623,7 +613,6 @@ export default function AdminConsole({
                 <option value="">Assign Department...</option>
                 {departments.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
-              // fallow-ignore-next-line complexity
               <button className="btn danger-btn" disabled={dangerBusy} onClick={async () => {
                 if (!dangerUserId || !dangerNewRoleId) return;
                 setDangerBusy(true);
@@ -652,7 +641,6 @@ export default function AdminConsole({
                   <option value="">Select Ex-Title...</option>
                   {EX_TITLES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
-                // fallow-ignore-next-line complexity
                 <button className="btn outline danger-outline-btn" disabled={dangerAdvBusy} onClick={async () => {
                   if (!dangerAdvUserId || !dangerAdvExTitle) return alert("Select member and title");
                   if (!confirm("Move this member to Advisory Board?")) return;

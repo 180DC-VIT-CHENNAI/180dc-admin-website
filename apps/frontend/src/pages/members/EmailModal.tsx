@@ -1,6 +1,5 @@
 import { createPortal } from "react-dom";
 
-// fallow-ignore-next-line complexity
 export default function EmailModal({ item, onClose, onSend, title, modalRef, sending }:
   { item: any; onClose: () => void; onSend: () => void; title: string; modalRef: { current: HTMLDivElement | null }; sending: boolean }) {
   return createPortal(

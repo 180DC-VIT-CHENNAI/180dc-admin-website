@@ -26,8 +26,7 @@ export default function ConsultingRequestsSection({ authToken }: { authToken: st
     setRejectModal(null);
     setAcceptModal(req);
     setSending(false);
-    setTimeout(// fallow-ignore-next-line complexity
-    () => {
+    setTimeout(() => {
       if (!emailModalRef.current) return;
       const sub = emailModalRef.current.querySelector<HTMLInputElement>("input[name='emailSubject']");
       const body = emailModalRef.current.querySelector<HTMLTextAreaElement>("textarea[name='emailBody']");
@@ -119,7 +118,6 @@ export default function ConsultingRequestsSection({ authToken }: { authToken: st
              <div style={{ flex: 1, height: 1, background: "rgba(245, 158, 11, 0.2)" }} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {// fallow-ignore-next-line complexity
             pending.map((req: any) => (
               <div key={req.id} className="dashboard-card" style={{ padding: "1.5rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>

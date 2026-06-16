@@ -25,7 +25,6 @@ import { useTheme } from "../../context/ThemeContext";
 import { DEPT_NAMES } from "./constants";
 import "./MembersLayout.css";
 
-// fallow-ignore-next-line complexity
 export default function MembersLayout() {
   const { isDark, toggle: toggleTheme } = useTheme();
   const { userId: clerkUserId, getToken, isLoaded: clerkLoaded } = useAuth();
@@ -174,7 +173,6 @@ export default function MembersLayout() {
       .catch(() => setMaintenanceMode({ enabled: false, message: "" }));
   }, []);
 
-// fallow-ignore-next-line complexity
   const handleLogin = (
     token: string,
     userEmail: string,
@@ -368,7 +366,6 @@ export default function MembersLayout() {
     }
     navSections.push({
       label: "Chats",
-// fallow-ignore-next-line complexity
       items: chatItems.filter(item => {
         const room = item.id === "chat_general" ? "general"
           : item.id === "chat_advisory" ? "advisory"
@@ -531,7 +528,6 @@ export default function MembersLayout() {
                       {section.label}
                     </div>
                   )}
-{/* fallow-ignore-next-line complexity */}
                   {(!section.label || (!sidebarCollapsed && expandedSections.has(section.label)) || sidebarCollapsed) ? visible.map((item) => (
                     <button
                       key={item.id}
@@ -748,7 +744,6 @@ export default function MembersLayout() {
             return <ChatSection authToken={authToken!} room={room} roomName={roomName} />;
           })()}
 
-{/* fallow-ignore-next-line complexity */}
           {activePanel === "department" && (() => {
             const deptId = activeDeptId || departmentId;
             const deptName = deptId ? (DEPT_NAMES[deptId] || departments.find((d: any) => d.id === deptId)?.name || deptId) : "";
@@ -842,7 +837,6 @@ export default function MembersLayout() {
                   <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
                     <input className="input" placeholder="Title" value={annTitle} onChange={(e) => setAnnTitle(e.target.value)} />
                     <textarea className="input" placeholder="Content" rows={4} value={annContent} onChange={(e) => setAnnContent(e.target.value)} />
-                    {/* fallow-ignore-next-line complexity */}
                     <button className="btn" disabled={annBusy} onClick={async () => {
                       if (!annTitle.trim() || !annContent.trim()) return alert("Title and content required");
                       setAnnBusy(true);
@@ -870,7 +864,6 @@ export default function MembersLayout() {
                 </div>
               )}
 
-              {/* fallow-ignore-next-line complexity */}
               {announcements.map((a: any) => (
                 <div key={a.id} className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -991,7 +984,6 @@ export default function MembersLayout() {
 
       {/* MOBILE BOTTOM NAV */}
       <nav className="mobile-bottom-nav">
-        {/* fallow-ignore-next-line complexity */}
         {navSections.map((section) => {
           const visible = section.items.filter((n) => powerLevel >= n.minPower);
           if (visible.length === 0) return null;

@@ -25,7 +25,6 @@ export default function TransfersSection({ authToken }: { authToken: string }) {
         </div>
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {// fallow-ignore-next-line complexity
         transfers.map((t: any) => (
           <div key={t.id} style={{ 
             padding: "1.25rem", background: "var(--surface)", border: "1px solid var(--border-light)", borderRadius: 16

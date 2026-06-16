@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { apiUrl } from "../../lib/api";
 
-// fallow-ignore-next-line complexity
 export default function SendMailSection({ authToken, onEmailSent }: { authToken: string; onEmailSent?: () => void }) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,7 +24,6 @@ export default function SendMailSection({ authToken, onEmailSent }: { authToken:
 
   const roles = [...new Set(users.map((u) => u.role_name).filter(Boolean))].sort();
 
-  // fallow-ignore-next-line complexity
   const filtered = users.filter((u) => {
     if (roleFilter && u.role_name !== roleFilter) return false;
     if (!search) return true;
@@ -56,7 +54,6 @@ export default function SendMailSection({ authToken, onEmailSent }: { authToken:
     return parts.join(", ");
   }
 
-  // fallow-ignore-next-line complexity
   async function handleSend() {
     const to = getToValue();
     if (!to) return alert("Select or enter at least one recipient");

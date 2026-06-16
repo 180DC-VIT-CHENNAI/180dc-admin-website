@@ -8,7 +8,6 @@ interface Props {
 
 const ALL_DOMAINS = ["Technical", "Research & Development", "Marketing", "Social Media", "Finance", "Events and Initiatives", "Client Partner Sponsor", "Human Resources"];
 
-// fallow-ignore-next-line complexity
 const RecruitmentsPanel = ({ authToken, powerLevel = 0 }: Props) => {
   const [applications, setApplications] = useState<any[]>([]);
   const [criteria, setCriteria] = useState<any[]>([]);
@@ -35,7 +34,6 @@ const RecruitmentsPanel = ({ authToken, powerLevel = 0 }: Props) => {
   const headers = { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" };
   const isBoard = powerLevel >= 100;
 
-  // fallow-ignore-next-line complexity
   async function loadApplications() {
     try {
       setLoading(true);
@@ -64,7 +62,6 @@ const RecruitmentsPanel = ({ authToken, powerLevel = 0 }: Props) => {
   useEffect(() => { loadCriteria(); }, []);
   useEffect(() => { if (isBoard) loadDomainSettings(); }, [isBoard]);
 
-  // fallow-ignore-next-line complexity
   async function openApplication(app: any) {
     const res = await fetch(apiUrl(`/api/recruitment/admin/applications/${app.id}`), { headers: { Authorization: `Bearer ${authToken}` } });
     const data = await res.json();
@@ -83,7 +80,6 @@ const RecruitmentsPanel = ({ authToken, powerLevel = 0 }: Props) => {
     }
   }
 
-  // fallow-ignore-next-line complexity
   async function saveEvaluation(criterionId: string) {
     const score = parseFloat(evalData[criterionId]);
     if (isNaN(score)) return alert("Enter a valid score");
@@ -179,7 +175,6 @@ const RecruitmentsPanel = ({ authToken, powerLevel = 0 }: Props) => {
               Toggle which domains are open for applications. Only domains marked as open will appear on the public application form.
             </p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.5rem" }}>
-              // fallow-ignore-next-line complexity
               {domainSettings.map((ds: any) => (
                 <button
                   key={ds.domain_name}
@@ -305,8 +300,7 @@ const RecruitmentsPanel = ({ authToken, powerLevel = 0 }: Props) => {
                   <tr><td colSpan={5} style={{ padding: "4rem", textAlign: "center", color: "var(--text-tertiary)" }}>Loading applicants...</td></tr>
                 ) : applications.length === 0 ? (
                   <tr><td colSpan={5} style={{ padding: "4rem", textAlign: "center", color: "var(--text-tertiary)" }}>No applications found.</td></tr>
-                ) : // fallow-ignore-next-line complexity
-                applications.map(app => {
+                ) : applications.map(app => {
                   const sColor = getStatusColor(app.status);
                   return (
                     <tr key={app.id} style={{ borderBottom: "1px solid var(--border-light)", transition: "background 0.2s" }}>

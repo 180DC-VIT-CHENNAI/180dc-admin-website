@@ -25,7 +25,6 @@ interface Props {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// fallow-ignore-next-line complexity
 export default function DepartmentPanel({ authToken, departmentId, departmentName }: Props) {
   const [meets, setMeets] = useState<any[]>([]);
   const [instructions, setInstructions] = useState<any[]>([]);
@@ -48,7 +47,6 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
     Authorization: `Bearer ${authToken}`,
   };
 
-  // fallow-ignore-next-line complexity
   async function loadOverview() {
     try {
       setLoading(true);
@@ -107,7 +105,6 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
           </div>
           
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: "1.5rem" }}>
-            // fallow-ignore-next-line complexity
             {meets.map((m) => (
               <div key={m.id} style={{ 
                 padding: "1.25rem", borderRadius: 16, background: "var(--surface)", 
@@ -171,7 +168,6 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
           </div>
           
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: "1.5rem" }}>
-            // fallow-ignore-next-line complexity
             {instructions.map((inst) => (
               <div key={inst.id} style={{ 
                 padding: "1.25rem", borderRadius: 16, background: "var(--surface)", 

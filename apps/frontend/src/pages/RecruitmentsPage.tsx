@@ -26,12 +26,10 @@ type PageState = "landing" | "register" | "login" | "form" | "dashboard";
 const STATUS_INFO: Record<string, { label: string; color: string; icon: string }> = {
   pending: { label: "Pending Review", color: "#f39c12", icon: "⏳" },
   shortlisted: { label: "Shortlisted", color: "#28a745", icon: "✅" },
-  // fallow-ignore-next-line complexity
   selected: { label: "Selected", color: "#007bff", icon: "🏆" },
   rejected: { label: "Not Selected", color: "#6c757d", icon: "📋" },
 };
 
-// fallow-ignore-next-line complexity
 const RecruitmentsPage = () => {
   const [pageState, setPageState] = useState<PageState>("landing");
   const [applicant, setApplicant] = useState<{ id: string; email: string; name: string } | null>(null);
@@ -103,7 +101,6 @@ const RecruitmentsPage = () => {
     }
   }, [applicant, sessionToken]);
 
-  // fallow-ignore-next-line complexity
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setRegError("");
@@ -131,7 +128,6 @@ const RecruitmentsPage = () => {
     finally { setRegBusy(false); }
   }
 
-  // fallow-ignore-next-line complexity
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoginError("");
@@ -469,7 +465,6 @@ const RecruitmentsPage = () => {
   );
 };
 
-// fallow-ignore-next-line complexity
 function ApplicantDashboard({
   applicant,
   application,

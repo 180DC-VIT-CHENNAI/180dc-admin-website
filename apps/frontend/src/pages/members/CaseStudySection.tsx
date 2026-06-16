@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { apiUrl } from "../../lib/api";
 
-// fallow-ignore-next-line complexity
 export default function CaseStudySection({ authToken, powerLevel }: { authToken: string; powerLevel: number }) {
   const [caseStudies, setCaseStudies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +43,6 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
     savedRangeRef.current = null;
   }, []);
 
-  // fallow-ignore-next-line complexity
   const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -300,7 +298,6 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          // fallow-ignore-next-line complexity
           {caseStudies.map((cs) => (
             <div key={cs.id} className="card-doodle" style={{ padding: 16, display: "flex", gap: 14, alignItems: "flex-start" }}>
               {cs.image_url && (

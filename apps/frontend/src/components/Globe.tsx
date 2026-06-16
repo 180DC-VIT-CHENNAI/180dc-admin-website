@@ -9,7 +9,6 @@ import { PolaroidGallery } from './gallery/PolaroidGallery';
 
 gsap.registerPlugin(ScrollTrigger);
 
-// fallow-ignore-next-line complexity
 const Globe = () => {
   const globeRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);

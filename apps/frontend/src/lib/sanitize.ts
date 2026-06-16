@@ -33,7 +33,6 @@ function escapeHtml(str: string): string {
     .replace(/'/g, "&#x27;");
 }
 
-// fallow-ignore-next-line complexity
 export function sanitizeHtml(input: string): string {
   let s = input;
 

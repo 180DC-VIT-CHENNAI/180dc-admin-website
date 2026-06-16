@@ -7,7 +7,6 @@ interface Props {
   onClose: () => void;
 }
 
-// fallow-ignore-next-line complexity
 export default function ConsultingFormModal({ isOpen, onClose }: Props) {
   const formRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);

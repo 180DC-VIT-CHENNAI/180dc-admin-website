@@ -25,7 +25,6 @@ const Globe = lazy(() => import("./components/Globe"));
 const ConsultingFormModal = lazy(() => import("./components/ConsultingFormModal"));
 const ConsultingBoy = lazy(() => import("./components/ConsultingBoy"));
 
-// fallow-ignore-next-line complexity
 function App() {
   const splashRef = useRef<HTMLDivElement>(null);
   const [activeNav, setActiveNav] = useState("#");
@@ -52,7 +51,6 @@ function App() {
   const [completedProjects, setCompletedProjects] = useState<any[]>([]);
 
   useEffect(() => {
-    // fallow-ignore-next-line complexity
     async function loadContent() {
       try {
         const [csRes, tmRes, bpRes, pRes, completedRes] = await Promise.all([
@@ -564,7 +562,6 @@ function App() {
           <div className="cases-grid"
             style={caseStudies.length > 4 ? { maxHeight: 520, overflowY: "auto", paddingRight: 8 } : undefined}
           >
-            // fallow-ignore-next-line complexity
             {caseStudies.map((cs, i) => (
               <div
                 key={i}
@@ -676,7 +673,6 @@ function App() {
           <div className="blog-grid"
             style={blogPosts.length > 4 ? { maxHeight: 520, overflowY: "auto", paddingRight: 8 } : undefined}
           >
-            // fallow-ignore-next-line complexity
             {blogPosts.slice(0, 6).map((post, i) => (
               <div key={i} className="blog-card card-doodle" style={{ position: "relative" }}>
                 {post.image_url && (

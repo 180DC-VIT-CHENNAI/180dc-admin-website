@@ -86,7 +86,6 @@ interface MagicRingsProps {
   clickBurst?: boolean;
 }
 
-// fallow-ignore-next-line complexity
 export default function MagicRings({
   color = '#fc42ff',
   colorTwo = '#42fcff',
@@ -223,7 +222,6 @@ export default function MagicRings({
     mount.addEventListener('click', onClick);
 
     let frameId: number;
-    // fallow-ignore-next-line complexity
     const animate = (t: number) => {
       frameId = requestAnimationFrame(animate);
       const p = propsRef.current;

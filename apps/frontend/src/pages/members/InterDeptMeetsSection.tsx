@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { apiUrl } from "../../lib/api";
 import FullPageLoader from "./FullPageLoader";
 
-// fallow-ignore-next-line complexity
 export default function InterDeptMeetsSection({ authToken, departments, powerLevel }: { authToken: string; departments: any[]; powerLevel: number }) {
   const [meets, setMeets] = useState<any[]>([]);
   const [title, setTitle] = useState("");
@@ -32,7 +31,6 @@ export default function InterDeptMeetsSection({ authToken, departments, powerLev
       
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {meets.length === 0 && <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-tertiary)", border: "1px dashed var(--outline-variant)", borderRadius: 12 }}>No inter-department meets scheduled.</div>}
-        {// fallow-ignore-next-line complexity
         meets.map((m) => (
           <div key={m.id} style={{ 
             padding: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -103,8 +101,7 @@ export default function InterDeptMeetsSection({ authToken, departments, powerLev
               </label>
             ))}
           </div>
-          <button className="btn" disabled={scheduling} onClick={// fallow-ignore-next-line complexity
-          async () => {
+          <button className="btn" disabled={scheduling} onClick={async () => {
             if (!title || !when) return alert("Title and date required");
             if (selectedDepts.length === 0) return alert("Select at least one department");
             setScheduling(true);

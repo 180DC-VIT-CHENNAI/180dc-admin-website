@@ -3,7 +3,6 @@ import { apiUrl } from "../../lib/api";
 
 export default function AdminDataLoader({ authToken, setAllUsers, setAllRoles }: { authToken: string; setAllUsers: any; setAllRoles: any }) {
   useEffect(() => {
-    // fallow-ignore-next-line complexity
     async function load() {
       const [uRes, rRes] = await Promise.all([
         fetch(apiUrl("/api/users"), { headers: { Authorization: `Bearer ${authToken}` } }),

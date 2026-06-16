@@ -19,7 +19,6 @@ export default function InstructionsSection({ authToken, departmentId }: { authT
         </div>
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {// fallow-ignore-next-line complexity
         instructions.map((inst) => (
           <div key={inst.id} style={{ 
             padding: "1.25rem", background: "var(--surface)", border: "1px solid var(--border-light)", borderRadius: 16

@@ -15,7 +15,6 @@ const navItems = [
   { label: "Post a Blog", href: "/post-blog" },
 ];
 
-// fallow-ignore-next-line complexity
 export default function BlogView() {
   const { slug } = useParams<{ slug: string }>();
   const [blog, setBlog] = useState<any | null>(null);

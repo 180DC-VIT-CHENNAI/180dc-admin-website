@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { apiUrl } from "../lib/api";
 
-// fallow-ignore-next-line complexity
 export default function RequestAccount() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -18,7 +17,6 @@ export default function RequestAccount() {
       .catch(() => {});
   }, []);
 
-  // fallow-ignore-next-line complexity
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setStatus("submitting");

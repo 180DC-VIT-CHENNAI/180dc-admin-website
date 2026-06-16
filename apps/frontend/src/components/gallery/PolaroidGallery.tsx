@@ -12,7 +12,6 @@ function NavBtn({ onClick, children }: { onClick: () => void; children: React.Re
   );
 }
 
-// fallow-ignore-next-line complexity
 function PolaroidCard({ event, onClick }: { event: PolaroidEvent; onClick: () => void }) {
   const [hovered, setHovered] = useState(false);
   const vineH = VINE_H[event.vineLength];
@@ -39,7 +38,6 @@ function PolaroidCard({ event, onClick }: { event: PolaroidEvent; onClick: () =>
   );
 }
 
-// fallow-ignore-next-line complexity
 export function PolaroidGallery({ onClose }: { onClose?: () => void }) {
   const [activeEvent, setActiveEvent] = useState<PolaroidEvent | null>(null);
   const [photoIdx, setPhotoIdx] = useState(0);
