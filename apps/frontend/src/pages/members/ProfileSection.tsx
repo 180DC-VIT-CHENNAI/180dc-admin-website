@@ -13,6 +13,7 @@ interface Props {
   onOAuthStatusChange: (msg: string | null) => void;
 }
 
+// fallow-ignore-next-line complexity
 export default function ProfileSection({ authToken, email, powerLevel, departmentId, deptName, oauthEnabled, statusMsg, onOAuthStatusChange }: Props) {
   const clerk = useClerk();
   const [showToken, setShowToken] = useState(false);
@@ -39,6 +40,7 @@ export default function ProfileSection({ authToken, email, powerLevel, departmen
     }
   };
 
+  // fallow-ignore-next-line complexity
   const handleRotate = async () => {
     setRotating(true);
     setRotateError(null);

@@ -26,6 +26,32 @@ const MAX_CLERK_TOKEN_LEN = 8192;
 const MAX_MSG_LEN = 2000;
 const MAX_PROJECT_DESC_LEN = 5000;
 
+function isPublicRoute(pathname: string, method: string): boolean {
+  const LOGIN_ROUTES = ["/api/dev-login", "/api/auth/clerk-login"];
+  if (LOGIN_ROUTES.includes(pathname)) return true;
+
+  const PUBLIC_ROUTES: [string, string?, string?][] = [
+    ["/api/signup-requests", "POST"],
+    ["/api/consulting-request"],
+    ["/api/auth/forgot-token"],
+    ["/api/departments"],
+    ["/api/projects/completed"],
+    ["/api/recruitment/register"],
+    ["/api/recruitment/login"],
+    ["/api/recruitment/open-domains"],
+    ["/api/blogs"],
+  ];
+  for (const [route, requiredMethod] of PUBLIC_ROUTES) {
+    if (pathname === route && (!requiredMethod || method === requiredMethod)) return true;
+  }
+
+  if (pathname.startsWith("/api/content") && method === "GET") return true;
+  if (pathname.startsWith("/api/blogs/") && method === "GET" && !pathname.startsWith("/api/blogs/admin")) return true;
+  if (pathname === "/api/admin/maintenance" && method === "GET") return true;
+
+  return false;
+}
+
 function sanitizeStr(val: unknown, maxLen = MAX_STR_LEN): string | null {
   if (typeof val !== "string") return null;
   const trimmed = val.trim();
@@ -795,32 +821,9 @@ app.use("*", async (c, next) => {
     return c.json({ error: "Database initialization failed" }, 500);
   }
 
-  // Allow unauthenticated routes: public signup + dev-login (handles its own auth)
+  // Allow unauthenticated routes
   const url = new URL(c.req.url);
-
-  // Allow login endpoints (no Bearer token required)
-  if (
-    url.pathname === "/api/dev-login" ||
-    url.pathname === "/api/auth/clerk-login"
-  ) {
-    await next();
-    return;
-  }
-
-  if (
-    (url.pathname === "/api/signup-requests" && c.req.method === "POST") ||
-    url.pathname === "/api/consulting-request" ||
-    url.pathname === "/api/auth/forgot-token" ||
-    url.pathname === "/api/departments" ||
-    url.pathname === "/api/projects/completed" ||
-    (url.pathname.startsWith("/api/content") && c.req.method === "GET") ||
-    url.pathname === "/api/recruitment/register" ||
-    url.pathname === "/api/recruitment/login" ||
-    url.pathname === "/api/recruitment/open-domains" ||
-    url.pathname === "/api/blogs" ||
-    (url.pathname.startsWith("/api/blogs/") && c.req.method === "GET" && !url.pathname.startsWith("/api/blogs/admin")) ||
-    (url.pathname === "/api/admin/maintenance" && c.req.method === "GET")
-  ) {
+  if (isPublicRoute(url.pathname, c.req.method)) {
     await next();
     return;
   }
@@ -4741,12 +4744,27 @@ export class ChatRoomDO {
     let data: any;
     try { data = JSON.parse(raw); } catch { return; }
 
-    // Resolve sender: try direct ws lookup, then connId from client, then _connId on ws
+    const sender = await this._resolveSender(ws, data);
+    if (!sender) return;
+
+    const throttled = this._checkChatRateLimit(ws, sender, data.type);
+    if (throttled) return;
+
+    if (data.type === "message") { await this._handleChatMessage(ws, sender, data); return; }
+    if (data.type === "typing") { this._handleTyping(ws, sender, data); return; }
+    if (data.type === "create_poll") { await this._handleCreatePoll(ws, sender, data); return; }
+    if (data.type === "vote") { await this._handleVote(ws, sender, data); return; }
+    if (data.type === "close_poll") { await this._handleClosePoll(ws, sender, data); return; }
+    if (data.type !== "ping") {
+      try { ws.send(JSON.stringify({ type: "_echo", received: data, senderId: sender.userId })); } catch {}
+    }
+  }
+
+  async _resolveSender(ws: WebSocket, data: any) {
     let sender = this.connections.get(ws);
     if (!sender && data.connId) {
       sender = this.connById.get(data.connId);
       if (!sender) {
-        // Try storage recovery
         try {
           const rawStored = await this.state.storage.get("conn:" + data.connId);
           if (rawStored) {
@@ -4772,146 +4790,138 @@ export class ChatRoomDO {
         } catch {}
       }
     }
-    if (!sender) return;
+    return sender;
+  }
 
-    // Per-user rate limiting for chat actions
-    if (data.type === "message" || data.type === "create_poll") {
-      const now = Date.now();
-      const windowMs = 1000;
-      const maxPerWindow = 10;
-      let rl = this.rateLimits.get(sender.userId);
-      if (!rl || now - rl.windowStart > windowMs) {
-        rl = { count: 0, windowStart: now };
-        this.rateLimits.set(sender.userId, rl);
-      }
-      rl.count++;
-      if (rl.count > maxPerWindow) {
-        try { ws.send(JSON.stringify({ type: "rate_limited", retryAfter: Math.ceil((rl.windowStart + windowMs - now) / 1000) })); } catch {}
-        return;
+  _checkChatRateLimit(ws: WebSocket, sender: any, type: string) {
+    if (type !== "message" && type !== "create_poll") return false;
+    const now = Date.now();
+    const windowMs = 1000;
+    const maxPerWindow = 10;
+    let rl = this.rateLimits.get(sender.userId);
+    if (!rl || now - rl.windowStart > windowMs) {
+      rl = { count: 0, windowStart: now };
+      this.rateLimits.set(sender.userId, rl);
+    }
+    rl.count++;
+    if (rl.count > maxPerWindow) {
+      try { ws.send(JSON.stringify({ type: "rate_limited", retryAfter: Math.ceil((rl.windowStart + windowMs - now) / 1000) })); } catch {}
+      return true;
+    }
+    return false;
+  }
+
+  async _handleChatMessage(ws: WebSocket, sender: any, data: any) {
+    const content = (data.content || "").trim().slice(0, 2000);
+    if (!content) return;
+
+    const mentionRegex = /@(\w+)/g;
+    let m;
+    const mentionedUserIds: string[] = [];
+    while ((m = mentionRegex.exec(content)) !== null) {
+      const name = m[1].toLowerCase();
+      for (const [_, c] of this.connections) {
+        if (c.userName && c.userName.split(" ")[0].toLowerCase() === name && !mentionedUserIds.includes(c.userId)) {
+          mentionedUserIds.push(c.userId);
+        }
       }
     }
 
-    if (data.type === "message") {
-      const content = (data.content || "").trim().slice(0, 2000);
-      if (!content) return;
+    const msg: any = {
+      id: crypto.randomUUID().replace(/-/g, ""),
+      userId: sender.userId,
+      userName: sender.userName,
+      userRole: sender.userRole,
+      content,
+      timestamp: Date.now(),
+      isTestAccount: sender.isTestAccount,
+    };
+    if (mentionedUserIds.length > 0) msg.mentions = mentionedUserIds;
 
-      // Parse @mentions
-      const mentionRegex = /@(\w+)/g;
-      let m;
-      const mentionedUserIds: string[] = [];
-      while ((m = mentionRegex.exec(content)) !== null) {
-        const name = m[1].toLowerCase();
-        for (const [_, c] of this.connections) {
-          if (c.userName && c.userName.split(" ")[0].toLowerCase() === name && !mentionedUserIds.includes(c.userId)) {
-            mentionedUserIds.push(c.userId);
-          }
-        }
-      }
+    this.messages.push(msg);
+    await this._saveTail();
+    this.broadcast({ type: "message", ...msg }, null);
+  }
 
-      const msg: any = {
+  _handleTyping(ws: WebSocket, sender: any, data: any) {
+    this.broadcast({ type: "typing", userId: sender.userId, userName: sender.userName, active: !!data.active }, ws);
+  }
+
+  async _handleCreatePoll(ws: WebSocket, sender: any, data: any) {
+    try {
+      const question = (data.question || "").trim().slice(0, 200);
+      if (!question) return;
+      const options: string[] = (data.options || []).slice(0, 10).map((o: string) => (o || "").trim()).filter(Boolean);
+      if (options.length < 2) return;
+
+      const poll: any = {
         id: crypto.randomUUID().replace(/-/g, ""),
+        creatorId: sender.userId,
+        creatorName: sender.userName,
+        question,
+        options,
+        votes: {},
+        active: true,
+        timestamp: Date.now(),
+      };
+
+      this.polls.push(poll);
+
+      const pollMsg: any = {
+        id: poll.id,
+        type: "poll",
+        poll,
         userId: sender.userId,
         userName: sender.userName,
         userRole: sender.userRole,
-        content,
-        timestamp: Date.now(),
+        timestamp: poll.timestamp,
         isTestAccount: sender.isTestAccount,
       };
-      if (mentionedUserIds.length > 0) msg.mentions = mentionedUserIds;
 
-      this.messages.push(msg);
+      this.messages.push(pollMsg);
       await this._saveTail();
-
-      // Broadcast immediately for real-time delivery
-      this.broadcast({ type: "message", ...msg }, null);
-    }
-
-    if (data.type === "typing") {
-      this.broadcast({ type: "typing", userId: sender.userId, userName: sender.userName, active: !!data.active }, ws);
-    }
-
-    if (data.type === "create_poll") {
-      try {
-        const question = (data.question || "").trim().slice(0, 200);
-        if (!question) return;
-        const options: string[] = (data.options || []).slice(0, 10).map((o: string) => (o || "").trim()).filter(Boolean);
-        if (options.length < 2) return;
-
-        const poll: any = {
-          id: crypto.randomUUID().replace(/-/g, ""),
-          creatorId: sender.userId,
-          creatorName: sender.userName,
-          question,
-          options,
-          votes: {},
-          active: true,
-          timestamp: Date.now(),
-        };
-
-        this.polls.push(poll);
-
-        const pollMsg: any = {
-          id: poll.id,
-          type: "poll",
-          poll,
-          userId: sender.userId,
-          userName: sender.userName,
-          userRole: sender.userRole,
-          timestamp: poll.timestamp,
-          isTestAccount: sender.isTestAccount,
-        };
-
-        this.messages.push(pollMsg);
-        await this._saveTail();
-        this.state.storage.put("polls", this.polls).catch(() => {});
-
-        this.broadcast({ type: "poll", id: poll.id, poll, userId: sender.userId, userName: sender.userName, userRole: sender.userRole, timestamp: poll.timestamp, isTestAccount: sender.isTestAccount }, null);
-      } catch {} 
-    }
-
-    if (data.type === "vote") {
-      const pollId = data.pollId;
-      const optionIndex = data.optionIndex;
-      const poll = this.polls.find((p: any) => p.id === pollId);
-      if (!poll || !poll.active) return;
-      if (poll.votes[sender.userId] !== undefined) return;
-
-      if (optionIndex < 0 || optionIndex >= poll.options.length) return;
-
-      poll.votes[sender.userId] = optionIndex;
-
-      const pollMsg = this.messages.find((m: any) => m.id === pollId);
-      if (pollMsg) {
-        pollMsg.poll = poll;
-        await this._saveTail();
-      }
-
-      this.broadcast({ type: "poll_updated", poll }, null);
       this.state.storage.put("polls", this.polls).catch(() => {});
+
+      this.broadcast({ type: "poll", id: poll.id, poll, userId: sender.userId, userName: sender.userName, userRole: sender.userRole, timestamp: poll.timestamp, isTestAccount: sender.isTestAccount }, null);
+    } catch {}
+  }
+
+  async _handleVote(ws: WebSocket, sender: any, data: any) {
+    const pollId = data.pollId;
+    const optionIndex = data.optionIndex;
+    const poll = this.polls.find((p: any) => p.id === pollId);
+    if (!poll || !poll.active) return;
+    if (poll.votes[sender.userId] !== undefined) return;
+    if (optionIndex < 0 || optionIndex >= poll.options.length) return;
+
+    poll.votes[sender.userId] = optionIndex;
+
+    const pollMsg = this.messages.find((m: any) => m.id === pollId);
+    if (pollMsg) {
+      pollMsg.poll = poll;
+      await this._saveTail();
     }
 
-    if (data.type === "close_poll") {
-      const pollId = data.pollId;
-      const poll = this.polls.find((p: any) => p.id === pollId);
-      if (!poll || !poll.active) return;
-      if (poll.creatorId !== sender.userId) return;
+    this.broadcast({ type: "poll_updated", poll }, null);
+    this.state.storage.put("polls", this.polls).catch(() => {});
+  }
 
-      poll.active = false;
+  async _handleClosePoll(ws: WebSocket, sender: any, data: any) {
+    const pollId = data.pollId;
+    const poll = this.polls.find((p: any) => p.id === pollId);
+    if (!poll || !poll.active) return;
+    if (poll.creatorId !== sender.userId) return;
 
-      const pollMsg = this.messages.find((m: any) => m.id === pollId);
-      if (pollMsg) {
-        pollMsg.poll = poll;
-        await this._saveTail();
-      }
+    poll.active = false;
 
-      this.broadcast({ type: "poll_updated", poll }, null);
-      this.state.storage.put("polls", this.polls).catch(() => {});
+    const pollMsg = this.messages.find((m: any) => m.id === pollId);
+    if (pollMsg) {
+      pollMsg.poll = poll;
+      await this._saveTail();
     }
 
-    // Echo any unhandled message back for debugging
-    if (data.type !== "message" && data.type !== "typing" && data.type !== "create_poll" && data.type !== "vote" && data.type !== "close_poll" && data.type !== "ping") {
-      try { ws.send(JSON.stringify({ type: "_echo", received: data, senderId: sender.userId })); } catch {}
-    }
+    this.broadcast({ type: "poll_updated", poll }, null);
+    this.state.storage.put("polls", this.polls).catch(() => {});
   }
 
   async webSocketClose(ws: WebSocket) {

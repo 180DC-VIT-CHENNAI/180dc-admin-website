@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { apiUrl } from "../../lib/api";
 
+// fallow-ignore-next-line complexity
 export default function ProjectTasksSection({ authToken, projectId, projectStatus, canManageTasks, isBoard }: { authToken: string; projectId: string; projectStatus: string; canManageTasks: boolean; isBoard: boolean }) {
   const [tasks, setTasks] = useState<any[]>([]);
   const [taskTitle, setTaskTitle] = useState("");

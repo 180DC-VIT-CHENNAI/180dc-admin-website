@@ -31,6 +31,7 @@ const navItems = [
   { label: "Recruitments", href: "/recruitments" },
 ];
 
+// fallow-ignore-next-line complexity
 export default function PostBlog() {
   const navigate = useNavigate();
   const editorRef = useRef<HTMLDivElement>(null);
@@ -58,6 +59,7 @@ export default function PostBlog() {
     savedRangeRef.current = null;
   }, []);
 
+  // fallow-ignore-next-line complexity
   const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;

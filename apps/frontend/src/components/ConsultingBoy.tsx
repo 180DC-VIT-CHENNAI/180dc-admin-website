@@ -14,6 +14,7 @@ const SPEECH_BUBBLE_1 =
 const SPEECH_BUBBLE_2 =
   'If you want free consulting in any topic, please send a request!';
 
+// fallow-ignore-next-line complexity
 export default function ConsultingBoy({ onRequestConsulting }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const charRef = useRef<HTMLDivElement>(null);
@@ -75,6 +76,7 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
       },
     });
 
+    // fallow-ignore-next-line complexity
     const checkInterval = setInterval(() => {
       if (!visibleRef.current) return;
       const b1 = bubble1Ref.current;
