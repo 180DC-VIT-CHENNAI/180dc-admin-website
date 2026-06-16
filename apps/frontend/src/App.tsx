@@ -225,8 +225,7 @@ function App() {
       );
     });
 
-    const cards = document.querySelectorAll(".card-doodle");
-    cards.forEach((card) => {
+    function attachCardHover(card: Element) {
       card.addEventListener("mouseenter", () => {
         gsap.to(card, {
           scale: 1.02,
@@ -241,10 +240,19 @@ function App() {
           ease: "power2.out",
         });
       });
+    }
+    document.querySelectorAll(".card-doodle").forEach(attachCardHover);
+    const cardObserver = new MutationObserver(() => {
+      document.querySelectorAll(".card-doodle:not([data-gsap-hover])").forEach((card) => {
+        card.setAttribute("data-gsap-hover", "true");
+        attachCardHover(card);
+      });
     });
+    cardObserver.observe(document.body, { childList: true, subtree: true });
 
     return () => {
       ScrollTrigger.getAll().forEach((t) => t.kill());
+      cardObserver.disconnect();
     };
   }, []);
 

@@ -26,6 +26,7 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
   const [, setStep] = useState(0);
 
   function slideOut() {
+    if (!wrapperRef.current) return;
     gsap.to(wrapperRef.current, {
       x: "-120%",
       duration: 0.5,
@@ -36,12 +37,15 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
 
   function slideIn() {
     setVisible(true);
-    gsap.to(wrapperRef.current, { x: 0, duration: 0.6, ease: "power3.out" });
+    if (wrapperRef.current) {
+      gsap.to(wrapperRef.current, { x: 0, duration: 0.6, ease: "power3.out" });
+    }
   }
 
   useEffect(() => {
     const sections = document.querySelectorAll("#about, .projects-section");
     if (sections.length === 0) return;
+    if (!wrapperRef.current || !bubble1Ref.current || !bubble2Ref.current) return;
 
     const tl = gsap.timeline({ paused: true });
 

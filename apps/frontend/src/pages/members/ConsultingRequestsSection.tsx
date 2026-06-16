@@ -118,7 +118,7 @@ export default function ConsultingRequestsSection({ authToken }: { authToken: st
              <div style={{ flex: 1, height: 1, background: "rgba(245, 158, 11, 0.2)" }} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            pending.map((req: any) => (
+            {pending.map((req: any) => (
               <div key={req.id} className="dashboard-card" style={{ padding: "1.5rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
                   <div style={{ flex: 1, minWidth: 260 }}>

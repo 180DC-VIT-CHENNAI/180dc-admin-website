@@ -241,7 +241,9 @@ const Globe = () => {
             d.properties.ISO_A3 === 'IND' ? '#8dc63f' : 'rgba(100, 100, 100, 0.3)'
           }
           polygonLabel={({ properties: d }: any) => {
-            const name = (d.ADMIN || d.ST_NM || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+            let name = (d.ADMIN || d.ST_NM || "");
+            name = name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
+            if (!name.trim()) return "";
             return `<div class="globe-label"><b>${name}</b></div>`;
           }}
           onPolygonHover={() => {}}

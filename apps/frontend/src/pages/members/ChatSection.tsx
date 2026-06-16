@@ -512,7 +512,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
               </button>
             )}
 
-            grouped.map((group) => (
+            {grouped.map((group) => (
               <div key={group.dateLabel} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "1rem 0" }}>
                    <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} />
@@ -520,7 +520,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
                    <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} />
                 </div>
 
-                group.entries.map((entry) => {
+                {group.entries.map((entry) => {
                   if (isPoll(entry)) {
                     const p = entry.poll;
                     const votedOption = p.votes[currentUser?.userId || ""];
@@ -534,7 +534,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
                         </div>
                         <h4 style={{ margin: "0 0 1rem", fontSize: "1rem", fontWeight: 700 }}>{p.question}</h4>
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                           p.options.map((opt, idx) => {
+                           {p.options.map((opt, idx) => {
                             const voteCount = Object.values(p.votes).filter((v) => v === idx).length;
                             const pct = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
                             const isSelected = votedOption === idx;
@@ -617,7 +617,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
               <div style={{ marginBottom: "1rem", padding: "1rem", borderRadius: 16, background: "var(--surface-container-low)", border: "1px solid var(--border-light)" }}>
                 <h4 style={{ margin: "0 0 12px", fontSize: 14 }}>New Poll</h4>
                 <input className="input" value={pollQuestion} onChange={(e) => setPollQuestion(e.target.value)} placeholder="What's your question?" style={{ marginBottom: 8 }} />
-                pollOptions.map((opt, idx) => (
+                {pollOptions.map((opt, idx) => (
                   <div key={idx} style={{ display: "flex", gap: 6, marginBottom: 4 }}>
                     <input className="input" value={opt} onChange={(e) => updatePollOption(idx, e.target.value)} placeholder={`Option ${idx + 1}`} />
                     {pollOptions.length > 2 && <button onClick={() => removePollOption(idx)} style={{ border: "none", background: "none", color: "#ef4444", cursor: "pointer" }}><span className="material-symbols-outlined">delete</span></button>}
@@ -639,7 +639,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
               <div style={{ flex: 1, position: "relative" }}>
                  {mentionSuggestions.length > 0 && (
                    <div style={{ position: "absolute", bottom: "100%", left: 0, right: 0, background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 12, boxShadow: "var(--shadow-lg)", marginBottom: 8, overflow: "hidden" }}>
-                       mentionSuggestions.map((u, idx) => (
+                       {mentionSuggestions.map((u, idx) => (
                         <div key={u.userId} onClick={() => insertMention(u.userName)} style={{ padding: "10px 14px", cursor: "pointer", fontSize: 13, background: idx === mentionIdx ? "var(--surface-variant)" : "transparent", display: "flex", alignItems: "center", gap: 10 }}>
                          <div className="avatar-circle" style={{ width: 24, height: 24, fontSize: 10 }}>{u.userName[0]}</div>
                          <span>{u.userName}</span>
@@ -674,7 +674,7 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
             </div>
             <div style={{ flex: 1, overflowY: "auto", padding: "1rem" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                onlineUsers.map((u) => (
+                {onlineUsers.map((u) => (
                   <div key={u.userId} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 10px", borderRadius: 12, transition: "background 0.2s" }}>
                     <div style={{ position: "relative" }}>
                       <div className="avatar-circle" style={{ width: 36, height: 36, fontSize: 14 }}>{u.userName[0]}</div>
