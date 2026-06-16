@@ -685,7 +685,7 @@ function App() {
             {blogPosts.slice(0, 6).map((post, i) => (
               <div key={i} className="blog-card card-doodle" style={{ position: "relative" }}>
                 {post.image_url && (
-                  <div style={{ width: "100%", height: 140, overflow: "hidden", borderRadius: "10px 10px 0 0", marginTop: -16, marginLeft: -16, marginRight: -16, marginBottom: 12, width: "calc(100% + 32px)" }}>
+                  <div style={{ width: "calc(100% + 32px)", height: 140, overflow: "hidden", borderRadius: "10px 10px 0 0", marginTop: -16, marginLeft: -16, marginRight: -16, marginBottom: 12 }}>
                     <img src={post.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   </div>
                 )}

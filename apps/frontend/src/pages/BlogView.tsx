@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import PillNav from "../components/PillNav";
 import { apiUrl } from "../lib/api";
@@ -37,7 +37,7 @@ export default function BlogView() {
     if (!slug) { setError("No blog slug provided"); setLoading(false); return; }
     async function load() {
       try {
-        const res = await fetch(apiUrl(`/api/blogs/${encodeURIComponent(slug)}`));
+        const res = await fetch(apiUrl(`/api/blogs/${encodeURIComponent(slug!)}`));
         const d = await res.json();
         if (d.success) setBlog(d.data);
         else setError(d.error || "Blog not found");

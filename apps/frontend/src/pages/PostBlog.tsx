@@ -30,7 +30,7 @@ export default function PostBlog() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
-  const [authToken, setAuthToken] = useState<string | null>(() => sessionStorage.getItem("authToken"));
+  const [authToken] = useState<string | null>(() => sessionStorage.getItem("authToken"));
 
   const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
