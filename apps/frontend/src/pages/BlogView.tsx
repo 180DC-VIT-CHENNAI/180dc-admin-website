@@ -6,6 +6,17 @@ import "./BlogView.css";
 
 const UNSAFE_TAGS = ["script", "iframe", "object", "embed", "frame", "meta", "link", "base"];
 
+function decodeEntities(str: string): string {
+  return str
+    .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
 function sanitizeHtml(html: string): string {
   let s = html;
   for (const tag of UNSAFE_TAGS) {
@@ -15,7 +26,7 @@ function sanitizeHtml(html: string): string {
   }
   s = s.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
   s = s.replace(/(href|src|action)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, (m) => {
-    const val = m.replace(/^(href|src|action)\s*=\s*/, "").replace(/^["']|["']$/g, "").toLowerCase();
+    const val = decodeEntities(m.replace(/^(href|src|action)\s*=\s*/, "").replace(/^["']|["']$/g, "").toLowerCase());
     if (val.startsWith("javascript:") || val.startsWith("data:") || val.startsWith("vbscript:")) return "";
     return m;
   });

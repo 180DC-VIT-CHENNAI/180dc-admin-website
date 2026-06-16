@@ -71,6 +71,17 @@ function escapeHtml(str: string): string {
 const SAFE_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "code", "strong", "b", "em", "i", "u", "br", "div", "span", "a", "img", "hr", "sub", "sup", "table", "thead", "tbody", "tr", "th", "td", "caption", "col", "colgroup"]);
 const SAFE_ATTRS = new Set(["href", "src", "alt", "title", "class", "target", "rel", "width", "height", "style"]);
 
+function decodeEntities(str: string): string {
+  return str
+    .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
 function sanitizeBlogHtml(input: string): string {
   let s = input
     .replace(/<script[\s\S]*?<\/script>/gi, "")
@@ -84,7 +95,7 @@ function sanitizeBlogHtml(input: string): string {
       const an = attr.match(/^([a-zA-Z:-]+)/i)?.[1]?.toLowerCase();
       if (!an || !SAFE_ATTRS.has(an)) return "";
       if (an === "href" || an === "src") {
-        const v = attr.replace(/^[^=]*=\s*/, "").replace(/^["']|["']$/g, "").toLowerCase();
+        const v = decodeEntities(attr.replace(/^[^=]*=\s*/, "").replace(/^["']|["']$/g, "").toLowerCase());
         if (/^(javascript|data|vbscript):/.test(v)) return "";
       }
       return attr;

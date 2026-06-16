@@ -4,12 +4,23 @@ import PillNav from "../components/PillNav";
 import { apiUrl } from "../lib/api";
 import "./PostBlog.css";
 
+function decodeEntities(str: string): string {
+  return str
+    .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
 function sanitizePaste(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<[^>]*on\w+\s*=[^>]*>/gi, "")
     .replace(/(href|src|action)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, (m) => {
-      const val = m.replace(/^(href|src|action)\s*=\s*/, "").replace(/^["']|["']$/g, "").toLowerCase();
+      const val = decodeEntities(m.replace(/^(href|src|action)\s*=\s*/, "").replace(/^["']|["']$/g, "").toLowerCase());
       if (val.startsWith("javascript:") || val.startsWith("data:") || val.startsWith("vbscript:")) return "";
       return m;
     });
