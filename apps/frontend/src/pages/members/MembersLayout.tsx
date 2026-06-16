@@ -447,7 +447,6 @@ export default function MembersLayout() {
     return (
       <div style={{ backgroundColor: "var(--bg-primary)", minHeight: "100vh", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
         <div className="card-doodle" style={{ maxWidth: 480, textAlign: "center", padding: 40 }}>
-          <span style={{ fontSize: 48, display: "block", marginBottom: 16 }}>🔧</span>
           <h2 style={{ margin: "0 0 12px" }}>Under Maintenance</h2>
           <p style={{ color: "var(--text-secondary)", margin: 0, lineHeight: 1.6 }}>
             {maintenanceMode.message || "The members portal is currently under maintenance. Please check back later."}
