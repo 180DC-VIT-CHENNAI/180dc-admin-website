@@ -260,10 +260,9 @@ export default function MembersLayout() {
     const pending = sessionStorage.getItem("clnk");
 
     async function handleClerkCallback() {
-      // If Clerk re-authenticated after logout, clear the flag
       if (sessionStorage.getItem("loggedOut")) {
-        if (authToken) return; // already logged in with a token
-        sessionStorage.removeItem("loggedOut"); // fresh Clerk session after logout — proceed
+        if (!authToken) return; // user just logged out — don't auto-login
+        sessionStorage.removeItem("loggedOut");
       }
 
       // Login flow: Clerk session exists but no token session
