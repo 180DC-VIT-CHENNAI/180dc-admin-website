@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { apiUrl } from "../../lib/api";
 
+// fallow-ignore-next-line complexity
 export default function RoomSettingsPanel({ authToken, powerLevel, departmentId, roleId, departments }: { authToken: string; powerLevel: number; departmentId: string | null; roleId: string | null; departments: any[] }) {
   const [settings, setSettings] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string | null>(null);

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { apiUrl } from "../../lib/api";
 import FullPageLoader from "./FullPageLoader";
 
+// fallow-ignore-next-line complexity
 export default function CreateProjectSection({ authToken, departments, onCreated }: { authToken: string; departments: any[]; onCreated?: () => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");

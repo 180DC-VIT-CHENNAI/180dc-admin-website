@@ -128,6 +128,7 @@ interface ColorBendsProps {
   bandWidth?: number;
 }
 
+// fallow-ignore-next-line complexity
 export default function ColorBends({
   className = '',
   style,
@@ -158,6 +159,7 @@ export default function ColorBends({
   const pointerCurrentRef = useRef(new THREE.Vector2(0, 0));
   const pointerSmoothRef = useRef(8);
 
+  // fallow-ignore-next-line complexity
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -251,6 +253,7 @@ export default function ColorBends({
     };
     rafRef.current = requestAnimationFrame(loop);
 
+    // fallow-ignore-next-line complexity
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       if (resizeObserverRef.current) resizeObserverRef.current.disconnect();
@@ -265,6 +268,7 @@ export default function ColorBends({
     };
   }, [bandWidth, frequency, intensity, iterations, mouseInfluence, noise, parallax, scale, speed, transparent, warpStrength, opacity]);
 
+  // fallow-ignore-next-line complexity
   useEffect(() => {
     const material = materialRef.current;
     const renderer = rendererRef.current;

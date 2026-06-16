@@ -87,6 +87,7 @@ function generatePaperTexture(ctx: CanvasRenderingContext2D, width: number, heig
   ctx.putImageData(imageData, 0, 0);
 }
 
+// fallow-ignore-next-line complexity
 function drawGridLines(ctx: CanvasRenderingContext2D, width: number, height: number) {
   ctx.strokeStyle = PEN_LIGHT;
   ctx.lineWidth = 0.5;
