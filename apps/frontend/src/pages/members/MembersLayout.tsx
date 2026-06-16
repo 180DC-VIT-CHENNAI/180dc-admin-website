@@ -17,6 +17,7 @@ import InstructionsSection from "./InstructionsSection";
 import ConsultingRequestsSection from "./ConsultingRequestsSection";
 import SendMailSection from "./SendMailSection";
 import RoomSettingsPanel from "./RoomSettingsPanel";
+import BlogSection from "./BlogSection";
 import TransfersSection from "./TransfersSection";
 import { apiUrl } from "../../lib/api";
 import { useTheme } from "../../context/ThemeContext";
@@ -422,6 +423,7 @@ export default function MembersLayout() {
     navSections.push({
       label: "Admin",
       items: [
+        { id: "blogs", label: "Blogs", minPower: 100, icon: "article" },
         { id: "consulting", label: "Consulting", minPower: 100, icon: "business_center" },
         { id: "sendmail", label: "Send Mail", minPower: 100, icon: "alternate_email" },
         { id: "admin", label: "Admin Console", minPower: 100, icon: "terminal" },
@@ -833,6 +835,10 @@ export default function MembersLayout() {
 
           {activePanel === "recruitments" && (
             <RecruitmentsPanel authToken={authToken!} powerLevel={powerLevel} />
+          )}
+
+          {activePanel === "blogs" && powerLevel >= 100 && (
+            <BlogSection authToken={authToken!} powerLevel={powerLevel} />
           )}
 
           {activePanel === "consulting" && powerLevel >= 100 && (

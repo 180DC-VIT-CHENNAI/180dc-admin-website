@@ -1,13 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, lazy, Suspense } from "react";
 import "./index.css";
-import Globe from "./components/Globe";
-import MagicRings from "./components/MagicRings";
+const MagicRings = lazy(() => import("./components/MagicRings"));
 import VariableProximity from "./components/VariableProximity";
 import SmoothScroll from "./components/SmoothScroll";
 import PillNav from "./components/PillNav";
-import ColorBends from "./components/ColorBends";
-import ConsultingBoy from "./components/ConsultingBoy";
-import ConsultingFormModal from "./components/ConsultingFormModal";
+const ColorBends = lazy(() => import("./components/ColorBends"));
 import { apiUrl } from "./lib/api";
 import {
   ScribbleArrow,
@@ -22,6 +19,10 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 
 gsap.registerPlugin(ScrollTrigger);
+
+const Globe = lazy(() => import("./components/Globe"));
+const ConsultingFormModal = lazy(() => import("./components/ConsultingFormModal"));
+const ConsultingBoy = lazy(() => import("./components/ConsultingBoy"));
 
 function App() {
   const splashRef = useRef<HTMLDivElement>(null);
@@ -263,6 +264,7 @@ function App() {
     { label: "Blog", href: "#blog" },
     { label: "Partners", href: "#partners" },
     { label: "Recruitments", href: "/recruitments" },
+    { label: "Post a Blog", href: "/post-blog" },
   ];
 
   return (
@@ -277,29 +279,31 @@ function App() {
       {/* Splash Landing Page */}
       <section className="splash-landing">
         <div className="splash-bg" ref={splashRef}>
-          <MagicRings
-            color="#8dc63f"
-            colorTwo="#a8d96a"
-            ringCount={10}
-            speed={0.8}
-            attenuation={8}
-            lineThickness={4}
-            baseRadius={0.25}
-            radiusStep={0.15}
-            scaleRate={0.12}
-            opacity={1}
-            blur={0}
-            noiseAmount={0.05}
-            rotation={0}
-            ringGap={1.4}
-            fadeIn={0.7}
-            fadeOut={0.5}
-            followMouse={true}
-            mouseInfluence={0.3}
-            hoverScale={1.3}
-            parallax={0.08}
-            clickBurst={true}
-          />
+          <Suspense fallback={<div className="splash-bg-placeholder" />}>
+            <MagicRings
+              color="#8dc63f"
+              colorTwo="#a8d96a"
+              ringCount={10}
+              speed={0.8}
+              attenuation={8}
+              lineThickness={4}
+              baseRadius={0.25}
+              radiusStep={0.15}
+              scaleRate={0.12}
+              opacity={1}
+              blur={0}
+              noiseAmount={0.05}
+              rotation={0}
+              ringGap={1.4}
+              fadeIn={0.7}
+              fadeOut={0.5}
+              followMouse={true}
+              mouseInfluence={0.3}
+              hoverScale={1.3}
+              parallax={0.08}
+              clickBurst={true}
+            />
+          </Suspense>
         </div>
         <div className="splash-content splash-white">
           <div className="splash-logo-white" />
@@ -343,14 +347,16 @@ function App() {
       {/* Hero Section */}
       <header id="hero" className="hero">
         <div className="hero-bg-overlay">
-          <ColorBends
-            colors={["#ffffff", "#8dc63f", "#ffffff", "#a8d96a"]}
-            speed={0.15}
-            warpStrength={1.2}
-            intensity={0.8}
-            opacity={0.4}
-            iterations={2}
-          />
+          <Suspense fallback={null}>
+            <ColorBends
+              colors={["#ffffff", "#8dc63f", "#ffffff", "#a8d96a"]}
+              speed={0.15}
+              warpStrength={1.2}
+              intensity={0.8}
+              opacity={0.4}
+              iterations={2}
+            />
+          </Suspense>
         </div>
         <div className="container hero-split">
           <div className="hero-content">
@@ -433,7 +439,9 @@ function App() {
             Chennai branch anchors our impact in India.
           </p>
           <div className="reveal reveal-delay-2">
-            <Globe />
+            <Suspense fallback={<div style={{ width: "100%", height: 700, display: "flex", alignItems: "center", justifyContent: "center" }}><p style={{ fontFamily: "'Patrick Hand', cursive", color: "var(--text-secondary)" }}>Loading globe...</p></div>}>
+              <Globe />
+            </Suspense>
           </div>
           <ScribbleSquiggle
             style={{
@@ -669,18 +677,23 @@ function App() {
                 Insights from our consultants and network.
               </p>
             </div>
-            <a href="#post-a-blog" className="btn outline post-blog-btn">
+            <a href="/post-blog" className="btn outline post-blog-btn">
               Post a Blog
             </a>
           </div>
           <div className="blog-grid">
-            {blogPosts.map((post, i) => (
-              <div key={i} className="blog-card card-doodle">
-                <span className="blog-date">{post.date}</span>
+            {blogPosts.slice(0, 6).map((post, i) => (
+              <div key={i} className="blog-card card-doodle" style={{ position: "relative" }}>
+                {post.image_url && (
+                  <div style={{ width: "100%", height: 140, overflow: "hidden", borderRadius: "10px 10px 0 0", marginTop: -16, marginLeft: -16, marginRight: -16, marginBottom: 12, width: "calc(100% + 32px)" }}>
+                    <img src={post.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  </div>
+                )}
+                <span className="blog-date">{post.date || new Date(post.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
                 <h3>{post.title}</h3>
-                <p>{post.description}</p>
-                <a href="#" className="read-more-btn">
-                  Read Post
+                <p>{post.excerpt || post.description}</p>
+                <a href={post.slug ? `/blog/${post.slug}` : "#"} className="read-more-btn">
+                  {post.slug ? "Read Full Post" : "Read Post"}
                 </a>
               </div>
             ))}
@@ -775,11 +788,15 @@ function App() {
         </div>
       </footer>
 
-      <ConsultingBoy onRequestConsulting={openConsultingForm} />
-      <ConsultingFormModal
-        isOpen={showConsultingForm}
-        onClose={() => setShowConsultingForm(false)}
-      />
+      <Suspense fallback={null}>
+        <ConsultingBoy onRequestConsulting={openConsultingForm} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <ConsultingFormModal
+          isOpen={showConsultingForm}
+          onClose={() => setShowConsultingForm(false)}
+        />
+      </Suspense>
     </SmoothScroll>
   );
 }
