@@ -252,7 +252,7 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
         }}>
           <div style={{ background: "var(--bg-card)", padding: "2rem", borderRadius: 24, textAlign: "center", boxShadow: "var(--shadow-lg)" }}>
             <span className="material-symbols-outlined" style={{ fontSize: 36, display: "block", marginBottom: "1rem" }}>sync</span>
-            <p style={{ margin: 0, fontSize: 15, color: "var(--text-secondary)" }}>Completing sign in...</p>
+            <p style={{ margin: 0, fontSize: 15, color: "var(--text-secondary)" }}>Please wait...</p>
           </div>
         </div>
       )}

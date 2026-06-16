@@ -1438,6 +1438,8 @@ app.post("/api/chat/rooms/unlock-all", async (c) => {
 app.get("/api/dashboard", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "dashboard", 30, 60);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
 
     const pendingRequests =
@@ -2658,6 +2660,8 @@ app.delete("/api/inter-dept-meets/:id", async (c) => {
 app.post("/api/meets/:type/:id/send-notification", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "meet_notification", 10, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
     if (user.power_level < 50) return c.json({ error: "Forbidden: Lead or above only" }, 403);
     const meetType = c.req.param("type");
@@ -3255,6 +3259,8 @@ app.post("/api/recruitment/login", async (c) => {
 app.post("/api/recruitment/applications", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "recruitment_application", 3, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const sessionApplicant = await getSessionApplicant(c);
     if (!sessionApplicant) {
       return c.json({ error: "Unauthorized: please log in first" }, 401);
@@ -3801,6 +3807,8 @@ app.get("/api/blogs/:slug", async (c) => {
 app.put("/api/blogs/:id/approve", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "blog_approve", 20, 60);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
     if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
 
@@ -3822,6 +3830,8 @@ app.put("/api/blogs/:id/approve", async (c) => {
 app.put("/api/blogs/:id/reject", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "blog_reject", 20, 60);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
     if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
 
@@ -3864,6 +3874,8 @@ app.put("/api/blogs/:id/reject", async (c) => {
 app.delete("/api/blogs/:id", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "blog_delete", 20, 60);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
     if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
 
@@ -3954,6 +3966,8 @@ app.get("/api/consulting-requests", async (c) => {
 app.post("/api/consulting-requests/:id/accept", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "consulting_accept", 10, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     requireBoard(c);
     const id = c.req.param("id");
 
@@ -4024,6 +4038,8 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
 app.post("/api/consulting-requests/:id/reject", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "consulting_reject", 10, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     requireBoard(c);
     const id = c.req.param("id");
     const request: any = await c.env.DB.prepare(
@@ -4117,6 +4133,8 @@ app.delete("/api/consulting-requests/:id", async (c) => {
 app.post("/api/case-studies", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "case_study_create", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
     if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
 
@@ -4323,6 +4341,8 @@ app.post("/api/chat/rooms/:room/toggle", async (c) => {
 app.post("/api/chat/init", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "chat_init", 30, 60);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
     if (!user) return c.json({ error: "Unauthorized" }, 401);
 
@@ -4545,92 +4565,9 @@ app.get("/api/club-files/projects", async (c) => {
 // Upload a file
 app.post("/api/club-files/upload", async (c) => {
   try {
-    const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
-
-    const body = await c.req.parseBody();
-    const file = body["file"] as File | null;
-    if (!file) return c.json({ error: "No file provided" }, 400);
-
-    const category = (body["category"] as string) || "general";
-    if (!["general", "projects", "events"].includes(category)) {
-      return c.json({ error: "Invalid category" }, 400);
-    }
-
-    const maxSize = 100 * 1024 * 1024;
-    if (file.size > maxSize) return c.json({ error: "File too large (max 100MB)" }, 400);
-
-    const ALLOWED_EXTENSIONS = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|jpg|jpeg|png|gif|webp|svg|zip|rar|7z|txt|csv|mp4|mov|avi|mkv|mp3|wav)$/i;
-    const fileName = file.name || "";
-    if (!ALLOWED_EXTENSIONS.test(fileName)) {
-      return c.json({ error: "File type not allowed" }, 400);
-    }
-
-    const id = crypto.randomUUID().replace(/-/g, "");
-    const ext = fileName.split(".").pop() || "";
-    const r2Key = `${category}/${id}.${ext}`;
-
-    const customMetadata: Record<string, string> = {
-      fileName: file.name,
-      fileType: file.type,
-      uploadedBy: user.id,
-      uploadedByName: user.name || user.email,
-      createdAt: new Date().toISOString(),
-    };
-    if (body["eventName"]) customMetadata.eventName = body["eventName"] as string;
-    if (body["eventFor"]) customMetadata.eventFor = body["eventFor"] as string;
-    if (body["projectName"]) customMetadata.projectName = body["projectName"] as string;
-    if (body["meetingTitle"]) customMetadata.meetingTitle = body["meetingTitle"] as string;
-    if (body["meetingDate"]) customMetadata.meetingDate = body["meetingDate"] as string;
-    if (body["description"]) customMetadata.description = body["description"] as string;
-
-    const arrayBuffer = await file.arrayBuffer();
-    await c.env.CLUB_FILES.put(r2Key, arrayBuffer, {
-      httpMetadata: { contentType: file.type },
-      customMetadata,
-    });
-
-    return c.json({ success: true, file: { id, category, file_name: file.name, file_type: file.type, file_size: file.size, event_name: customMetadata.eventName || null, event_for: customMetadata.eventFor || null, project_name: customMetadata.projectName || null, meeting_title: customMetadata.meetingTitle || null, meeting_date: customMetadata.meetingDate || null, meeting_class: customMetadata.meetingClass || null, description: customMetadata.description || null, uploaded_by: user.id, uploaded_by_name: user.name || user.email, created_at: customMetadata.createdAt, r2_key: r2Key } });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// Download a file
-app.get("/api/club-files/:id/download", async (c) => {
-  try {
-    const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
-
-    const id = c.req.param("id");
-    const listed = await c.env.CLUB_FILES.list();
-    let targetKey = "";
-    for (const obj of listed.objects) {
-      if (obj.key.endsWith(`/${id}.`) || obj.key.includes(`/${id}.`)) {
-        targetKey = obj.key;
-        break;
-      }
-    }
-    if (!targetKey) return c.json({ error: "File not found" }, 404);
-
-    const obj = await c.env.CLUB_FILES.get(targetKey);
-    if (!obj) return c.json({ error: "File not found in storage" }, 404);
-
-    const m = obj.customMetadata || {};
-    const headers = new Headers();
-    headers.set("Content-Type", obj.httpMetadata?.contentType || m.fileType || "application/octet-stream");
-    headers.set("Content-Disposition", `attachment; filename="${m.fileName || targetKey.split("/").pop()}"`);
-    headers.set("Content-Length", String(obj.size));
-
-    return new Response(obj.body, { headers });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// Delete a file
-app.delete("/api/club-files/:id", async (c) => {
-  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "club_files_upload", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
     if (!user || user.power_level < 50) return c.json({ error: "Forbidden" }, 403);
 
@@ -4671,6 +4608,8 @@ app.get("/api/admin/maintenance", async (c) => {
 app.post("/api/admin/maintenance", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "admin_maintenance_toggle", 5, 60);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
     if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
 
