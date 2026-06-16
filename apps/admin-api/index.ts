@@ -70,7 +70,7 @@ function escapeHtml(str: string): string {
 }
 
 const SAFE_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "code", "strong", "b", "em", "i", "u", "br", "div", "span", "a", "img", "hr", "sub", "sup", "table", "thead", "tbody", "tr", "th", "td", "caption", "col", "colgroup"]);
-const SAFE_ATTRS = new Set(["href", "src", "alt", "title", "class", "target", "rel", "width", "height", "style"]);
+const SAFE_ATTRS = new Set(["href", "src", "alt", "title", "class", "target", "rel", "width", "height"]);
 
 function decodeEntities(str: string): string {
   return str
@@ -628,6 +628,11 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE posts ADD COLUMN status TEXT DEFAULT 'pending'"); } catch { console.warn("Migration: status may already exist"); }
   try { await db.exec("ALTER TABLE posts ADD COLUMN is_published INTEGER DEFAULT 0"); } catch { console.warn("Migration: is_published may already exist"); }
   try { await db.exec("ALTER TABLE posts ADD COLUMN updated_at DATETIME"); } catch { console.warn("Migration: updated_at may already exist"); }
+  try { await db.exec("ALTER TABLE case_studies ADD COLUMN content TEXT DEFAULT ''"); } catch { console.warn("Migration: case_studies.content may already exist"); }
+  try { await db.exec("ALTER TABLE case_studies ADD COLUMN image_url TEXT"); } catch { console.warn("Migration: case_studies.image_url may already exist"); }
+  try { await db.exec("ALTER TABLE case_studies ADD COLUMN author_name TEXT DEFAULT 'Anonymous'"); } catch { console.warn("Migration: case_studies.author_name may already exist"); }
+  try { await db.exec("ALTER TABLE case_studies ADD COLUMN created_by TEXT"); } catch { console.warn("Migration: case_studies.created_by may already exist"); }
+  try { await db.exec("DELETE FROM case_studies WHERE id LIKE 'cs%' AND content IS NULL"); } catch { console.warn("Migration: could not remove seed case studies"); }
   try {
     await db.exec(`CREATE TABLE IF NOT EXISTS recruitment_sessions (
       id TEXT PRIMARY KEY, applicant_id TEXT NOT NULL, token_hash TEXT NOT NULL,
@@ -682,17 +687,6 @@ async function seedData(db: any, env?: any) {
       const devToken = crypto.randomUUID().replace(/-/g, "");
       await db.prepare("INSERT OR REPLACE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)").bind(devToken, "admin@vitstudent.ac.in", "Dev Admin", "president", "system").run();
       console.info("Dev token generated (visible only in dev mode)");
-    }
-
-    const csCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM case_studies").first();
-    if (csCount && csCount.cnt === 0) {
-      const cs = "INSERT OR IGNORE INTO case_studies (id, tag, title, description) VALUES (?, ?, ?, ?)";
-      await db.prepare(cs).bind("cs1", "Strategy", "EdTech Startup Growth", "Developed a comprehensive Go-To-Market strategy and user acquisition model for a rising EdTech platform serving 50K+ students.").run();
-      await db.prepare(cs).bind("cs2", "Operations", "NGO Operational Overhaul", "Streamlined logistics and supply chain inefficiencies for a local food distribution non-profit, reducing costs by 30%.").run();
-      await db.prepare(cs).bind("cs3", "Marketing", "Social Media Campaign", "Designed a viral social media campaign for a mental health awareness organization, reaching 2M+ impressions.").run();
-      await db.prepare(cs).bind("cs4", "Finance", "Fundraising Strategy", "Created a diversified fundraising strategy for an educational NGO, increasing donations by 45% in 6 months.").run();
-      await db.prepare(cs).bind("cs5", "Impact", "Rural Education Program", "Developed a scalable rural education program model for an NGO, impacting 10,000+ students across 50 villages.").run();
-      await db.prepare(cs).bind("cs6", "Technology", "Digital Transformation", "Led digital transformation for a legacy non-profit, modernizing their tech stack and improving efficiency by 60%.").run();
     }
 
     const tmCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM team_members").first();
@@ -822,7 +816,6 @@ app.use("*", async (c, next) => {
     url.pathname === "/api/recruitment/login" ||
     url.pathname === "/api/recruitment/open-domains" ||
     url.pathname === "/api/blogs" ||
-    url.pathname === "/api/blogs/upload-image" ||
     (url.pathname.startsWith("/api/blogs/") && c.req.method === "GET" && !url.pathname.startsWith("/api/blogs/admin"))
   ) {
     await next();
@@ -968,16 +961,12 @@ app.get("/api/content/blog-posts", async (c) => {
   try {
     await ensureTables(c.env.DB);
     await seedData(c.env.DB, c.env);
-    const seedRows = await c.env.DB.prepare("SELECT id, date as created_at, title, description as excerpt FROM blog_posts ORDER BY created_at ASC").all();
+    const rl = await checkRateLimit(c, "content_blog_posts", 100, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const approvedRows = await c.env.DB.prepare(
       "SELECT id, created_at, title, excerpt, image_url, author_name, author_association, slug FROM posts WHERE status = 'approved' AND is_published = 1 ORDER BY created_at DESC",
     ).all();
-    // Merge seed + approved, deduplicate by id
-    const seen = new Set<string>();
-    const merged: any[] = [];
-    for (const r of (approvedRows.results || [])) { seen.add(r.id); merged.push({ ...r, isApproved: true }); }
-    for (const r of (seedRows.results || [])) { if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); } }
-    return c.json({ success: true, data: merged });
+    return c.json({ success: true, data: approvedRows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -3635,6 +3624,8 @@ const MAX_IMG_SIZE = 10 * 1024 * 1024; // 10 MB
 app.post("/api/blogs/upload-image", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "blog_upload_image", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
 
     const fd = await c.req.formData();
     const file = fd.get("image");
@@ -3664,13 +3655,21 @@ app.post("/api/blogs/upload-image", async (c) => {
 });
 
 // 1b. Serve blog image from R2 (public)
-app.get("/api/blogs/images/{*key}", async (c) => {
+app.get("/api/blogs/images/*", async (c) => {
   try {
-    let key = c.req.param("key");
-    if (!key || key.includes("..")) return c.json({ error: "Invalid key" }, 400);
+    const rl = await checkRateLimit(c, "blog_image_serve", 200, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+    const url = new URL(c.req.url);
+    const prefix = "/api/blogs/images/";
+    let key = decodeURIComponent(url.pathname);
 
-    // Hono wildcard params may include a leading slash — strip it
-    key = key.replace(/^\/+/, "");
+    if (key.startsWith(prefix)) {
+      key = key.slice(prefix.length);
+    } else {
+      key = key.replace(/^\/+/, "");
+    }
+
+    if (!key || key.includes("..")) return c.json({ error: "Invalid key" }, 400);
 
     const obj = await c.env.BLOG_IMAGES.get(key);
     if (!obj) return c.json({ error: "Image not found" }, 404);
@@ -3690,6 +3689,8 @@ app.get("/api/blogs/images/{*key}", async (c) => {
 app.post("/api/blogs", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "create_blog", 1, 86400);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded. You can only post one blog per day.", retryAfter: rl.retryAfter }, 429);
 
     const body = await c.req.json();
     if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
@@ -3743,6 +3744,8 @@ app.post("/api/blogs", async (c) => {
 app.get("/api/blogs", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "public_blogs", 100, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare(
       "SELECT id, title, slug, excerpt, image_url, author_name, author_association, created_at FROM posts WHERE status = 'approved' AND is_published = 1 ORDER BY created_at DESC LIMIT 50",
     ).all();
@@ -3772,6 +3775,8 @@ app.get("/api/blogs/admin", async (c) => {
 app.get("/api/blogs/:slug", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "public_blog_single", 100, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const slug = c.req.param("slug");
     const row: any = await c.env.DB.prepare(
       "SELECT id, title, slug, content, excerpt, image_url, author_name, author_association, created_at FROM posts WHERE (slug = ? OR id = ?) AND status = 'approved' AND is_published = 1",
@@ -3844,6 +3849,45 @@ app.put("/api/blogs/:id/reject", async (c) => {
     return c.json({ success: true, message: "Blog rejected" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
+  }
+});
+
+// 7b. Delete a blog post permanently (power >= 100)
+app.delete("/api/blogs/:id", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
+
+    const id = c.req.param("id");
+    const row: any = await c.env.DB.prepare("SELECT id, title, content, image_url FROM posts WHERE id = ?").bind(id).first();
+    if (!row) return c.json({ error: "Blog not found" }, 404);
+
+    // Delete associated images from R2
+    try {
+      const keys = new Set<string>();
+      if (row.image_url) {
+        const m = row.image_url.match(/\/api\/blogs\/images\/(blogs\/[^"'\s?]+)/);
+        if (m) keys.add(m[1]);
+      }
+      if (row.content) {
+        const imgRe = /<img[^>]+src="\/api\/blogs\/images\/(blogs\/[^"']+?)"/gi;
+        let match;
+        while ((match = imgRe.exec(row.content)) !== null) {
+          keys.add(match[1]);
+        }
+      }
+      for (const key of keys) {
+        await c.env.BLOG_IMAGES.delete(key).catch(() => {});
+      }
+    } catch {}
+
+    await c.env.DB.prepare("DELETE FROM posts WHERE id = ?").bind(id).run();
+    await addAuditLog(c, "blog_deleted", "post", id, "Blog deleted: " + row.title);
+
+    return c.json({ success: true, message: "Blog permanently deleted" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -4054,6 +4098,86 @@ app.delete("/api/consulting-requests/:id", async (c) => {
     return c.json({ success: true, message: "Request deleted." });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
+  }
+});
+
+// ---------------------------------------------------------
+// CASE STUDIES (member-posted, no approval needed)
+// ---------------------------------------------------------
+
+// 1. Create a case study (authenticated, power >= 10)
+app.post("/api/case-studies", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
+
+    const body = await c.req.json();
+    const tag = sanitizeStr(body.tag);
+    const title = sanitizeStr(body.title);
+    const description = sanitizeStr(body.description);
+    const rawContent = body.content;
+    const imageUrl = sanitizeStr(body.imageUrl);
+
+    if (!tag) return c.json({ error: "Tag is required (e.g. Strategy, Operations)" }, 400);
+    if (!title || title.length < 3) return c.json({ error: "Title must be at least 3 characters" }, 400);
+    if (!rawContent || typeof rawContent !== "string" || rawContent.length < 10) {
+      return c.json({ error: "Content must be at least 10 characters" }, 400);
+    }
+    if (rawContent.length > 100000) return c.json({ error: "Content too long (max 100,000 chars)" }, 400);
+
+    const content = sanitizeBlogHtml(rawContent);
+    const textOnly = content.replace(/<[^>]*>/g, "").trim();
+    if (textOnly.length < 10) {
+      return c.json({ error: "Content must contain at least 10 visible characters after sanitization" }, 400);
+    }
+
+    const id = crypto.randomUUID().replace(/-/g, "");
+    const authorName = user.name || "Member";
+
+    await c.env.DB.prepare(
+      "INSERT INTO case_studies (id, tag, title, description, content, image_url, author_name, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(id, tag, title, description || "", content, imageUrl || null, authorName, user.id).run();
+
+    await addAuditLog(c, "case_study_created", "case_study", id, "Case study created: " + title);
+
+    return c.json({ success: true, message: "Case study published", id });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 2. List all case studies for admin/members (authenticated, power >= 10)
+app.get("/api/case-studies", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+
+    const rows = await c.env.DB.prepare("SELECT * FROM case_studies ORDER BY created_at DESC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 3. Delete a case study (power >= 50)
+app.delete("/api/case-studies/:id", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 50) return c.json({ error: "Forbidden: Lead or above only" }, 403);
+
+    const id = c.req.param("id");
+    const row: any = await c.env.DB.prepare("SELECT id, title FROM case_studies WHERE id = ?").bind(id).first();
+    if (!row) return c.json({ error: "Case study not found" }, 404);
+
+    await c.env.DB.prepare("DELETE FROM case_studies WHERE id = ?").bind(id).run();
+    await addAuditLog(c, "case_study_deleted", "case_study", id, "Case study deleted: " + row.title);
+
+    return c.json({ success: true, message: "Case study deleted" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
   }
 });
 

@@ -6,6 +6,7 @@ import SmoothScroll from "./components/SmoothScroll";
 import PillNav from "./components/PillNav";
 const ColorBends = lazy(() => import("./components/ColorBends"));
 import { apiUrl } from "./lib/api";
+import { sanitizeHtml } from "./lib/sanitize";
 import {
   ScribbleArrow,
   ScribbleCircle,
@@ -52,20 +53,18 @@ function App() {
   useEffect(() => {
     async function loadContent() {
       try {
-        const [csRes, tmRes, bpRes, pRes] = await Promise.all([
+        const [csRes, tmRes, bpRes, pRes, completedRes] = await Promise.all([
           fetch(apiUrl("/api/content/case-studies")).then((r) => r.json()),
           fetch(apiUrl("/api/content/team-members")).then((r) => r.json()),
           fetch(apiUrl("/api/content/blog-posts")).then((r) => r.json()),
           fetch(apiUrl("/api/content/partners")).then((r) => r.json()),
+          fetch(apiUrl("/api/projects/completed")).then((r) => r.json()),
         ]);
         if (csRes.success) setCaseStudies(csRes.data);
         if (tmRes.success) setTeamMembers(tmRes.data);
         if (bpRes.success) setBlogPosts(bpRes.data);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (pRes.success) setPartners(pRes.data.map((p: any) => p.name));
-        const completedRes = await fetch(
-          apiUrl("/api/projects/completed"),
-        ).then((r) => r.json());
         if (completedRes.success) setCompletedProjects(completedRes.data);
       } catch (e) {
         console.error("Failed to load content", e);
@@ -75,29 +74,22 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const handleScroll = () => {
-      const sections = [
-        "about",
-        "case-studies",
-        "leadership",
-        "blog",
-        "partners",
-      ];
-      let current = "#";
-      for (const section of sections) {
-        const element = document.getElementById(section);
-        if (element) {
-          const rect = element.getBoundingClientRect();
-          if (rect.top <= 100) {
-            current = `#${section}`;
+    const sections = ["about", "case-studies", "leadership", "blog", "partners"];
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setActiveNav(`#${entry.target.id}`);
           }
         }
-      }
-      setActiveNav(current);
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+      },
+      { rootMargin: "-100px 0px -60% 0px" },
+    );
+    for (const id of sections) {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -567,7 +559,9 @@ function App() {
           >
             Latest Case Studies
           </h2>
-          <div className="cases-grid">
+          <div className="cases-grid"
+            style={caseStudies.length > 4 ? { maxHeight: 520, overflowY: "auto", paddingRight: 8 } : undefined}
+          >
             {caseStudies.map((cs, i) => (
               <div
                 key={i}
@@ -587,7 +581,13 @@ function App() {
                 <span className="case-tag">{cs.tag}</span>
                 <h3>{cs.title}</h3>
                 <p>{cs.description}</p>
-                {expandedCard === i && (
+                {cs.image_url && (
+                  <img src={apiUrl(cs.image_url)} alt="" loading="lazy" style={{ width: "100%", maxHeight: 160, objectFit: "cover", borderRadius: 8, marginBottom: 8 }} />
+                )}
+                <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 4 }}>
+                  By {cs.author_name || "Anonymous"}
+                </div>
+                {expandedCard === i && cs.content && (
                   <div
                     className="card-expanded"
                     style={{
@@ -595,19 +595,8 @@ function App() {
                       paddingTop: "1rem",
                       borderTop: "2px dashed var(--text-black)",
                     }}
-                  >
-                    <p
-                      style={{ fontSize: "0.9rem", color: "var(--text-gray)" }}
-                    >
-                      <strong>Impact:</strong> Delivered measurable results
-                      within 3 months. Client retention increased by 40%.
-                    </p>
-                    <p
-                      style={{ fontSize: "0.9rem", color: "var(--text-gray)" }}
-                    >
-                      <strong>Team:</strong> 5 consultants, 2 project managers
-                    </p>
-                  </div>
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(cs.content) }}
+                  />
                 )}
                 <span className="read-more">
                   {expandedCard === i
@@ -681,12 +670,14 @@ function App() {
               Post a Blog
             </a>
           </div>
-          <div className="blog-grid">
+          <div className="blog-grid"
+            style={blogPosts.length > 4 ? { maxHeight: 520, overflowY: "auto", paddingRight: 8 } : undefined}
+          >
             {blogPosts.slice(0, 6).map((post, i) => (
               <div key={i} className="blog-card card-doodle" style={{ position: "relative" }}>
                 {post.image_url && (
                   <div style={{ width: "calc(100% + 32px)", height: 140, overflow: "hidden", borderRadius: "10px 10px 0 0", marginTop: -16, marginLeft: -16, marginRight: -16, marginBottom: 12 }}>
-                    <img src={apiUrl(post.image_url)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <img src={apiUrl(post.image_url)} alt="" loading="lazy" width="700" height="140" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   </div>
                 )}
                 <span className="blog-date">{post.date || new Date(post.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>

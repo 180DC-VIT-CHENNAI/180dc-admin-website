@@ -2,40 +2,12 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import PillNav from "../components/PillNav";
 import { apiUrl } from "../lib/api";
+import { sanitizeHtml } from "../lib/sanitize";
 import "./BlogView.css";
-
-const UNSAFE_TAGS = ["script", "iframe", "object", "embed", "frame", "meta", "link", "base"];
 
 function rewriteContentUrls(html: string): string {
   const base = apiUrl("");
   return html.replace(/(src|href)\s*=\s*"(\/api\/)/g, '$1="' + base + '$2');
-}
-
-function decodeEntities(str: string): string {
-  return str
-    .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
-}
-
-function sanitizeHtml(html: string): string {
-  let s = html;
-  for (const tag of UNSAFE_TAGS) {
-    const re = new RegExp("<" + tag + "[\\s\\S]*?</" + tag + ">", "gi");
-    s = s.replace(re, "");
-    s = s.replace(new RegExp("<" + tag + "\\b[^>]*/?>", "gi"), "");
-  }
-  s = s.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
-  s = s.replace(/(href|src|action)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, (m) => {
-    const val = decodeEntities(m.replace(/^(href|src|action)\s*=\s*/, "").replace(/^["']|["']$/g, "").toLowerCase());
-    if (val.startsWith("javascript:") || val.startsWith("data:") || val.startsWith("vbscript:")) return "";
-    return m;
-  });
-  return s;
 }
 
 const navItems = [

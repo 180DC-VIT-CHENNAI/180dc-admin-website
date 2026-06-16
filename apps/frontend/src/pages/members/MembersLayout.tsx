@@ -18,6 +18,7 @@ import ConsultingRequestsSection from "./ConsultingRequestsSection";
 import SendMailSection from "./SendMailSection";
 import RoomSettingsPanel from "./RoomSettingsPanel";
 import BlogSection from "./BlogSection";
+import CaseStudySection from "./CaseStudySection";
 import TransfersSection from "./TransfersSection";
 import { apiUrl } from "../../lib/api";
 import { useTheme } from "../../context/ThemeContext";
@@ -412,6 +413,7 @@ export default function MembersLayout() {
       { id: "recruitments", label: "Recruitments", minPower: 50, icon: "person_add" },
       { id: "transfers", label: "Transfers", minPower: 0, icon: "swap_horiz" },
       { id: "announcements", label: "Announcements", minPower: 0, icon: "campaign" },
+      { id: "case-studies", label: "Case Studies", minPower: 0, icon: "description" },
     ];
     // Room Settings for power >= 50
     if (powerLevel >= 50) {
@@ -839,6 +841,10 @@ export default function MembersLayout() {
 
           {activePanel === "blogs" && powerLevel >= 100 && (
             <BlogSection authToken={authToken!} powerLevel={powerLevel} />
+          )}
+
+          {activePanel === "case-studies" && (
+            <CaseStudySection authToken={authToken!} powerLevel={powerLevel} />
           )}
 
           {activePanel === "consulting" && powerLevel >= 100 && (

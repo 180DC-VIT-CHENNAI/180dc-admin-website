@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { apiUrl } from "../../lib/api";
+import { sanitizeHtml } from "../../lib/sanitize";
 
 function rewriteContentUrls(html: string): string {
   const base = apiUrl("");
@@ -48,6 +49,20 @@ export default function BlogSection({ authToken, powerLevel }: { authToken: stri
       const d = await res.json();
       if (d.success) { setBlogs(prev => prev.map(b => b.id === id ? { ...b, status: "rejected", is_published: 0 } : b)); }
       else { alert(d.error || "Failed to reject"); }
+    } catch { alert("Network error"); }
+    setProcessing(null);
+  }
+
+  async function handleDelete(id: string) {
+    setProcessing(id);
+    try {
+      const res = await fetch(apiUrl(`/api/blogs/${id}`), {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const d = await res.json();
+      if (d.success) { setBlogs(prev => prev.filter(b => b.id !== id)); }
+      else { alert(d.error || "Failed to delete"); }
     } catch { alert("Network error"); }
     setProcessing(null);
   }
@@ -158,7 +173,30 @@ export default function BlogSection({ authToken, powerLevel }: { authToken: stri
                   </div>
                 )}
                 {blog.status === "approved" && (
-                  <div style={{ fontSize: 12, color: "#28a745", fontWeight: 600 }}>Published &middot; Visible on homepage</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 12, color: "#28a745", fontWeight: 600 }}>Published &middot; Visible on homepage</span>
+                    {canManage && (
+                      <button
+                        style={{
+                          padding: "3px 10px",
+                          fontSize: 11,
+                          background: "#dc3545",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: 4,
+                          cursor: "pointer",
+                        }}
+                        onClick={() => {
+                          if (confirm('Delete this blog permanently? This cannot be undone.')) {
+                            handleDelete(blog.id);
+                          }
+                        }}
+                        disabled={processing === blog.id}
+                      >
+                        {processing === blog.id ? "..." : "Delete"}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -242,7 +280,7 @@ export default function BlogSection({ authToken, powerLevel }: { authToken: stri
 
             <div
               style={{ fontSize: 15, lineHeight: 1.7, color: "var(--text-primary, #111)" }}
-              dangerouslySetInnerHTML={{ __html: rewriteContentUrls(previewBlog.content) }}
+              dangerouslySetInnerHTML={{ __html: rewriteContentUrls(sanitizeHtml(previewBlog.content)) }}
             />
 
             {canManage && previewBlog.status === "pending" && (
