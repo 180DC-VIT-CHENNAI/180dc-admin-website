@@ -34,6 +34,7 @@ const navItems = [
 export default function PostBlog() {
   const navigate = useNavigate();
   const editorRef = useRef<HTMLDivElement>(null);
+  const savedRangeRef = useRef<Range | null>(null);
   const [title, setTitle] = useState("");
   const [excerpt, setExcerpt] = useState("");
   const [authorName, setAuthorName] = useState("");
@@ -43,6 +44,19 @@ export default function PostBlog() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+
+  const insertAtCursor = useCallback((html: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    const sel = window.getSelection();
+    if (sel && savedRangeRef.current) {
+      sel.removeAllRanges();
+      sel.addRange(savedRangeRef.current);
+    }
+    document.execCommand("insertHTML", false, html);
+    savedRangeRef.current = null;
+  }, []);
 
   const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -59,7 +73,7 @@ export default function PostBlog() {
       const data = await res.json();
       if (data.success) {
         setImageUrl(data.url);
-        insertAtCursor(`<img src="${data.url}" alt="blog image" />`);
+        insertAtCursor(`<p><br></p><img src="${data.url}" alt="blog image" style="max-width:100%;border-radius:8px;" /><p><br></p>`);
       } else {
         setError(data.error || "Upload failed");
       }
@@ -67,24 +81,11 @@ export default function PostBlog() {
       setError("Upload failed. Try again.");
     }
     setImageUploading(false);
-  }, []);
+  }, [insertAtCursor]);
 
   const exec = useCallback((cmd: string, val?: string) => {
     document.execCommand(cmd, false, val);
     editorRef.current?.focus();
-  }, []);
-
-  const insertAtCursor = useCallback((html: string) => {
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0) {
-      const range = sel.getRangeAt(0);
-      const frag = range.createContextualFragment(html);
-      range.deleteContents();
-      range.insertNode(frag);
-    } else {
-      editorRef.current?.focus();
-      document.execCommand("insertHTML", false, html);
-    }
   }, []);
 
   const getContent = useCallback(() => {
@@ -207,12 +208,36 @@ export default function PostBlog() {
           <div className="post-blog-field">
             <label>Featured Image</label>
             <div className="image-upload-area">
-              <label className="image-upload-btn">
-                {imageUploading ? "Uploading..." : "\u{1F4F7} Choose Image"}
-                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleImageUpload} disabled={imageUploading} />
-              </label>
-              {imageUploading && <span className="upload-progress">Uploading to R2 storage...</span>}
-              {imageUrl && <img src={imageUrl} alt="preview" className="image-preview" />}
+              {imageUrl ? (
+                <div className="image-preview-container">
+                  <img src={apiUrl(imageUrl)} alt="preview" className="image-preview" />
+                  <button
+                    type="button"
+                    className="image-remove-btn"
+                    onClick={() => setImageUrl("")}
+                    title="Remove image"
+                  >
+                    &times;
+                  </button>
+                </div>
+              ) : (
+                <label className="image-upload-btn">
+                  {imageUploading ? (
+                    <>
+                      <span className="upload-spinner" />
+                      Uploading...
+                    </>
+                  ) : (
+                    "Choose Image"
+                  )}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={handleImageUpload}
+                    disabled={imageUploading}
+                  />
+                </label>
+              )}
             </div>
           </div>
 
@@ -240,6 +265,24 @@ export default function PostBlog() {
               suppressContentEditableWarning
               data-placeholder="Start writing your blog post here..."
               style={{ fontFamily: "'Nunito', sans-serif" }}
+              onSelect={() => {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
+                  savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+                }
+              }}
+              onKeyUp={() => {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
+                  savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+                }
+              }}
+              onMouseUp={() => {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
+                  savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+                }
+              }}
               onPaste={(e) => {
                 e.preventDefault();
                 const html = e.clipboardData.getData("text/html");

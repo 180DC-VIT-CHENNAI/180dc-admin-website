@@ -159,13 +159,49 @@
   transition: border-color 0.2s;
 }
 .image-upload-btn:hover { border-color: var(--primary-green); }
+.image-preview-container {
+  position: relative;
+  display: inline-block;
+}
 .image-preview {
   max-width: 200px;
   max-height: 120px;
   border-radius: 8px;
   border: 2px solid var(--border-light);
   object-fit: cover;
+  display: block;
 }
+.image-remove-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--text-primary);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.15s;
+}
+.image-remove-btn:hover { background: #ef4444; color: #fff; border-color: #ef4444; }
+.upload-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-light);
+  border-top-color: var(--primary-green);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 .upload-progress {
   font-size: 0.85rem;
   color: var(--text-secondary);

@@ -7,6 +7,7 @@ type Bindings = {
   DB: any;
   ARCHIVE_DB: any;
   CLUB_FILES: R2Bucket;
+  BLOG_IMAGES: R2Bucket;
   AUTH_SESSIONS: any;
   ENVIRONMENT?: string;
   RESEND_API_KEY?: string;
@@ -604,7 +605,7 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
     CREATE TABLE IF NOT EXISTS chat_room_settings (room TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1);
-    CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, title TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, content TEXT NOT NULL, excerpt TEXT, image_url TEXT, author_id TEXT NOT NULL, author_name TEXT NOT NULL, status TEXT DEFAULT 'pending', is_published INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME, FOREIGN KEY (author_id) REFERENCES users(id));
+    CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, title TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, content TEXT NOT NULL, excerpt TEXT, image_url TEXT, author_id TEXT NOT NULL, author_name TEXT NOT NULL, status TEXT DEFAULT 'pending', is_published INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME);
     `);
   await runMigrations(db);
 }
@@ -621,7 +622,12 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE recruitment_sessions ADD COLUMN token_hash TEXT"); } catch { console.warn("Migration: token_hash may already exist"); }
   try { await db.exec("ALTER TABLE recruitment_sessions RENAME COLUMN token TO token_old"); } catch { console.warn("Migration: token column rename"); }
   try { await db.exec("UPDATE recruitment_sessions SET token_hash = token_old WHERE token_hash IS NULL"); } catch { console.warn("Migration: token_hash backfill"); }
+  try { await db.exec("ALTER TABLE posts ADD COLUMN author_name TEXT DEFAULT 'Anonymous'"); } catch { console.warn("Migration: author_name may already exist"); }
   try { await db.exec("ALTER TABLE posts ADD COLUMN author_association TEXT DEFAULT ''"); } catch { console.warn("Migration: author_association may already exist"); }
+  try { await db.exec("ALTER TABLE posts ADD COLUMN excerpt TEXT"); } catch { console.warn("Migration: excerpt may already exist"); }
+  try { await db.exec("ALTER TABLE posts ADD COLUMN status TEXT DEFAULT 'pending'"); } catch { console.warn("Migration: status may already exist"); }
+  try { await db.exec("ALTER TABLE posts ADD COLUMN is_published INTEGER DEFAULT 0"); } catch { console.warn("Migration: is_published may already exist"); }
+  try { await db.exec("ALTER TABLE posts ADD COLUMN updated_at DATETIME"); } catch { console.warn("Migration: updated_at may already exist"); }
   try {
     await db.exec(`CREATE TABLE IF NOT EXISTS recruitment_sessions (
       id TEXT PRIMARY KEY, applicant_id TEXT NOT NULL, token_hash TEXT NOT NULL,
@@ -660,6 +666,8 @@ async function seedData(db: any, env?: any) {
     await db.prepare(roleSql).bind("lead_hr", "HR Lead", 50, "system").run();
     await db.prepare(roleSql).bind("member", "General Member", 10, "system").run();
     await db.prepare(roleSql).bind("advisory", "Advisory Board", 30, "system").run();
+
+    await db.prepare("INSERT OR IGNORE INTO users (id, name, email, role_id) VALUES (?, ?, ?, ?)").bind("anonymous", "Anonymous", "anonymous@180dc.shop", "member").run();
 
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("tech", "Technical", "Handles technical infrastructure and UI").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("rnd", "Research & Development", "Handles consulting research").run();
@@ -815,7 +823,7 @@ app.use("*", async (c, next) => {
     url.pathname === "/api/recruitment/open-domains" ||
     url.pathname === "/api/blogs" ||
     url.pathname === "/api/blogs/upload-image" ||
-    (url.pathname.startsWith("/api/blogs/") && c.req.method === "GET")
+    (url.pathname.startsWith("/api/blogs/") && c.req.method === "GET" && !url.pathname.startsWith("/api/blogs/admin"))
   ) {
     await next();
     return;
@@ -3656,10 +3664,13 @@ app.post("/api/blogs/upload-image", async (c) => {
 });
 
 // 1b. Serve blog image from R2 (public)
-app.get("/api/blogs/images/:key", async (c) => {
+app.get("/api/blogs/images/{*key}", async (c) => {
   try {
-    const key = c.req.param("key");
+    let key = c.req.param("key");
     if (!key || key.includes("..")) return c.json({ error: "Invalid key" }, 400);
+
+    // Hono wildcard params may include a leading slash — strip it
+    key = key.replace(/^\/+/, "");
 
     const obj = await c.env.BLOG_IMAGES.get(key);
     if (!obj) return c.json({ error: "Image not found" }, 404);
@@ -3749,7 +3760,7 @@ app.get("/api/blogs/admin", async (c) => {
     if (!user || user.power_level < 50) return c.json({ error: "Forbidden: Lead or above only" }, 403);
 
     const rows = await c.env.DB.prepare(
-      "SELECT p.id, p.title, p.slug, p.excerpt, p.image_url, p.author_name, p.author_association, p.status, p.is_published, p.created_at, p.updated_at FROM posts p ORDER BY p.created_at DESC LIMIT 100",
+      "SELECT p.id, p.title, p.slug, p.content, p.excerpt, p.image_url, p.author_name, p.author_association, p.status, p.is_published, p.created_at, p.updated_at FROM posts p ORDER BY p.created_at DESC LIMIT 100",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {

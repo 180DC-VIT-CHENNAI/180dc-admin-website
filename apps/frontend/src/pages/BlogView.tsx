@@ -6,6 +6,11 @@ import "./BlogView.css";
 
 const UNSAFE_TAGS = ["script", "iframe", "object", "embed", "frame", "meta", "link", "base"];
 
+function rewriteContentUrls(html: string): string {
+  const base = apiUrl("");
+  return html.replace(/(src|href)\s*=\s*"(\/api\/)/g, '$1="' + base + '$2');
+}
+
 function decodeEntities(str: string): string {
   return str
     .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c)))
@@ -94,10 +99,10 @@ export default function BlogView() {
       <div className="blog-view-content">
         {blog.image_url && (
           <div style={{ marginBottom: 24, borderRadius: 16, overflow: "hidden", border: "3px solid var(--text-primary)" }}>
-            <img src={blog.image_url} alt={blog.title} style={{ width: "100%", maxHeight: 400, objectFit: "cover", display: "block" }} />
+            <img src={apiUrl(blog.image_url)} alt={blog.title} style={{ width: "100%", maxHeight: 400, objectFit: "cover", display: "block" }} />
           </div>
         )}
-        <div className="blog-view-body" dangerouslySetInnerHTML={{ __html: sanitizeHtml(blog.content) }} />
+        <div className="blog-view-body" dangerouslySetInnerHTML={{ __html: rewriteContentUrls(sanitizeHtml(blog.content)) }} />
         <div style={{ textAlign: "center", marginTop: 40 }}>
           <Link to="/" className="btn outline">Back to Home</Link>
         </div>

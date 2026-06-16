@@ -1,10 +1,16 @@
 import { useState, useEffect } from "react";
 import { apiUrl } from "../../lib/api";
 
+function rewriteContentUrls(html: string): string {
+  const base = apiUrl("");
+  return html.replace(/(src|href)\s*=\s*"(\/api\/)/g, '$1="' + base + '$2');
+}
+
 export default function BlogSection({ authToken, powerLevel }: { authToken: string; powerLevel: number }) {
   const [blogs, setBlogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [previewBlog, setPreviewBlog] = useState<any>(null);
 
   async function load() {
     try {
@@ -93,16 +99,15 @@ export default function BlogSection({ authToken, powerLevel }: { authToken: stri
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {blogs.map(blog => (
+          {blogs.filter(blog => blog.status !== "rejected").map(blog => (
             <div key={blog.id} className="card-doodle" style={{
               padding: 16,
               display: "flex",
               gap: 14,
               alignItems: "flex-start",
-              opacity: blog.status === "rejected" ? 0.55 : 1,
             }}>
               {blog.image_url && (
-                <img src={blog.image_url} alt="" style={{
+                <img src={apiUrl(blog.image_url)} alt="" style={{
                   width: 80,
                   height: 60,
                   borderRadius: 8,
@@ -128,6 +133,13 @@ export default function BlogSection({ authToken, powerLevel }: { authToken: stri
                 {canManage && blog.status === "pending" && (
                   <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                     <button
+                      className="btn outline"
+                      style={{ padding: "5px 14px", fontSize: 12 }}
+                      onClick={() => setPreviewBlog(blog)}
+                    >
+                      Preview
+                    </button>
+                    <button
                       className="btn"
                       style={{ padding: "5px 14px", fontSize: 12 }}
                       onClick={() => handleApprove(blog.id)}
@@ -148,12 +160,112 @@ export default function BlogSection({ authToken, powerLevel }: { authToken: stri
                 {blog.status === "approved" && (
                   <div style={{ fontSize: 12, color: "#28a745", fontWeight: 600 }}>Published &middot; Visible on homepage</div>
                 )}
-                {blog.status === "rejected" && (
-                  <div style={{ fontSize: 12, color: "#dc3545", fontWeight: 600 }}>Rejected</div>
-                )}
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {previewBlog && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,0.5)",
+            padding: 24,
+          }}
+          onClick={() => setPreviewBlog(null)}
+        >
+          <div
+            style={{
+              background: "var(--surface, #fff)",
+              border: "3px solid var(--text-primary, #111)",
+              borderRadius: 16,
+              boxShadow: "6px 6px 0 var(--text-primary, #111)",
+              maxWidth: 720,
+              width: "100%",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              padding: 32,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: "1.3rem", color: "var(--text-primary, #111)" }}>{previewBlog.title}</h2>
+                <div style={{ fontSize: 12, color: "var(--text-secondary, #666)", marginTop: 4 }}>
+                  By {previewBlog.author_name}
+                  {previewBlog.author_association && <span> &middot; {previewBlog.author_association}</span>}
+                  <span> &middot; {new Date(previewBlog.created_at).toLocaleDateString()}</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setPreviewBlog(null)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 24,
+                  cursor: "pointer",
+                  color: "var(--text-secondary, #666)",
+                  lineHeight: 1,
+                  padding: "0 4px",
+                }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {previewBlog.image_url && (
+              <img
+                src={apiUrl(previewBlog.image_url)}
+                alt=""
+                style={{
+                  width: "100%",
+                  maxHeight: 300,
+                  objectFit: "cover",
+                  borderRadius: 10,
+                  border: "2px solid var(--border-light, #ddd)",
+                  marginBottom: 16,
+                }}
+              />
+            )}
+
+            {previewBlog.excerpt && (
+              <p style={{ fontSize: 14, color: "var(--text-secondary, #666)", fontStyle: "italic", marginBottom: 16 }}>
+                {previewBlog.excerpt}
+              </p>
+            )}
+
+            <div
+              style={{ fontSize: 15, lineHeight: 1.7, color: "var(--text-primary, #111)" }}
+              dangerouslySetInnerHTML={{ __html: rewriteContentUrls(previewBlog.content) }}
+            />
+
+            {canManage && previewBlog.status === "pending" && (
+              <div style={{ display: "flex", gap: 8, marginTop: 24, borderTop: "2px solid var(--border-light, #ddd)", paddingTop: 16 }}>
+                <button
+                  className="btn"
+                  style={{ padding: "6px 18px", fontSize: 13 }}
+                  onClick={() => { handleApprove(previewBlog.id); setPreviewBlog(null); }}
+                  disabled={processing === previewBlog.id}
+                >
+                  {processing === previewBlog.id ? "..." : "Approve"}
+                </button>
+                <button
+                  className="btn outline"
+                  style={{ padding: "6px 18px", fontSize: 13, borderColor: "#dc3545", color: "#dc3545" }}
+                  onClick={() => { handleReject(previewBlog.id); setPreviewBlog(null); }}
+                  disabled={processing === previewBlog.id}
+                >
+                  {processing === previewBlog.id ? "..." : "Reject"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
