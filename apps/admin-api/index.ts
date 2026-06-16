@@ -3811,7 +3811,7 @@ app.put("/api/blogs/:id/approve", async (c) => {
   }
 });
 
-// 7. Reject a blog post (power >= 100)
+// 7. Reject a blog post (power >= 100) — also deletes associated images from R2
 app.put("/api/blogs/:id/reject", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -3819,12 +3819,33 @@ app.put("/api/blogs/:id/reject", async (c) => {
     if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
 
     const id = c.req.param("id");
-    const row: any = await c.env.DB.prepare("SELECT id, status, title FROM posts WHERE id = ?").bind(id).first();
+    const row: any = await c.env.DB.prepare("SELECT id, status, title, content, image_url FROM posts WHERE id = ?").bind(id).first();
     if (!row) return c.json({ error: "Blog not found" }, 404);
     if (row.status !== "pending") return c.json({ error: "Blog already processed (current: " + row.status + ")" }, 400);
 
     await c.env.DB.prepare("UPDATE posts SET status = 'rejected', is_published = 0, updated_at = datetime('now') WHERE id = ?").bind(id).run();
     await addAuditLog(c, "blog_rejected", "post", id, "Blog rejected: " + row.title);
+
+    // Delete associated images from R2
+    try {
+      const keys = new Set<string>();
+      // Featured image
+      if (row.image_url) {
+        const m = row.image_url.match(/\/api\/blogs\/images\/(blogs\/[^"'\s?]+)/);
+        if (m) keys.add(m[1]);
+      }
+      // Images in content
+      if (row.content) {
+        const imgRe = /<img[^>]+src="\/api\/blogs\/images\/(blogs\/[^"']+?)"/gi;
+        let match;
+        while ((match = imgRe.exec(row.content)) !== null) {
+          keys.add(match[1]);
+        }
+      }
+      for (const key of keys) {
+        await c.env.BLOG_IMAGES.delete(key).catch(() => {});
+      }
+    } catch {}
 
     return c.json({ success: true, message: "Blog rejected" });
   } catch (e: any) {
