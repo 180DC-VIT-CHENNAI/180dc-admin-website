@@ -960,8 +960,6 @@ app.get("/api/content/blog-posts", async (c) => {
   try {
     await ensureTables(c.env.DB);
     await seedData(c.env.DB, c.env);
-    const rl = await checkRateLimit(c, "content_blog_posts", 100, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const seedRows = await c.env.DB.prepare("SELECT id, date as created_at, title, description as excerpt FROM blog_posts ORDER BY created_at ASC").all();
     const approvedRows = await c.env.DB.prepare(
       "SELECT id, created_at, title, excerpt, image_url, author_name, author_association, slug FROM posts WHERE status = 'approved' AND is_published = 1 ORDER BY created_at DESC",
@@ -3630,9 +3628,6 @@ app.post("/api/blogs/upload-image", async (c) => {
   try {
     await ensureTables(c.env.DB);
 
-    const rl = await checkRateLimit(c, "blog_upload_image", 20, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many uploads. Try again later.", retryAfter: rl.retryAfter }, 429);
-
     const fd = await c.req.formData();
     const file = fd.get("image");
     if (!file || typeof file === "string") return c.json({ error: "No image file provided" }, 400);
@@ -3666,9 +3661,6 @@ app.get("/api/blogs/images/:key", async (c) => {
     const key = c.req.param("key");
     if (!key || key.includes("..")) return c.json({ error: "Invalid key" }, 400);
 
-    const rl = await checkRateLimit(c, "blog_image_serve", 200, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded" }, 429);
-
     const obj = await c.env.BLOG_IMAGES.get(key);
     if (!obj) return c.json({ error: "Image not found" }, 404);
 
@@ -3687,9 +3679,6 @@ app.get("/api/blogs/images/:key", async (c) => {
 app.post("/api/blogs", async (c) => {
   try {
     await ensureTables(c.env.DB);
-
-    const rl = await checkRateLimit(c, "create_blog", 1, 86400);
-    if (!rl.allowed) return c.json({ error: "You can only submit one blog post per day. Try again tomorrow.", retryAfter: rl.retryAfter }, 429);
 
     const body = await c.req.json();
     if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
@@ -3743,9 +3732,6 @@ app.post("/api/blogs", async (c) => {
 app.get("/api/blogs", async (c) => {
   try {
     await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "public_blogs", 100, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-
     const rows = await c.env.DB.prepare(
       "SELECT id, title, slug, excerpt, image_url, author_name, author_association, created_at FROM posts WHERE status = 'approved' AND is_published = 1 ORDER BY created_at DESC LIMIT 50",
     ).all();
@@ -3776,9 +3762,6 @@ app.get("/api/blogs/:slug", async (c) => {
   try {
     await ensureTables(c.env.DB);
     const slug = c.req.param("slug");
-    const rl = await checkRateLimit(c, "public_blog_single", 100, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-
     const row: any = await c.env.DB.prepare(
       "SELECT id, title, slug, content, excerpt, image_url, author_name, author_association, created_at FROM posts WHERE (slug = ? OR id = ?) AND status = 'approved' AND is_published = 1",
     ).bind(slug, slug).first();
