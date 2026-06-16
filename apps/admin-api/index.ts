@@ -610,6 +610,7 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE recruitment_sessions ADD COLUMN token_hash TEXT"); } catch { console.warn("Migration: token_hash may already exist"); }
   try { await db.exec("ALTER TABLE recruitment_sessions RENAME COLUMN token TO token_old"); } catch { console.warn("Migration: token column rename"); }
   try { await db.exec("UPDATE recruitment_sessions SET token_hash = token_old WHERE token_hash IS NULL"); } catch { console.warn("Migration: token_hash backfill"); }
+  try { await db.exec("ALTER TABLE posts ADD COLUMN author_association TEXT DEFAULT ''"); } catch { console.warn("Migration: author_association may already exist"); }
   try {
     await db.exec(`CREATE TABLE IF NOT EXISTS recruitment_sessions (
       id TEXT PRIMARY KEY, applicant_id TEXT NOT NULL, token_hash TEXT NOT NULL,
@@ -951,7 +952,7 @@ app.get("/api/content/blog-posts", async (c) => {
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const seedRows = await c.env.DB.prepare("SELECT id, date as created_at, title, description as excerpt FROM blog_posts ORDER BY created_at ASC").all();
     const approvedRows = await c.env.DB.prepare(
-      "SELECT id, created_at, title, excerpt, image_url, author_name, slug FROM posts WHERE status = 'approved' AND is_published = 1 ORDER BY created_at DESC",
+      "SELECT id, created_at, title, excerpt, image_url, author_name, author_association, slug FROM posts WHERE status = 'approved' AND is_published = 1 ORDER BY created_at DESC",
     ).all();
     // Merge seed + approved, deduplicate by id
     const seen = new Set<string>();
@@ -3612,12 +3613,10 @@ function slugify(text: string): string {
 const ALLOWED_IMG_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_IMG_SIZE = 10 * 1024 * 1024; // 10 MB
 
-// 1. Upload image to R2 (authenticated)
+// 1. Upload image to R2 (anonymous, rate-limited)
 app.post("/api/blogs/upload-image", async (c) => {
   try {
     await ensureTables(c.env.DB);
-    const user: any = c.get("user");
-    if (!user) return c.json({ error: "Unauthorized" }, 401);
 
     const rl = await checkRateLimit(c, "blog_upload_image", 20, 3600);
     if (!rl.allowed) return c.json({ error: "Too many uploads. Try again later.", retryAfter: rl.retryAfter }, 429);
@@ -3637,12 +3636,11 @@ app.post("/api/blogs/upload-image", async (c) => {
     const ext = typedFile.name.split(".").pop() || "jpg";
     const key = `blogs/${crypto.randomUUID()}.${ext}`;
     const arrayBuffer = await typedFile.arrayBuffer();
-    await c.env.CLUB_FILES.put(key, arrayBuffer, {
+    await c.env.BLOG_IMAGES.put(key, arrayBuffer, {
       httpMetadata: { contentType: typedFile.type },
-      customMetadata: { uploadedBy: user.email || "unknown" },
     });
 
-    const publicUrl = `https://pub-180dc-club-files.180dc.shop/${key}`;
+    const publicUrl = `https://pub-180dc-blog-images.180dc.shop/${key}`;
 
     return c.json({ success: true, url: publicUrl, key });
   } catch (e: any) {
@@ -3650,12 +3648,10 @@ app.post("/api/blogs/upload-image", async (c) => {
   }
 });
 
-// 2. Create a blog post (authenticated user)
+// 2. Create a blog post (anonymous, rate-limited)
 app.post("/api/blogs", async (c) => {
   try {
     await ensureTables(c.env.DB);
-    const user: any = c.get("user");
-    if (!user) return c.json({ error: "Unauthorized" }, 401);
 
     const rl = await checkRateLimit(c, "create_blog", 1, 86400);
     if (!rl.allowed) return c.json({ error: "You can only submit one blog post per day. Try again tomorrow.", retryAfter: rl.retryAfter }, 429);
@@ -3668,6 +3664,8 @@ app.post("/api/blogs", async (c) => {
     const excerpt = sanitizeStr(body.excerpt);
     const imageUrl = sanitizeStr(body.imageUrl);
     const rawSlug = sanitizeStr(body.slug) || slugify(title || "");
+    const authorName = sanitizeStr(body.authorName) || "Anonymous";
+    const authorAssociation = sanitizeStr(body.authorAssociation) || "";
 
     if (!title || typeof title !== "string" || title.length < 3) {
       return c.json({ error: "Title must be at least 3 characters" }, 400);
@@ -3697,10 +3695,8 @@ app.post("/api/blogs", async (c) => {
 
     const id = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
-      "INSERT INTO posts (id, title, slug, content, excerpt, image_url, author_id, author_name, status, is_published) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)",
-    ).bind(id, title, slug, content, excerpt || null, imageUrl || null, user.id, user.name || user.email).run();
-
-    await addAuditLog(c, "blog_created", "post", id, "Blog created: " + title);
+      "INSERT INTO posts (id, title, slug, content, excerpt, image_url, author_id, author_name, author_association, status, is_published) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)",
+    ).bind(id, title, slug, content, excerpt || null, imageUrl || null, "anonymous", authorName, authorAssociation).run();
 
     return c.json({ success: true, message: "Blog post submitted for review", id, slug, status: "pending" });
   } catch (e: any) {
@@ -3716,7 +3712,7 @@ app.get("/api/blogs", async (c) => {
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
 
     const rows = await c.env.DB.prepare(
-      "SELECT id, title, slug, excerpt, image_url, author_name, created_at FROM posts WHERE status = 'approved' AND is_published = 1 ORDER BY created_at DESC LIMIT 50",
+      "SELECT id, title, slug, excerpt, image_url, author_name, author_association, created_at FROM posts WHERE status = 'approved' AND is_published = 1 ORDER BY created_at DESC LIMIT 50",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
@@ -3732,7 +3728,7 @@ app.get("/api/blogs/admin", async (c) => {
     if (!user || user.power_level < 50) return c.json({ error: "Forbidden: Lead or above only" }, 403);
 
     const rows = await c.env.DB.prepare(
-      "SELECT p.id, p.title, p.slug, p.excerpt, p.image_url, p.author_name, p.status, p.is_published, p.created_at, p.updated_at FROM posts p ORDER BY p.created_at DESC LIMIT 100",
+      "SELECT p.id, p.title, p.slug, p.excerpt, p.image_url, p.author_name, p.author_association, p.status, p.is_published, p.created_at, p.updated_at FROM posts p ORDER BY p.created_at DESC LIMIT 100",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
@@ -3749,7 +3745,7 @@ app.get("/api/blogs/:slug", async (c) => {
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
 
     const row: any = await c.env.DB.prepare(
-      "SELECT id, title, slug, content, excerpt, image_url, author_name, created_at FROM posts WHERE (slug = ? OR id = ?) AND status = 'approved' AND is_published = 1",
+      "SELECT id, title, slug, content, excerpt, image_url, author_name, author_association, created_at FROM posts WHERE (slug = ? OR id = ?) AND status = 'approved' AND is_published = 1",
     ).bind(slug, slug).first();
 
     if (!row) return c.json({ error: "Blog not found" }, 404);

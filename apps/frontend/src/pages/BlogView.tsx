@@ -77,7 +77,7 @@ export default function BlogView() {
       <div className="blog-view-hero">
         <h1>{blog.title}</h1>
         <div className="blog-view-meta">
-          By {blog.author_name} &middot; {new Date(blog.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+          By {blog.author_name}{blog.author_association ? ` (${blog.author_association})` : ""} &middot; {new Date(blog.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
         </div>
       </div>
       <div className="blog-view-content">

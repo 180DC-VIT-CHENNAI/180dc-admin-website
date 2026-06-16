@@ -25,12 +25,13 @@ export default function PostBlog() {
   const editorRef = useRef<HTMLDivElement>(null);
   const [title, setTitle] = useState("");
   const [excerpt, setExcerpt] = useState("");
+  const [authorName, setAuthorName] = useState("");
+  const [authorAssociation, setAuthorAssociation] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
-  const [authToken] = useState<string | null>(() => sessionStorage.getItem("authToken"));
 
   const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -38,13 +39,10 @@ export default function PostBlog() {
     setImageUploading(true);
     setError("");
     try {
-      const token = authToken || sessionStorage.getItem("authToken");
-      if (!token) { setError("Please log in via /members to upload images"); setImageUploading(false); return; }
       const fd = new FormData();
       fd.append("image", file);
       const res = await fetch(apiUrl("/api/blogs/upload-image"), {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
       const data = await res.json();
@@ -58,7 +56,7 @@ export default function PostBlog() {
       setError("Upload failed. Try again.");
     }
     setImageUploading(false);
-  }, [authToken]);
+  }, []);
 
   const exec = useCallback((cmd: string, val?: string) => {
     document.execCommand(cmd, false, val);
@@ -88,20 +86,20 @@ export default function PostBlog() {
     if (!title.trim()) { setError("Title is required"); return; }
     if (title.trim().length < 3) { setError("Title must be at least 3 characters"); return; }
     if (!textContent.trim() || textContent.trim().length < 10) { setError("Content must be at least 10 characters"); return; }
-    const token = authToken || sessionStorage.getItem("authToken");
-    if (!token) { setError("Please log in via /members to post a blog"); return; }
 
     setSubmitting(true);
     setError("");
     try {
       const res = await fetch(apiUrl("/api/blogs"), {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(),
           content,
           excerpt: excerpt.trim() || textContent.trim().slice(0, 200),
           imageUrl: imageUrl || undefined,
+          authorName: authorName.trim() || undefined,
+          authorAssociation: authorAssociation.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -114,7 +112,7 @@ export default function PostBlog() {
       setError("Network error. Try again.");
     }
     setSubmitting(false);
-  }, [title, excerpt, imageUrl, authToken, getContent]);
+  }, [title, excerpt, imageUrl, authorName, authorAssociation, getContent]);
 
   if (submitted) {
     return (
@@ -130,7 +128,7 @@ export default function PostBlog() {
             <p>Your blog post has been submitted for review. Once approved by a President or VP, it will appear on the homepage.</p>
             <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
               <button className="btn" onClick={() => navigate("/")}>Back to Home</button>
-              <button className="btn outline" onClick={() => { setSubmitted(false); setTitle(""); setExcerpt(""); setImageUrl(""); if (editorRef.current) editorRef.current.innerHTML = ""; }}>Write Another</button>
+              <button className="btn outline" onClick={() => { setSubmitted(false); setTitle(""); setExcerpt(""); setAuthorName(""); setAuthorAssociation(""); setImageUrl(""); if (editorRef.current) editorRef.current.innerHTML = ""; }}>Write Another</button>
             </div>
           </div>
         </div>
@@ -161,6 +159,28 @@ export default function PostBlog() {
               autoFocus
             />
             <div className="slug-hint">Slug: {title ? title.toLowerCase().replace(/[^\w\s-]/g, "").replace(/[\s_]+/g, "-").slice(0, 100) || "post" : "post"}</div>
+          </div>
+
+          <div className="post-blog-field">
+            <label>Written By</label>
+            <input
+              type="text"
+              placeholder="Your name (leave blank for Anonymous)"
+              value={authorName}
+              onChange={e => setAuthorName(e.target.value)}
+              maxLength={100}
+            />
+          </div>
+
+          <div className="post-blog-field">
+            <label>Association</label>
+            <input
+              type="text"
+              placeholder="e.g. 180DC Member, VIT Chennai (optional)"
+              value={authorAssociation}
+              onChange={e => setAuthorAssociation(e.target.value)}
+              maxLength={100}
+            />
           </div>
 
           <div className="post-blog-field">
