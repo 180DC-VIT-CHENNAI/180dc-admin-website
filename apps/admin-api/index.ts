@@ -814,6 +814,7 @@ app.use("*", async (c, next) => {
     url.pathname === "/api/recruitment/login" ||
     url.pathname === "/api/recruitment/open-domains" ||
     url.pathname === "/api/blogs" ||
+    url.pathname === "/api/blogs/upload-image" ||
     (url.pathname.startsWith("/api/blogs/") && c.req.method === "GET")
   ) {
     await next();
