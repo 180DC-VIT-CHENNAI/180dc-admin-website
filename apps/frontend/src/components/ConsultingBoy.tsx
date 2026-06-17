@@ -22,6 +22,7 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
   const [visible, setVisible] = useState(false);
   const hasEnteredRef = useRef(false);
   const visibleRef = useRef(false);
+  const dismissedRef = useRef(false);
   const [, setStep] = useState(0);
 
   function slideOut() {
@@ -56,6 +57,7 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
       trigger: sections[0],
       start: "top 75%",
       onEnter: () => {
+        if (dismissedRef.current) return;
         visibleRef.current = true;
         if (!hasEnteredRef.current) {
           hasEnteredRef.current = true;
@@ -204,7 +206,7 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
               fontSize: 13,
               fontFamily: "'Nunito', sans-serif",
             }}
-            onClick={slideOut}
+            onClick={() => { dismissedRef.current = true; slideOut(); }}
           >
             No Thanks
           </button>

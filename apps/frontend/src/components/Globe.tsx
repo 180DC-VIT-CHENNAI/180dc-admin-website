@@ -5,6 +5,7 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { generateDoodleGlobeTexture } from '../utils/doodleGlobe';
 import './Globe.css';
+import { PolaroidGallery } from './gallery/PolaroidGallery';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -16,7 +17,7 @@ const Globe = () => {
   const [globeSize, setGlobeSize] = useState(700);
 
   const [globeReady, setGlobeReady] = useState(false);
-  const [selectedBuilding, setSelectedBuilding] = useState<{file: string, label: string, desc: string} | null>(null);
+  
   
   const [inkSplash, setInkSplash] = useState<{ lat: number; lng: number } | null>(null);
 
@@ -216,47 +217,7 @@ const Globe = () => {
               </div>
             </div>
 
-            <div className="campus-panel-buildings">
-              <h3>Campus Buildings & Auditoriums</h3>
-              <div className="campus-building-grid">
-              {[
-  { file: "mg.png", label: "MG Auditorium", desc: "The Mahatma Gandhi Auditorium is VIT Chennai's largest venue, with a seating capacity of 2,500. Equipped with centralized air conditioning and professional stage facilities, it hosts convocations, conferences, and major campus events." },
-  { file: "smartclass.png", label: "Smart Classroom", desc: "Located in Academic Block 2, the Smart Classroom is a technology-enabled learning space seating 100 students. It features digital displays, high-speed internet, and advanced AV equipment for interactive teaching." },
-  { file: "kamaraj.png", label: "Kamaraj Auditorium", desc: "The Kamaraj Auditorium is one of the primary teaching and research buildings on campus, housing lecture halls, faculty offices, and department-specific laboratories across multiple floors." },
-  { file: "library.png", label: "Library", desc: "The VIT Chennai library provides access to an extensive collection of academic texts, digital resources, and research journals, offering dedicated reading zones and subscription-based databases." },
-  { file: "sports.png", label: "Sports Grounds", desc: "The campus sports complex supports football, cricket, basketball, tennis, volleyball, and badminton across multiple outdoor courts and fields, serving both competitive and recreational student activities." },
-  { file: "swim.png", label: "Swimming Pool", desc: "The campus features an indoor, lane-marked swimming pool available for competitive training and recreational use, forming part of VIT Chennai's broader sports and wellness infrastructure." },
-  { file: "gym.png", label: "Gymnasium", desc: "The fully equipped gymnasium offers a comprehensive range of strength and cardiovascular training equipment, supporting student physical wellness as part of the campus sports block." },
-  { file: "cafe.png", label: "Food Court", desc: "The campus food court offers a diverse selection of dining options in a spacious modern facility, serving as a central social space for students throughout the day." },
-  { file: "north-square.png", label: "North Square", desc: "North Square is an open-air common area at the heart of the campus, designed for student gatherings and informal events, featuring a shaded pergola structure set among campus greenery." },
-  { file: "admin.png", label: "Administrative Block", desc: "The Administrative Block houses key institutional offices including the academic registrar and student services departments, serving as the primary point of contact for administrative matters on campus." },
-  { file: "moot.png", label: "Moot Court", desc: "The Moot Court Hall at VIT School of Law provides a realistic courtroom environment for legal training and advocacy practice, hosting national and intramural moot court competitions throughout the academic year." },
-  { file: "fashion.png", label: "Fashion Design Studio", desc: "The Fashion Design Studio is equipped with industry-standard dress forms, pattern-making tables, and traditional handlooms, supporting hands-on training for students in Fashion Technology and Textile Design." },
-  { file: "lab.png", label: "Anechoic Chamber", desc: "The anechoic chamber is a specialized research facility lined with sound-absorbing panels to eliminate audio reflections, supporting advanced studies in acoustics, electromagnetic compatibility, and antenna testing." },
-  { file: "mgr.png", label: "Dr. M.G.R. Memorial", desc: "The campus features a statue of Dr. M.G. Ramachandran, the revered former Chief Minister of Tamil Nadu, installed as a tribute to his lasting contributions to the state and its people." },
-].map(({ file, label, desc }) => (
-  <div key={file} className="campus-building-card" onClick={() => setSelectedBuilding({ file, label, desc })}>
-    <div className="campus-building-image">
-      <img src={`/images/${file}`} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-    </div>
-    <p className="campus-building-name">{label}</p>
-  </div>
-  
-))}
-{selectedBuilding && (
-  <div className="building-modal-overlay" onClick={() => setSelectedBuilding(null)}>
-    <div className="building-modal" onClick={e => e.stopPropagation()}>
-      <button className="building-modal-close" onClick={() => setSelectedBuilding(null)}>✕</button>
-      <img src={`/images/${selectedBuilding.file}`} alt={selectedBuilding.label} />
-      <div className="building-modal-info">
-        <h3>{selectedBuilding.label}</h3>
-        <p>{selectedBuilding.desc}</p>
-      </div>
-    </div>
-  </div>
-)}
-              </div>
-            </div>
+          <PolaroidGallery />
           </div>
         </div>
       )}
@@ -279,11 +240,10 @@ const Globe = () => {
           polygonStrokeColor={(d: any) =>
             d.properties.ISO_A3 === 'IND' ? '#8dc63f' : 'rgba(100, 100, 100, 0.3)'
           }
-          polygonLabel={({ properties: d }: any) => `
-            <div class="globe-label">
-              <b>${d.ADMIN || d.ST_NM}</b>
-            </div>
-          `}
+          polygonLabel={({ properties: d }: any) => {
+            const name = (d.ADMIN || d.ST_NM || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+            return `<div class="globe-label"><b>${name}</b></div>`;
+          }}
           onPolygonHover={() => {}}
 
           onGlobeClick={handleGlobeClick}

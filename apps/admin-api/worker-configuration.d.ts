@@ -6,5 +6,7 @@ interface Env {
 	CHAT_ROOM: DurableObjectNamespace<import("./index").ChatRoomDO>;
 	DB: D1Database;
 	ARCHIVE_DB: D1Database;
+	CLUB_FILES: R2Bucket;
+	BLOG_IMAGES: R2Bucket;
 	QUEUE: Queue;
 }

@@ -1,13 +1,17 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
+import { verifyToken } from "@clerk/backend";
 
 type Bindings = {
   DB: any;
   ARCHIVE_DB: any;
+  CLUB_FILES: R2Bucket;
+  BLOG_IMAGES: R2Bucket;
   AUTH_SESSIONS: any;
   ENVIRONMENT?: string;
   RESEND_API_KEY?: string;
+  CLERK_SECRET_KEY?: string;
 };
 
 type Variables = {
@@ -18,8 +22,35 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_STR_LEN = 255;
+const MAX_CLERK_TOKEN_LEN = 8192;
 const MAX_MSG_LEN = 2000;
 const MAX_PROJECT_DESC_LEN = 5000;
+
+function isPublicRoute(pathname: string, method: string): boolean {
+  const LOGIN_ROUTES = ["/api/dev-login", "/api/auth/clerk-login"];
+  if (LOGIN_ROUTES.includes(pathname)) return true;
+
+  const PUBLIC_ROUTES: [string, string?, string?][] = [
+    ["/api/signup-requests", "POST"],
+    ["/api/consulting-request"],
+    ["/api/auth/forgot-token"],
+    ["/api/departments"],
+    ["/api/projects/completed"],
+    ["/api/recruitment/register"],
+    ["/api/recruitment/login"],
+    ["/api/recruitment/open-domains"],
+    ["/api/blogs"],
+  ];
+  for (const [route, requiredMethod] of PUBLIC_ROUTES) {
+    if (pathname === route && (!requiredMethod || method === requiredMethod)) return true;
+  }
+
+  if (pathname.startsWith("/api/content") && method === "GET") return true;
+  if (pathname.startsWith("/api/blogs/") && method === "GET" && !pathname.startsWith("/api/blogs/admin")) return true;
+  if (pathname === "/api/admin/maintenance" && method === "GET") return true;
+
+  return false;
+}
 
 function sanitizeStr(val: unknown, maxLen = MAX_STR_LEN): string | null {
   if (typeof val !== "string") return null;
@@ -48,11 +79,7 @@ function logError(context: string, err: any, c?: any) {
 
 function errorResponse(c: any, message: string, status: number) {
   if (isProduction(c)) {
-    const generic: Record<number, string> = {
-      400: "Bad request", 401: "Unauthorized", 403: "Forbidden",
-      404: "Not found", 409: "Conflict", 500: "Internal server error",
-    };
-    return c.json({ error: generic[status] || "An error occurred" }, status);
+    return c.json({ error: "An error occurred" }, status);
   }
   return c.json({ error: message }, status);
 }
@@ -66,6 +93,55 @@ function escapeHtml(str: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#x27;");
+}
+
+const SAFE_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "code", "strong", "b", "em", "i", "u", "br", "div", "span", "a", "img", "hr", "sub", "sup", "table", "thead", "tbody", "tr", "th", "td", "caption", "col", "colgroup"]);
+const SAFE_ATTRS = new Set(["href", "src", "alt", "title", "class", "target", "rel", "width", "height"]);
+
+function decodeEntities(str: string): string {
+  return str
+    .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function sanitizeBlogHtml(input: string): string {
+  let s = input
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]*on\w+\s*=[^>]*>/gi, (m) => m.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, ""));
+
+  s = s.replace(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g, (match, slash, tagName, attrs) => {
+    const lower = tagName.toLowerCase();
+    if (!SAFE_TAGS.has(lower)) return escapeHtml(match);
+
+    const safe = attrs.replace(/([a-zA-Z:-]+)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/g, (attr) => {
+      const an = attr.match(/^([a-zA-Z:-]+)/i)?.[1]?.toLowerCase();
+      if (!an || !SAFE_ATTRS.has(an)) return "";
+      if (an === "href" || an === "src") {
+        const v = decodeEntities(attr.replace(/^[^=]*=\s*/, "").replace(/^["']|["']$/g, "").toLowerCase());
+        if (/^(javascript|data|vbscript):/.test(v)) return "";
+      }
+      return attr;
+    });
+
+    const selfClose = /\/$/.test(attrs.trim()) ? " /" : "";
+    return "<" + slash + lower + (safe ? " " + safe.trim() : "") + selfClose + ">";
+  });
+
+  s = s.replace(/<[^>]*>/g, (match) => {
+    const inner = match.slice(1, -1).trim();
+    if (!inner) return "";
+    const isClose = inner.startsWith("/");
+    const name = (isClose ? inner.slice(1) : inner.split(/\s+/)[0]).toLowerCase();
+    if (!SAFE_TAGS.has(name)) return "";
+    return match;
+  });
+
+  return s;
 }
 
 function isValidUrl(val: unknown): boolean {
@@ -91,7 +167,7 @@ async function checkRateLimit(c: any, endpoint: string, maxRequests: number, win
     }
     const elapsed = (now.getTime() - new Date(row.window_start + "Z").getTime()) / 1000;
     if (elapsed > windowSeconds) {
-      await c.env.DB.prepare("UPDATE rate_limits SET count = 1, window_start = ? WHERE ip = ? AND endpoint = ?").bind(ip, endpoint, now.toISOString()).run();
+      await c.env.DB.prepare("UPDATE rate_limits SET count = 1, window_start = ? WHERE ip = ? AND endpoint = ?").bind(now.toISOString(), ip, endpoint).run();
       return { allowed: true, retryAfter: 0 };
     }
     if (row.count >= maxRequests) {
@@ -555,6 +631,8 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
     CREATE TABLE IF NOT EXISTS chat_room_settings (room TEXT PRIMARY KEY, enabled INTEGER DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, title TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, content TEXT NOT NULL, excerpt TEXT, image_url TEXT, author_id TEXT NOT NULL, author_name TEXT NOT NULL, status TEXT DEFAULT 'pending', is_published INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME);
+    CREATE TABLE IF NOT EXISTS maintenance_mode (id INTEGER PRIMARY KEY DEFAULT 1, enabled INTEGER DEFAULT 0, message TEXT DEFAULT 'Site is under maintenance. Please check back later.', updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     `);
   await runMigrations(db);
 }
@@ -571,6 +649,17 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE recruitment_sessions ADD COLUMN token_hash TEXT"); } catch { console.warn("Migration: token_hash may already exist"); }
   try { await db.exec("ALTER TABLE recruitment_sessions RENAME COLUMN token TO token_old"); } catch { console.warn("Migration: token column rename"); }
   try { await db.exec("UPDATE recruitment_sessions SET token_hash = token_old WHERE token_hash IS NULL"); } catch { console.warn("Migration: token_hash backfill"); }
+  try { await db.exec("ALTER TABLE posts ADD COLUMN author_name TEXT DEFAULT 'Anonymous'"); } catch { console.warn("Migration: author_name may already exist"); }
+  try { await db.exec("ALTER TABLE posts ADD COLUMN author_association TEXT DEFAULT ''"); } catch { console.warn("Migration: author_association may already exist"); }
+  try { await db.exec("ALTER TABLE posts ADD COLUMN excerpt TEXT"); } catch { console.warn("Migration: excerpt may already exist"); }
+  try { await db.exec("ALTER TABLE posts ADD COLUMN status TEXT DEFAULT 'pending'"); } catch { console.warn("Migration: status may already exist"); }
+  try { await db.exec("ALTER TABLE posts ADD COLUMN is_published INTEGER DEFAULT 0"); } catch { console.warn("Migration: is_published may already exist"); }
+  try { await db.exec("ALTER TABLE posts ADD COLUMN updated_at DATETIME"); } catch { console.warn("Migration: updated_at may already exist"); }
+  try { await db.exec("ALTER TABLE case_studies ADD COLUMN content TEXT DEFAULT ''"); } catch { console.warn("Migration: case_studies.content may already exist"); }
+  try { await db.exec("ALTER TABLE case_studies ADD COLUMN image_url TEXT"); } catch { console.warn("Migration: case_studies.image_url may already exist"); }
+  try { await db.exec("ALTER TABLE case_studies ADD COLUMN author_name TEXT DEFAULT 'Anonymous'"); } catch { console.warn("Migration: case_studies.author_name may already exist"); }
+  try { await db.exec("ALTER TABLE case_studies ADD COLUMN created_by TEXT"); } catch { console.warn("Migration: case_studies.created_by may already exist"); }
+  try { await db.exec("DELETE FROM case_studies WHERE id LIKE 'cs%' AND content IS NULL"); } catch { console.warn("Migration: could not remove seed case studies"); }
   try {
     await db.exec(`CREATE TABLE IF NOT EXISTS recruitment_sessions (
       id TEXT PRIMARY KEY, applicant_id TEXT NOT NULL, token_hash TEXT NOT NULL,
@@ -582,8 +671,11 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE users ADD COLUMN secondary_role_id TEXT"); } catch { console.warn("Migration: secondary_role_id may already exist"); }
   try { await db.exec("ALTER TABLE admin_tokens ADD COLUMN active_role_id TEXT"); } catch { console.warn("Migration: active_role_id may already exist"); }
   try { await db.exec("ALTER TABLE users ADD COLUMN ex_title TEXT"); } catch { console.warn("Migration: ex_title may already exist"); }
+  try { await db.exec("ALTER TABLE users ADD COLUMN clerk_user_id TEXT"); } catch { console.warn("Migration: clerk_user_id may already exist"); }
+  try { await db.exec("ALTER TABLE users ADD COLUMN oauth_enabled INTEGER DEFAULT 0"); } catch { console.warn("Migration: oauth_enabled may already exist"); }
   try { await db.exec("DROP TABLE IF EXISTS chat_messages"); } catch { console.warn("Migration: drop chat_messages"); }
   try { await db.exec("DROP INDEX IF EXISTS idx_chat_messages_room_ts"); } catch { console.warn("Migration: drop chat index"); }
+  try { await db.exec("INSERT OR IGNORE INTO maintenance_mode (id, enabled, message) VALUES (1, 0, 'Site is under maintenance. Please check back later.')"); } catch { console.warn("Migration: maintenance_mode seed"); }
 }
 
 let currentEnv: any = null;
@@ -608,6 +700,8 @@ async function seedData(db: any, env?: any) {
     await db.prepare(roleSql).bind("member", "General Member", 10, "system").run();
     await db.prepare(roleSql).bind("advisory", "Advisory Board", 30, "system").run();
 
+    await db.prepare("INSERT OR IGNORE INTO users (id, name, email, role_id) VALUES (?, ?, ?, ?)").bind("anonymous", "Anonymous", "anonymous@180dc.shop", "member").run();
+
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("tech", "Technical", "Handles technical infrastructure and UI").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("rnd", "Research & Development", "Handles consulting research").run();
     await db.prepare("INSERT OR REPLACE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("marketing", "Marketing", "Handles marketing, outreach, and communications").run();
@@ -621,17 +715,6 @@ async function seedData(db: any, env?: any) {
       const devToken = crypto.randomUUID().replace(/-/g, "");
       await db.prepare("INSERT OR REPLACE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)").bind(devToken, "admin@vitstudent.ac.in", "Dev Admin", "president", "system").run();
       console.info("Dev token generated (visible only in dev mode)");
-    }
-
-    const csCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM case_studies").first();
-    if (csCount && csCount.cnt === 0) {
-      const cs = "INSERT OR IGNORE INTO case_studies (id, tag, title, description) VALUES (?, ?, ?, ?)";
-      await db.prepare(cs).bind("cs1", "Strategy", "EdTech Startup Growth", "Developed a comprehensive Go-To-Market strategy and user acquisition model for a rising EdTech platform serving 50K+ students.").run();
-      await db.prepare(cs).bind("cs2", "Operations", "NGO Operational Overhaul", "Streamlined logistics and supply chain inefficiencies for a local food distribution non-profit, reducing costs by 30%.").run();
-      await db.prepare(cs).bind("cs3", "Marketing", "Social Media Campaign", "Designed a viral social media campaign for a mental health awareness organization, reaching 2M+ impressions.").run();
-      await db.prepare(cs).bind("cs4", "Finance", "Fundraising Strategy", "Created a diversified fundraising strategy for an educational NGO, increasing donations by 45% in 6 months.").run();
-      await db.prepare(cs).bind("cs5", "Impact", "Rural Education Program", "Developed a scalable rural education program model for an NGO, impacting 10,000+ students across 50 villages.").run();
-      await db.prepare(cs).bind("cs6", "Technology", "Digital Transformation", "Led digital transformation for a legacy non-profit, modernizing their tech stack and improving efficiency by 60%.").run();
     }
 
     const tmCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM team_members").first();
@@ -738,20 +821,9 @@ app.use("*", async (c, next) => {
     return c.json({ error: "Database initialization failed" }, 500);
   }
 
-  // Allow unauthenticated routes: public signup + dev-login (handles its own auth)
+  // Allow unauthenticated routes
   const url = new URL(c.req.url);
-  if (
-    (url.pathname === "/api/signup-requests" && c.req.method === "POST") ||
-    url.pathname === "/api/consulting-request" ||
-    url.pathname === "/api/dev-login" ||
-    url.pathname === "/api/auth/forgot-token" ||
-    url.pathname === "/api/departments" ||
-    url.pathname === "/api/projects/completed" ||
-    (url.pathname.startsWith("/api/content") && c.req.method === "GET") ||
-    url.pathname === "/api/recruitment/register" ||
-    url.pathname === "/api/recruitment/login" ||
-    url.pathname === "/api/recruitment/open-domains"
-  ) {
+  if (isPublicRoute(url.pathname, c.req.method)) {
     await next();
     return;
   }
@@ -761,7 +833,7 @@ app.use("*", async (c, next) => {
   let tokenRow: any = null;
   try {
     const authHeader = c.req.header("Authorization") || "";
-    if (authHeader.startsWith("Bearer ")) {
+    if (authHeader.trim().toLowerCase().startsWith("bearer ")) {
       const token = authHeader.slice(7).trim();
       tokenRow = await c.env.DB.prepare(
         "SELECT token, email, name, role_id, revoked_at, expires_at, active_role_id FROM admin_tokens WHERE token = ?",
@@ -823,6 +895,11 @@ app.use("*", async (c, next) => {
     }
   }
 
+  const mm: any = await c.env.DB.prepare("SELECT enabled, message FROM maintenance_mode WHERE id = 1").first();
+  if (mm && mm.enabled === 1 && user.power_level < 100) {
+    return c.json({ error: mm.message || "Site is under maintenance." }, 503);
+  }
+
   c.set("user", user);
   await next();
 });
@@ -830,6 +907,13 @@ app.use("*", async (c, next) => {
 /**
  * Helper to check if current user is President/VP (Power == 100)
  */
+const requireMember = (c: any) => {
+  const user = c.get("user");
+  if (user.power_level < 10) {
+    throw new Error("Forbidden: Requires member privileges.");
+  }
+};
+
 const requireBoard = (c: any) => {
   const user = c.get("user");
   if (user.power_level < 100) {
@@ -890,8 +974,10 @@ app.get("/api/content/blog-posts", async (c) => {
     await seedData(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "content_blog_posts", 100, 60);
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-    const rows = await c.env.DB.prepare("SELECT * FROM blog_posts ORDER BY created_at ASC").all();
-    return c.json({ success: true, data: rows.results || [] });
+    const approvedRows = await c.env.DB.prepare(
+      "SELECT id, created_at, title, excerpt, image_url, author_name, author_association, slug FROM posts WHERE status = 'approved' AND is_published = 1 ORDER BY created_at DESC",
+    ).all();
+    return c.json({ success: true, data: approvedRows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -917,6 +1003,9 @@ app.post("/api/members", async (c) => {
   try {
     requireBoard(c);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const email = validateEmail(body.email);
     const name = sanitizeStr(body.name);
     const departmentId = sanitizeStr(body.departmentId) || null;
@@ -1107,6 +1196,9 @@ app.post("/api/auth/forgot-token", async (c) => {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const email = validateEmail(body.email);
     if (!email) {
       return c.json({ error: "Valid email is required" }, 400);
@@ -1128,6 +1220,165 @@ app.post("/api/auth/forgot-token", async (c) => {
     }
 
     return c.json({ success: true, message: "If the email is registered, your token has been sent." });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// CLERK LOGIN (public — verifies Clerk JWT, returns session)
+// ---------------------------------------------------------
+app.post("/api/auth/clerk-login", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkLoginRateLimit(c, "clerk_login", 20, 60);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many login attempts. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
+    const clerkToken = sanitizeStr(body.clerkToken, MAX_CLERK_TOKEN_LEN);
+    if (!clerkToken) {
+      return c.json({ error: "Missing clerkToken" }, 400);
+    }
+
+    const clerkSecret = c.env.CLERK_SECRET_KEY;
+    if (!clerkSecret) {
+      return c.json({ error: "Clerk not configured on server" }, 500);
+    }
+
+    const jwtPayload = await verifyToken(clerkToken, { secretKey: clerkSecret });
+    const clerkUserId = jwtPayload.sub;
+    if (!clerkUserId) {
+      return c.json({ error: "Invalid Clerk token: missing user ID" }, 401);
+    }
+
+    // Try lookup by clerk_user_id first (already linked)
+    let user: any = await c.env.DB.prepare(
+      "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.clerk_user_id = ?",
+    ).bind(clerkUserId).first();
+
+    // If not found by clerk_user_id, try by email (auto-link)
+    if (!user) {
+      const email = sanitizeStr(body.email, 255);
+      if (email) {
+        user = await c.env.DB.prepare(
+          "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
+        ).bind(email).first();
+
+        if (user) {
+          await c.env.DB.prepare(
+            "UPDATE users SET clerk_user_id = ?, oauth_enabled = 1 WHERE id = ?",
+          ).bind(clerkUserId, user.id).run();
+          user.oauth_enabled = 1;
+        }
+      }
+    }
+
+    if (!user) {
+      return c.json({
+        error: "Google login not linked to any 180DC member. Log in with a token first and enable Google login in your profile settings.",
+      }, 403);
+    }
+
+    if (!user.oauth_enabled) {
+      return c.json({
+        error: "Google login is disabled for this account. Enable it in your profile settings.",
+      }, 403);
+    }
+
+    // Create or reuse an admin token for this session
+    const existingToken: any = await c.env.DB.prepare(
+      "SELECT token FROM admin_tokens WHERE email = ? AND revoked_at IS NULL",
+    ).bind(user.email).first();
+
+    let sessionToken: string;
+    if (existingToken) {
+      sessionToken = existingToken.token;
+    } else {
+      sessionToken = crypto.randomUUID().replace(/-/g, "");
+      await c.env.DB.prepare(
+        "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
+      ).bind(sessionToken, user.email, user.name, user.role_id, user.id).run();
+    }
+
+    return c.json({
+      success: true,
+      token: sessionToken,
+      email: user.email,
+      name: user.name,
+      roleId: user.role_id || "member",
+      roleName: user.role_name || null,
+      powerLevel: user.power_level ?? 10,
+      departmentId: user.department_id || null,
+    });
+  } catch (e: any) {
+    if (e.message?.includes("JWT") || e.message?.includes("token")) {
+      return c.json({ error: "Invalid or expired Clerk token" }, 401);
+    }
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// LINK CLERK (authenticated — links Clerk user ID to member)
+// ---------------------------------------------------------
+app.post("/api/auth/link-clerk", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "link_clerk", 5, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
+    const user: any = c.get("user");
+    if (!user) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
+    const clerkUserId = sanitizeStr(body.clerkUserId);
+    if (!clerkUserId) {
+      return c.json({ error: "Missing clerkUserId" }, 400);
+    }
+
+    await c.env.DB.prepare(
+      "UPDATE users SET clerk_user_id = ?, oauth_enabled = 1 WHERE id = ?",
+    ).bind(clerkUserId, user.id).run();
+
+    await addAuditLog(c, "clerk_linked", "user", user.id, "Clerk account linked for " + user.email);
+
+    return c.json({ success: true, message: "Google login enabled successfully" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// UNLINK CLERK (authenticated — disconnects Google login)
+// ---------------------------------------------------------
+app.post("/api/auth/unlink-clerk", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "unlink_clerk", 5, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
+    const user: any = c.get("user");
+    if (!user) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    await c.env.DB.prepare(
+      "UPDATE users SET clerk_user_id = NULL, oauth_enabled = 0 WHERE id = ?",
+    ).bind(user.id).run();
+
+    await addAuditLog(c, "clerk_unlinked", "user", user.id, "Clerk account unlinked for " + user.email);
+
+    return c.json({ success: true, message: "Google login disabled" });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -1158,11 +1409,40 @@ app.post("/api/auth/rotate-token", async (c) => {
 });
 
 // ---------------------------------------------------------
+// CHAT — Lock / unlock all rooms
+// ---------------------------------------------------------
+app.post("/api/chat/rooms/lock-all", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden" }, 403);
+    await c.env.DB.prepare("UPDATE chat_room_settings SET enabled = 0").run();
+    return c.json({ success: true, locked: true });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+app.post("/api/chat/rooms/unlock-all", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden" }, 403);
+    await c.env.DB.prepare("UPDATE chat_room_settings SET enabled = 1").run();
+    return c.json({ success: true, locked: false });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
 // DASHBOARD BOOTSTRAP (single server payload for the members page)
 // ---------------------------------------------------------
 app.get("/api/dashboard", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "dashboard", 30, 60);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
 
     const pendingRequests =
@@ -1185,6 +1465,29 @@ app.get("/api/dashboard", async (c) => {
       created_by: t.created_by, created_at: t.created_at, revoked_at: t.revoked_at,
     }));
 
+    // Dashboard stats
+    const [{ count: membersCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM users").all().then((r: any) => r.results);
+    const [{ count: projectsCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM projects WHERE status != 'completed'").all().then((r: any) => r.results);
+    
+    // Upcoming meets (total count)
+    const [{ count: clubMeetsCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM club_meets WHERE scheduled_at > CURRENT_TIMESTAMP").all().then((r: any) => r.results);
+    const [{ count: deptMeetsCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM department_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (department_id = ? OR ? >= 100)").bind(user.department_id || "", user.power_level).all().then((r: any) => r.results);
+    const [{ count: interMeetsCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM inter_dept_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (',' || departments || ',' LIKE '%,' || ? || ',%' OR ? >= 100)").bind(user.department_id || "", user.power_level).all().then((r: any) => r.results);
+    
+    const totalUpcomingMeets = (clubMeetsCount || 0) + (deptMeetsCount || 0) + (interMeetsCount || 0);
+
+    // Recent meets for preview
+    const deptId = user.department_id || "";
+    const clubMeetsRecent = await c.env.DB.prepare("SELECT 'club' as type, title, scheduled_at, meet_link FROM club_meets WHERE scheduled_at > CURRENT_TIMESTAMP").all().then((r: any) => r.results || []);
+    const deptMeetsRecent = await c.env.DB.prepare("SELECT 'department' as type, title, scheduled_at, meet_link FROM department_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (department_id = ? OR ? >= 100)").bind(deptId, user.power_level).all().then((r: any) => r.results || []);
+    const interMeetsRecent = await c.env.DB.prepare("SELECT 'inter-department' as type, title, scheduled_at, meet_link FROM inter_dept_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (',' || departments || ',' LIKE '%,' || ? || ',%' OR ? >= 100)").bind(deptId, user.power_level).all().then((r: any) => r.results || []);
+    const recentMeets = [...clubMeetsRecent, ...deptMeetsRecent, ...interMeetsRecent]
+      .sort((a: any, b: any) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+      .slice(0, 3);
+
+    // Announcements
+    const announcements = await c.env.DB.prepare("SELECT * FROM announcements ORDER BY created_at DESC LIMIT 20").all();
+
     return c.json({
       success: true,
       user: {
@@ -1194,21 +1497,31 @@ app.get("/api/dashboard", async (c) => {
         roleName: user.role_name,
         powerLevel: user.power_level,
         departmentId: user.department_id || null,
+        oauthEnabled: !!user.oauth_enabled,
+        clerkUserId: user.clerk_user_id || null,
       },
+      stats: {
+        membersCount,
+        projectsCount,
+        upcomingMeetsCount: totalUpcomingMeets,
+        announcementsCount: (announcements.results || []).length,
+        todayEmailCount: await getTodayEmailCount(c.env.DB),
+      },
+      recentMeets,
       pendingRequests: pendingRequests.results || [],
       adminTokens: maskedTokens,
       roleTransfers: (await c.env.DB.prepare(
         "SELECT rt.*, fu.name as from_name, fu.email as from_email, tu.name as to_name, tu.email as to_email, r.name as role_name FROM role_transfers rt LEFT JOIN users fu ON rt.from_user_id = fu.id LEFT JOIN users tu ON rt.to_user_id = tu.id LEFT JOIN roles r ON rt.role_id = r.id WHERE rt.status = 'pending' ORDER BY rt.created_at DESC",
       ).all()).results || [],
       departments: (await c.env.DB.prepare("SELECT id, name, description FROM departments ORDER BY name ASC").all()).results || [],
-      announcements: (await c.env.DB.prepare("SELECT * FROM announcements ORDER BY created_at DESC LIMIT 20").all()).results || [],
+      announcements: announcements.results || [],
       flags: {
         canAccessHub: user.power_level >= 50,
         canManageBoard: user.power_level >= 100,
       },
     });
   } catch (e: any) {
-    return errorResponse(c, e.message, 403);
+    return errorResponse(c, e.message, 500);
   }
 });
 
@@ -1224,6 +1537,9 @@ app.post("/api/admin-tokens", async (c) => {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const email = validateEmail(body.email);
     const roleId = sanitizeStr(body.roleId) || "member";
     const name = sanitizeStr(body.name) || email?.split?.("@")?.[0] || "member";
@@ -1275,6 +1591,25 @@ app.delete("/api/admin-tokens/:email", async (c) => {
   }
 });
 
+app.post("/api/admin-tokens/:email/revoke", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const email = c.req.param("email");
+    if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return c.json({ error: "Invalid email" }, 400);
+    }
+    const row: any = await c.env.DB.prepare("SELECT email, revoked_at FROM admin_tokens WHERE email = ?").bind(email).first();
+    if (!row) return c.json({ error: "Token not found for this email" }, 404);
+    if (row.revoked_at) return c.json({ error: "Token already revoked" }, 409);
+    await c.env.DB.prepare("UPDATE admin_tokens SET revoked_at = datetime('now') WHERE email = ?").bind(email).run();
+    await addAuditLog(c, "token_revoked", "admin_token", email, "Token revoked for " + email);
+    return c.json({ success: true, message: "Token revoked." });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
 // ---------------------------------------------------------
 // BOARD USERS (Create or update a board account + issue token)
 // ---------------------------------------------------------
@@ -1288,6 +1623,9 @@ app.post("/api/board-users", async (c) => {
     }
 
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const email = validateEmail(body.email);
     const name =
       sanitizeStr(body.name) || email?.split?.("@")?.[0] || "board-member";
@@ -1379,6 +1717,9 @@ app.post("/api/advisory-members", async (c) => {
     }
 
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const email = validateEmail(body.email);
     const name = sanitizeStr(body.name) || email?.split?.("@")?.[0] || "advisory-member";
     const exTitle = sanitizeStr(body.exTitle) || null;
@@ -1439,6 +1780,9 @@ app.put("/api/members/:id/role", async (c) => {
     requireBoard(c);
     const targetUserId = c.req.param("id");
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const newRoleId = sanitizeStr(body.newRoleId);
     const departmentId = sanitizeStr(body.departmentId);
     const secondaryRoleId = sanitizeStr(body.secondaryRoleId) || null;
@@ -1471,7 +1815,14 @@ app.put("/api/members/:id/role", async (c) => {
 app.post("/api/roles", async (c) => {
   try {
     requireBoard(c);
+    const rl = await checkRateLimit(c, "create_role", 10, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const roleId = sanitizeStr(body.roleId);
     const name = sanitizeStr(body.name);
     const powerLevel = body.powerLevel;
@@ -1556,7 +1907,7 @@ app.get("/api/members/export", async (c) => {
 app.get("/api/members-directory", async (c) => {
   try {
     await ensureTables(c.env.DB);
-    requireBoard(c);
+    requireMember(c);
     const rows = await c.env.DB.prepare(
       "SELECT u.id, u.name, u.email, u.role_id, u.department_id, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id ORDER BY r.power_level DESC, u.name ASC",
     ).all();
@@ -1598,6 +1949,9 @@ app.post("/api/role-transfers", async (c) => {
     await ensureTables(c.env.DB);
     requireBoard(c);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const fromUserId = sanitizeStr(body.fromUserId);
     const toUserId = sanitizeStr(body.toUserId);
     const roleId = sanitizeStr(body.roleId);
@@ -1810,6 +2164,9 @@ app.post("/api/signup-requests", async (c) => {
       return c.json({ error: "Too many signup requests. Try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const name = sanitizeStr(body.name);
     const email = validateEmail(body.email);
     const message = sanitizeStr(body.message, MAX_MSG_LEN);
@@ -1978,6 +2335,9 @@ app.post("/api/departments/:id/meets", async (c) => {
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const meetLink = sanitizeStr(body.meetLink);
     const description = sanitizeStr(body.description);
@@ -2019,6 +2379,9 @@ app.post("/api/departments/:id/documents", async (c) => {
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const description = sanitizeStr(body.description);
     const fileUrl = sanitizeStr(body.fileUrl);
@@ -2054,6 +2417,9 @@ app.post("/api/departments/:id/instructions", async (c) => {
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const content = sanitizeStr(body.content);
     const priority = sanitizeStr(body.priority) || "medium";
@@ -2088,6 +2454,9 @@ app.post("/api/departments/:id/projects", async (c) => {
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const name = sanitizeStr(body.name);
     const description = sanitizeStr(body.description);
     const deadline = body.deadline || null;
@@ -2109,6 +2478,9 @@ app.put("/api/departments/:id/projects/:projectId/status", async (c) => {
     canAccessDept(c, deptId);
     const projectId = c.req.param("projectId");
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const status = sanitizeStr(body.status) || "upcoming";
     await c.env.DB.prepare("UPDATE department_projects SET status = ? WHERE id = ? AND department_id = ?").bind(status, projectId, deptId).run();
     return c.json({ success: true, message: "Project status updated" });
@@ -2181,6 +2553,9 @@ app.post("/api/club-meets", async (c) => {
       return c.json({ error: "Forbidden: Lead or above only" }, 403);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const meetLink = sanitizeStr(body.meetLink);
     const description = sanitizeStr(body.description);
@@ -2237,6 +2612,9 @@ app.post("/api/inter-dept-meets", async (c) => {
       return c.json({ error: "Forbidden: Lead or above only" }, 403);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const meetLink = sanitizeStr(body.meetLink);
     const description = sanitizeStr(body.description);
@@ -2246,8 +2624,10 @@ app.post("/api/inter-dept-meets", async (c) => {
       return c.json({ error: "Missing title, scheduledAt, or departments" }, 400);
     }
     if (meetLink && !isValidUrl(meetLink)) return c.json({ error: "Invalid meet link URL" }, 400);
-    const deptsStr = Array.isArray(departments) ? departments.join(",") : String(departments);
-    const deptArray = Array.isArray(departments) ? departments : departments.split(",");
+    const rawDepts = Array.isArray(departments) ? departments : departments.split(",");
+    const deptArray = rawDepts.map((d: string) => String(d).trim()).filter(Boolean);
+    const deptsStr = deptArray.join(",");
+    if (deptArray.length === 0) return c.json({ error: "At least one department is required" }, 400);
     const meetId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
       "INSERT INTO inter_dept_meets (id, title, meet_link, description, scheduled_at, departments, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -2283,6 +2663,8 @@ app.delete("/api/inter-dept-meets/:id", async (c) => {
 app.post("/api/meets/:type/:id/send-notification", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "meet_notification", 10, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
     if (user.power_level < 50) return c.json({ error: "Forbidden: Lead or above only" }, 403);
     const meetType = c.req.param("type");
@@ -2395,7 +2777,14 @@ app.post("/api/announcements", async (c) => {
     if (user.power_level < 100) {
       return c.json({ error: "Forbidden: President or VP only" }, 403);
     }
+    const rl = await checkRateLimit(c, "create_announcement", 5, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many announcements. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const content = sanitizeStr(body.content);
     if (!title || !content) return c.json({ error: "Missing title or content" }, 400);
@@ -2478,7 +2867,14 @@ app.post("/api/projects", async (c) => {
     if (user.power_level < 100) {
       return c.json({ error: "Forbidden: President or VP only" }, 403);
     }
+    const rl = await checkRateLimit(c, "create_project", 10, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many projects. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const name = sanitizeStr(body.name);
     const description = sanitizeStr(body.description, MAX_PROJECT_DESC_LEN);
     const companyOrg = sanitizeStr(body.companyOrg);
@@ -2489,6 +2885,8 @@ app.post("/api/projects", async (c) => {
     if (!Array.isArray(departmentIds) || departmentIds.length === 0) {
       return c.json({ error: "Select at least one department" }, 400);
     }
+    const sanitizedDeptIds = departmentIds.map((d: any) => String(d).trim()).filter(Boolean);
+    if (sanitizedDeptIds.length === 0) return c.json({ error: "Invalid department selection" }, 400);
     if (!yearInput && !deadline) {
       return c.json({ error: "Provide either a year or a deadline date" }, 400);
     }
@@ -2509,13 +2907,13 @@ app.post("/api/projects", async (c) => {
       "INSERT INTO projects (id, name, description, company_org, year, deadline, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
     ).bind(projectId, name, description || null, companyOrg || null, year, deadline, user.id).run();
 
-    for (const deptId of departmentIds) {
+    for (const deptId of sanitizedDeptIds) {
       await c.env.DB.prepare(
         "INSERT OR IGNORE INTO project_departments (project_id, department_id) VALUES (?, ?)",
       ).bind(projectId, deptId).run();
     }
 
-    await sendProjectAssignmentEmail(c, name, departmentIds);
+    await sendProjectAssignmentEmail(c, name, sanitizedDeptIds);
 
     return c.json({ success: true, message: "Project created", projectId });
   } catch (e: any) {
@@ -2548,6 +2946,9 @@ app.post("/api/projects/:id/roles", async (c) => {
     const user: any = c.get("user");
     const projectId = c.req.param("id");
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const userId = sanitizeStr(body.userId);
     const roleName = sanitizeStr(body.roleName);
     if (!userId || !roleName) return c.json({ error: "Missing userId or roleName" }, 400);
@@ -2641,6 +3042,9 @@ app.post("/api/projects/:id/tasks", async (c) => {
     const user: any = c.get("user");
     await canManageProjectTasks(c, projectId);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const title = sanitizeStr(body.title);
     const description = sanitizeStr(body.description);
     const assignedTo = sanitizeStr(body.assignedTo);
@@ -2662,6 +3066,9 @@ app.put("/api/projects/:id/tasks/:taskId", async (c) => {
     const user: any = c.get("user");
     await canManageProjectTasks(c, projectId);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const status = sanitizeStr(body.status);
     if (!status || !["pending", "completed"].includes(status)) {
       return c.json({ error: "Invalid status" }, 400);
@@ -2756,6 +3163,9 @@ app.post("/api/recruitment/register", async (c) => {
       return c.json({ error: "Too many requests. Please try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const name = sanitizeStr(body.name);
     const email = validateEmail(body.email);
     const password = sanitizeStr(body.password);
@@ -2800,6 +3210,9 @@ app.post("/api/recruitment/login", async (c) => {
       return c.json({ error: "Too many requests. Please try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const email = validateEmail(body.email);
     const password = sanitizeStr(body.password);
     if (!email || !password) {
@@ -2849,6 +3262,8 @@ app.post("/api/recruitment/login", async (c) => {
 app.post("/api/recruitment/applications", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "recruitment_application", 3, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const sessionApplicant = await getSessionApplicant(c);
     if (!sessionApplicant) {
       return c.json({ error: "Unauthorized: please log in first" }, 401);
@@ -2856,6 +3271,9 @@ app.post("/api/recruitment/applications", async (c) => {
     const applicantId = sessionApplicant.id;
 
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const name = sanitizeStr(body.name);
     const email = validateEmail(body.email);
     const year = sanitizeStr(body.year);
@@ -2994,6 +3412,9 @@ app.post("/api/recruitment/admin/evaluation-criteria", async (c) => {
     await ensureTables(c.env.DB);
     canAccessRecruitAdmin(c);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const roundId = sanitizeStr(body.roundId);
     const name = sanitizeStr(body.name);
     const maxScore = body.maxScore;
@@ -3040,6 +3461,9 @@ app.post("/api/recruitment/admin/evaluations", async (c) => {
     canAccessRecruitAdmin(c);
     const user: any = c.get("user");
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const applicationId = sanitizeStr(body.applicationId);
     const criterionId = sanitizeStr(body.criterionId);
     const score = body.score;
@@ -3085,6 +3509,9 @@ app.put("/api/recruitment/admin/applications/:id/status", async (c) => {
     canAccessRecruitAdmin(c);
     const id = c.req.param("id");
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const status = sanitizeStr(body.status);
 
     if (!status || !["pending", "shortlisted", "selected", "rejected"].includes(status)) {
@@ -3105,6 +3532,9 @@ app.post("/api/recruitment/admin/bulk-shortlist", async (c) => {
     await ensureTables(c.env.DB);
     canAccessRecruitAdmin(c);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const count = body.count;
     const roundId = sanitizeStr(body.roundId);
     if (!roundId || typeof count !== "number" || count < 1) {
@@ -3156,17 +3586,21 @@ app.put("/api/recruitment/admin/settings", async (c) => {
     await ensureTables(c.env.DB);
     requireBoard(c);
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const openDomains = body.openDomains;
     if (!Array.isArray(openDomains)) {
       return c.json({ error: "openDomains must be an array of domain names" }, 400);
     }
+    const sanitizedDomains = openDomains.map((d: any) => String(d).trim()).filter(Boolean);
     const user: any = c.get("user");
     await c.env.DB.prepare("UPDATE recruitment_domain_settings SET is_open = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP").bind(user.id).run();
-    if (openDomains.length > 0) {
-      const placeholders = openDomains.map(() => "?").join(",");
+    if (sanitizedDomains.length > 0) {
+      const placeholders = sanitizedDomains.map(() => "?").join(",");
       await c.env.DB.prepare(
         `UPDATE recruitment_domain_settings SET is_open = 1, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE domain_name IN (${placeholders})`,
-      ).bind(user.id, ...openDomains).run();
+      ).bind(user.id, ...sanitizedDomains).run();
     }
     return c.json({ success: true, message: "Recruitment settings updated" });
   } catch (e: any) {
@@ -3188,6 +3622,299 @@ app.get("/api/recruitment/open-domains", async (c) => {
 });
 
 // ---------------------------------------------------------
+// BLOG POSTS (with R2 image upload)
+// ---------------------------------------------------------
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/[\s_]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 100) || "post";
+}
+
+const ALLOWED_IMG_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const MAX_IMG_SIZE = 10 * 1024 * 1024; // 10 MB
+
+// 1. Upload image to R2 (anonymous, rate-limited)
+app.post("/api/blogs/upload-image", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "blog_upload_image", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+
+    const fd = await c.req.formData();
+    const file = fd.get("image");
+    if (!file || typeof file === "string") return c.json({ error: "No image file provided" }, 400);
+
+    const typedFile = file as File;
+    if (!ALLOWED_IMG_TYPES.includes(typedFile.type)) {
+      return c.json({ error: "Invalid file type. Allowed: JPEG, PNG, WebP, GIF" }, 400);
+    }
+    if (typedFile.size > MAX_IMG_SIZE) {
+      return c.json({ error: "File too large. Max 10 MB" }, 400);
+    }
+
+    const ext = typedFile.name.split(".").pop() || "jpg";
+    const key = `blogs/${crypto.randomUUID()}.${ext}`;
+    const arrayBuffer = await typedFile.arrayBuffer();
+    await c.env.BLOG_IMAGES.put(key, arrayBuffer, {
+      httpMetadata: { contentType: typedFile.type },
+    });
+
+    const url = `/api/blogs/images/${key}`;
+
+    return c.json({ success: true, url, key });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 1b. Serve blog image from R2 (public)
+app.get("/api/blogs/images/*", async (c) => {
+  try {
+    const rl = await checkRateLimit(c, "blog_image_serve", 200, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+    const url = new URL(c.req.url);
+    const prefix = "/api/blogs/images/";
+    let key = decodeURIComponent(url.pathname);
+
+    if (key.startsWith(prefix)) {
+      key = key.slice(prefix.length);
+    } else {
+      key = key.replace(/^\/+/, "");
+    }
+
+    if (!key || key.includes("..")) return c.json({ error: "Invalid key" }, 400);
+
+    const obj = await c.env.BLOG_IMAGES.get(key);
+    if (!obj) return c.json({ error: "Image not found" }, 404);
+
+    const headers = new Headers();
+    headers.set("Content-Type", obj.httpMetadata?.contentType || "image/jpeg");
+    headers.set("Cache-Control", "public, max-age=86400");
+    headers.set("X-Content-Type-Options", "nosniff");
+
+    return new Response(obj.body, { headers });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 2. Create a blog post (anonymous, rate-limited)
+app.post("/api/blogs", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "create_blog", 1, 86400);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded. You can only post one blog per day.", retryAfter: rl.retryAfter }, 429);
+
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+
+    const title = sanitizeStr(body.title);
+    const rawContent = body.content;
+    const excerpt = sanitizeStr(body.excerpt);
+    const imageUrl = sanitizeStr(body.imageUrl);
+    const rawSlug = sanitizeStr(body.slug) || slugify(title || "");
+    const authorName = sanitizeStr(body.authorName) || "Anonymous";
+    const authorAssociation = sanitizeStr(body.authorAssociation) || "";
+
+    if (!title || typeof title !== "string" || title.length < 3) {
+      return c.json({ error: "Title must be at least 3 characters" }, 400);
+    }
+    if (!rawContent || typeof rawContent !== "string" || rawContent.length < 10) {
+      return c.json({ error: "Content must be at least 10 characters" }, 400);
+    }
+    if (rawContent.length > 100000) {
+      return c.json({ error: "Content too long (max 100,000 chars)" }, 400);
+    }
+
+    const content = sanitizeBlogHtml(rawContent);
+    const textOnly = content.replace(/<[^>]*>/g, "").trim();
+    if (textOnly.length < 10) {
+      return c.json({ error: "Content must contain at least 10 visible characters after sanitization" }, 400);
+    }
+
+    // Generate unique slug
+    let slug = rawSlug;
+    let slugSuffix = 0;
+    while (true) {
+      const existing: any = await c.env.DB.prepare("SELECT id FROM posts WHERE slug = ?").bind(slug).first();
+      if (!existing) break;
+      slugSuffix++;
+      slug = `${rawSlug}-${slugSuffix}`;
+    }
+
+    const id = crypto.randomUUID().replace(/-/g, "");
+    await c.env.DB.prepare(
+      "INSERT INTO posts (id, title, slug, content, excerpt, image_url, author_id, author_name, author_association, status, is_published) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)",
+    ).bind(id, title, slug, content, excerpt || null, imageUrl || null, "anonymous", authorName, authorAssociation).run();
+
+    return c.json({ success: true, message: "Blog post submitted for review", id, slug, status: "pending" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 3. Get approved/published blogs (public)
+app.get("/api/blogs", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "public_blogs", 100, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+    const rows = await c.env.DB.prepare(
+      "SELECT id, title, slug, excerpt, image_url, author_name, author_association, created_at FROM posts WHERE status = 'approved' AND is_published = 1 ORDER BY created_at DESC LIMIT 50",
+    ).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 4. Get all blogs for admin (power >= 50)
+app.get("/api/blogs/admin", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 50) return c.json({ error: "Forbidden: Lead or above only" }, 403);
+
+    const rows = await c.env.DB.prepare(
+      "SELECT p.id, p.title, p.slug, p.content, p.excerpt, p.image_url, p.author_name, p.author_association, p.status, p.is_published, p.created_at, p.updated_at FROM posts p ORDER BY p.created_at DESC LIMIT 100",
+    ).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 5. Get single blog by slug (public)
+app.get("/api/blogs/:slug", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "public_blog_single", 100, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+    const slug = c.req.param("slug");
+    const row: any = await c.env.DB.prepare(
+      "SELECT id, title, slug, content, excerpt, image_url, author_name, author_association, created_at FROM posts WHERE (slug = ? OR id = ?) AND status = 'approved' AND is_published = 1",
+    ).bind(slug, slug).first();
+
+    if (!row) return c.json({ error: "Blog not found" }, 404);
+    return c.json({ success: true, data: row });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 6. Approve a blog post (power >= 100)
+app.put("/api/blogs/:id/approve", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "blog_approve", 20, 60);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
+
+    const id = c.req.param("id");
+    const row: any = await c.env.DB.prepare("SELECT id, status, title FROM posts WHERE id = ?").bind(id).first();
+    if (!row) return c.json({ error: "Blog not found" }, 404);
+    if (row.status !== "pending") return c.json({ error: "Blog already processed (current: " + row.status + ")" }, 400);
+
+    await c.env.DB.prepare("UPDATE posts SET status = 'approved', is_published = 1, updated_at = datetime('now') WHERE id = ?").bind(id).run();
+    await addAuditLog(c, "blog_approved", "post", id, "Blog approved: " + row.title);
+
+    return c.json({ success: true, message: "Blog approved and published" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 7. Reject a blog post (power >= 100) — also deletes associated images from R2
+app.put("/api/blogs/:id/reject", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "blog_reject", 20, 60);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
+
+    const id = c.req.param("id");
+    const row: any = await c.env.DB.prepare("SELECT id, status, title, content, image_url FROM posts WHERE id = ?").bind(id).first();
+    if (!row) return c.json({ error: "Blog not found" }, 404);
+    if (row.status !== "pending") return c.json({ error: "Blog already processed (current: " + row.status + ")" }, 400);
+
+    await c.env.DB.prepare("UPDATE posts SET status = 'rejected', is_published = 0, updated_at = datetime('now') WHERE id = ?").bind(id).run();
+    await addAuditLog(c, "blog_rejected", "post", id, "Blog rejected: " + row.title);
+
+    // Delete associated images from R2
+    try {
+      const keys = new Set<string>();
+      // Featured image
+      if (row.image_url) {
+        const m = row.image_url.match(/\/api\/blogs\/images\/(blogs\/[^"'\s?]+)/);
+        if (m) keys.add(m[1]);
+      }
+      // Images in content
+      if (row.content) {
+        const imgRe = /<img[^>]+src="\/api\/blogs\/images\/(blogs\/[^"']+?)"/gi;
+        let match;
+        while ((match = imgRe.exec(row.content)) !== null) {
+          keys.add(match[1]);
+        }
+      }
+      for (const key of keys) {
+        await c.env.BLOG_IMAGES.delete(key).catch(() => {});
+      }
+    } catch {}
+
+    return c.json({ success: true, message: "Blog rejected" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// 7b. Delete a blog post permanently (power >= 100)
+app.delete("/api/blogs/:id", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "blog_delete", 20, 60);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
+
+    const id = c.req.param("id");
+    const row: any = await c.env.DB.prepare("SELECT id, title, content, image_url FROM posts WHERE id = ?").bind(id).first();
+    if (!row) return c.json({ error: "Blog not found" }, 404);
+
+    // Delete associated images from R2
+    try {
+      const keys = new Set<string>();
+      if (row.image_url) {
+        const m = row.image_url.match(/\/api\/blogs\/images\/(blogs\/[^"'\s?]+)/);
+        if (m) keys.add(m[1]);
+      }
+      if (row.content) {
+        const imgRe = /<img[^>]+src="\/api\/blogs\/images\/(blogs\/[^"']+?)"/gi;
+        let match;
+        while ((match = imgRe.exec(row.content)) !== null) {
+          keys.add(match[1]);
+        }
+      }
+      for (const key of keys) {
+        await c.env.BLOG_IMAGES.delete(key).catch(() => {});
+      }
+    } catch {}
+
+    await c.env.DB.prepare("DELETE FROM posts WHERE id = ?").bind(id).run();
+    await addAuditLog(c, "blog_deleted", "post", id, "Blog deleted: " + row.title);
+
+    return c.json({ success: true, message: "Blog permanently deleted" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
 // CONSULTING REQUESTS
 // ---------------------------------------------------------
 
@@ -3200,6 +3927,9 @@ app.post("/api/consulting-request", async (c) => {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const name = sanitizeStr(body.name);
     const email = validateEmail(body.email);
     const phone = sanitizeStr(body.phone);
@@ -3239,6 +3969,8 @@ app.get("/api/consulting-requests", async (c) => {
 app.post("/api/consulting-requests/:id/accept", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "consulting_accept", 10, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     requireBoard(c);
     const id = c.req.param("id");
 
@@ -3250,6 +3982,9 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
     if (request.status !== "pending") return c.json({ error: "Request already processed" }, 400);
 
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const emailSubject = sanitizeStr(body.emailSubject);
     const emailBody = sanitizeStr(body.emailBody, MAX_MSG_LEN * 2);
 
@@ -3306,6 +4041,8 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
 app.post("/api/consulting-requests/:id/reject", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "consulting_reject", 10, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     requireBoard(c);
     const id = c.req.param("id");
     const request: any = await c.env.DB.prepare(
@@ -3315,6 +4052,9 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
     if (request.status !== "pending") return c.json({ error: "Request already processed" }, 400);
 
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const emailSubject = sanitizeStr(body.emailSubject);
     const emailBody = sanitizeStr(body.emailBody, MAX_MSG_LEN * 2);
 
@@ -3388,6 +4128,88 @@ app.delete("/api/consulting-requests/:id", async (c) => {
   }
 });
 
+// ---------------------------------------------------------
+// CASE STUDIES (member-posted, no approval needed)
+// ---------------------------------------------------------
+
+// 1. Create a case study (authenticated, power >= 10)
+app.post("/api/case-studies", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "case_study_create", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
+
+    const body = await c.req.json();
+    const tag = sanitizeStr(body.tag);
+    const title = sanitizeStr(body.title);
+    const description = sanitizeStr(body.description);
+    const rawContent = body.content;
+    const imageUrl = sanitizeStr(body.imageUrl);
+
+    if (!tag) return c.json({ error: "Tag is required (e.g. Strategy, Operations)" }, 400);
+    if (!title || title.length < 3) return c.json({ error: "Title must be at least 3 characters" }, 400);
+    if (!rawContent || typeof rawContent !== "string" || rawContent.length < 10) {
+      return c.json({ error: "Content must be at least 10 characters" }, 400);
+    }
+    if (rawContent.length > 100000) return c.json({ error: "Content too long (max 100,000 chars)" }, 400);
+
+    const content = sanitizeBlogHtml(rawContent);
+    const textOnly = content.replace(/<[^>]*>/g, "").trim();
+    if (textOnly.length < 10) {
+      return c.json({ error: "Content must contain at least 10 visible characters after sanitization" }, 400);
+    }
+
+    const id = crypto.randomUUID().replace(/-/g, "");
+    const authorName = user.name || "Member";
+
+    await c.env.DB.prepare(
+      "INSERT INTO case_studies (id, tag, title, description, content, image_url, author_name, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(id, tag, title, description || "", content, imageUrl || null, authorName, user.id).run();
+
+    await addAuditLog(c, "case_study_created", "case_study", id, "Case study created: " + title);
+
+    return c.json({ success: true, message: "Case study published", id });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 2. List all case studies for admin/members (authenticated, power >= 10)
+app.get("/api/case-studies", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+
+    const rows = await c.env.DB.prepare("SELECT * FROM case_studies ORDER BY created_at DESC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 3. Delete a case study (power >= 50)
+app.delete("/api/case-studies/:id", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 50) return c.json({ error: "Forbidden: Lead or above only" }, 403);
+
+    const id = c.req.param("id");
+    const row: any = await c.env.DB.prepare("SELECT id, title FROM case_studies WHERE id = ?").bind(id).first();
+    if (!row) return c.json({ error: "Case study not found" }, 404);
+
+    await c.env.DB.prepare("DELETE FROM case_studies WHERE id = ?").bind(id).run();
+    await addAuditLog(c, "case_study_deleted", "case_study", id, "Case study deleted: " + row.title);
+
+    return c.json({ success: true, message: "Case study deleted" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
 // 6. Admin: Send arbitrary email (President/VP only)
 app.post("/api/send-email", async (c) => {
   try {
@@ -3398,6 +4220,9 @@ app.post("/api/send-email", async (c) => {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
     }
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const to = sanitizeStr(body.to, MAX_MSG_LEN);
     const subject = sanitizeStr(body.subject);
     const htmlBody = sanitizeStr(body.body, MAX_MSG_LEN * 2);
@@ -3409,10 +4234,20 @@ app.post("/api/send-email", async (c) => {
     const apiKey = c.env.RESEND_API_KEY;
     if (!apiKey) return c.json({ error: "Email not configured" }, 500);
 
+    const currentCount = await getTodayEmailCount(c.env.DB);
+    if (currentCount >= 100) {
+      return c.json({ error: "Daily email quota reached (100 emails). Try again after 24 hours." }, 429);
+    }
+
     // Support multiple recipients separated by comma/semicolon
     const recipients = to.split(/[;,]+/).map((e: string) => e.trim()).filter(Boolean);
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const validRecipients = recipients.filter((e: string) => EMAIL_RE.test(e));
+    if (validRecipients.length === 0) {
+      return c.json({ error: "No valid email addresses provided" }, 400);
+    }
 
-    for (const recipient of recipients) {
+    for (const recipient of validRecipients) {
       await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
@@ -3443,7 +4278,8 @@ app.post("/api/send-email", async (c) => {
       });
     }
 
-    return c.json({ success: true, message: `Email sent to ${recipients.length} recipient(s)` });
+    await incrementEmailCount(c.env.DB);
+    return c.json({ success: true, message: `Email sent to ${validRecipients.length} recipient(s)` }, 200);
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -3508,10 +4344,15 @@ app.post("/api/chat/rooms/:room/toggle", async (c) => {
 app.post("/api/chat/init", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "chat_init", 30, 60);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
     if (!user) return c.json({ error: "Unauthorized" }, 401);
 
     const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
     const room = body.room || "advisory";
 
     // Check if room is enabled
@@ -3575,8 +4416,8 @@ app.get("/api/chat/archive", async (c) => {
     if (!user) return c.json({ error: "Unauthorized" }, 401);
 
     const room = c.req.query("room") || "advisory";
-    const before = parseInt(c.req.query("before") || String(Date.now()));
-    const limit = Math.min(parseInt(c.req.query("limit") || "50"), 200);
+    const before = parseInt(c.req.query("before") || String(Date.now()), 10);
+    const limit = Math.min(parseInt(c.req.query("limit") || "50", 10), 200);
 
     // Same room access validation as /api/chat/init
     const canAccessAdvisory = user.role_id === "advisory" || user.power_level >= 50;
@@ -3592,9 +4433,12 @@ app.get("/api/chat/archive", async (c) => {
 
     if (!c.env.ARCHIVE_DB) return c.json({ messages: [] });
 
+    // Sanitize room to prevent glob/pattern injection
+    const allowedRoom = typeof room === "string" ? room.replace(/[^a-z0-9\-]/gi, "") : "advisory";
+
     const { results } = await c.env.ARCHIVE_DB.prepare(
       "SELECT * FROM chat_archive WHERE room = ? AND created_at < ? ORDER BY created_at DESC LIMIT ?"
-    ).bind(room, before, limit).all();
+    ).bind(allowedRoom, before, limit).all();
 
     const messages = (results || []).map((r: any) => ({
       id: r.id,
@@ -3610,6 +4454,181 @@ app.get("/api/chat/archive", async (c) => {
     })).reverse();
 
     return c.json({ messages });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// CLUB FILES ENDPOINTS (R2 only — metadata stored as custom metadata on objects)
+// ---------------------------------------------------------
+
+function meta(obj: any, key: string): string {
+  return obj?.customMetadata?.[key] || "";
+}
+
+function fileFromR2Obj(obj: any, key: string): any {
+  const m = obj.customMetadata || {};
+  const fileName = m.fileName || key.split("/").pop() || "";
+  return {
+    id: key.split("/").pop()?.split(".")[0] || "",
+    category: key.split("/")[0],
+    file_name: fileName,
+    file_type: obj.httpMetadata?.contentType || m.fileType || "",
+    file_size: obj.size,
+    event_name: m.eventName || null,
+    event_for: m.eventFor || null,
+    project_name: m.projectName || null,
+    meeting_title: m.meetingTitle || null,
+    meeting_date: m.meetingDate || null,
+    description: m.description || null,
+    uploaded_by: m.uploadedBy || "",
+    uploaded_by_name: m.uploadedByName || "",
+    created_at: m.createdAt || obj.uploaded,
+    r2_key: key,
+  };
+}
+
+// List files with optional filters
+app.get("/api/club-files", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+
+    const category = c.req.query("category") || "";
+    const eventName = (c.req.query("eventName") || "").toLowerCase();
+    const projectName = (c.req.query("projectName") || "").toLowerCase();
+    const search = (c.req.query("search") || "").toLowerCase();
+
+    const prefix = category ? `${category}/` : "";
+    const listed = await c.env.CLUB_FILES.list({ prefix });
+
+    const files: any[] = [];
+    for (const obj of listed.objects) {
+      const head = await c.env.CLUB_FILES.head(obj.key);
+      if (!head) continue;
+      const m = head.customMetadata || {};
+      const cat = obj.key.split("/")[0];
+
+      if (category && cat !== category) continue;
+      if (eventName && (m.eventName || "").toLowerCase() !== eventName) continue;
+      if (projectName && (m.projectName || "").toLowerCase() !== projectName) continue;
+      if (search) {
+        const fileName = (m.fileName || "").toLowerCase();
+        const desc = (m.description || "").toLowerCase();
+        if (!fileName.includes(search) && !desc.includes(search)) continue;
+      }
+
+      files.push(fileFromR2Obj(head, obj.key));
+    }
+
+    files.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+    return c.json({ files });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Get unique event names (for filter dropdown)
+app.get("/api/club-files/events", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+
+    const listed = await c.env.CLUB_FILES.list({ prefix: "events/" });
+    const names = new Set<string>();
+    for (const obj of listed.objects) {
+      const head = await c.env.CLUB_FILES.head(obj.key);
+      if (head?.customMetadata?.eventName) names.add(head.customMetadata.eventName);
+    }
+    return c.json({ events: [...names].sort() });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Get unique project names (for filter dropdown)
+app.get("/api/club-files/projects", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+
+    const listed = await c.env.CLUB_FILES.list({ prefix: "projects/" });
+    const names = new Set<string>();
+    for (const obj of listed.objects) {
+      const head = await c.env.CLUB_FILES.head(obj.key);
+      if (head?.customMetadata?.projectName) names.add(head.customMetadata.projectName);
+    }
+    return c.json({ projects: [...names].sort() });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Upload a file
+app.post("/api/club-files/upload", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "club_files_upload", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 50) return c.json({ error: "Forbidden" }, 403);
+
+    const id = c.req.param("id");
+    const listed = await c.env.CLUB_FILES.list();
+    let targetKey = "";
+    for (const obj of listed.objects) {
+      if (obj.key.endsWith(`/${id}.`) || obj.key.includes(`/${id}.`)) {
+        targetKey = obj.key;
+        break;
+      }
+    }
+    if (!targetKey) return c.json({ error: "File not found" }, 404);
+
+    await c.env.CLUB_FILES.delete(targetKey);
+    return c.json({ success: true });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// MAINTENANCE MODE (President/VP only)
+// ---------------------------------------------------------
+
+// GET /api/admin/maintenance — check maintenance status
+app.get("/api/admin/maintenance", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const mm: any = await c.env.DB.prepare("SELECT enabled, message FROM maintenance_mode WHERE id = 1").first();
+    return c.json({ enabled: mm?.enabled === 1, message: mm?.message || "" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// POST /api/admin/maintenance — toggle maintenance mode (power >= 100)
+app.post("/api/admin/maintenance", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "admin_maintenance_toggle", 5, 60);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
+
+    const body = await c.req.json();
+    const enabled = body.enabled === true ? 1 : 0;
+    const message = typeof body.message === "string" && body.message.trim().length > 0
+      ? body.message.trim().slice(0, 500)
+      : "Site is under maintenance. Please check back later.";
+
+    await c.env.DB.prepare("UPDATE maintenance_mode SET enabled = ?, message = ?, updated_by = ?, updated_at = datetime('now') WHERE id = 1")
+      .bind(enabled, message, user.email).run();
+
+    await addAuditLog(c, "maintenance_toggle", "maintenance", "1",
+      "Maintenance mode " + (enabled ? "enabled" : "disabled"));
+
+    return c.json({ success: true, enabled: enabled === 1, message });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -3725,12 +4744,27 @@ export class ChatRoomDO {
     let data: any;
     try { data = JSON.parse(raw); } catch { return; }
 
-    // Resolve sender: try direct ws lookup, then connId from client, then _connId on ws
+    const sender = await this._resolveSender(ws, data);
+    if (!sender) return;
+
+    const throttled = this._checkChatRateLimit(ws, sender, data.type);
+    if (throttled) return;
+
+    if (data.type === "message") { await this._handleChatMessage(ws, sender, data); return; }
+    if (data.type === "typing") { this._handleTyping(ws, sender, data); return; }
+    if (data.type === "create_poll") { await this._handleCreatePoll(ws, sender, data); return; }
+    if (data.type === "vote") { await this._handleVote(ws, sender, data); return; }
+    if (data.type === "close_poll") { await this._handleClosePoll(ws, sender, data); return; }
+    if (data.type !== "ping") {
+      try { ws.send(JSON.stringify({ type: "_echo", received: data, senderId: sender.userId })); } catch {}
+    }
+  }
+
+  async _resolveSender(ws: WebSocket, data: any) {
     let sender = this.connections.get(ws);
     if (!sender && data.connId) {
       sender = this.connById.get(data.connId);
       if (!sender) {
-        // Try storage recovery
         try {
           const rawStored = await this.state.storage.get("conn:" + data.connId);
           if (rawStored) {
@@ -3756,146 +4790,138 @@ export class ChatRoomDO {
         } catch {}
       }
     }
-    if (!sender) return;
+    return sender;
+  }
 
-    // Per-user rate limiting for chat actions
-    if (data.type === "message" || data.type === "create_poll") {
-      const now = Date.now();
-      const windowMs = 1000;
-      const maxPerWindow = 10;
-      let rl = this.rateLimits.get(sender.userId);
-      if (!rl || now - rl.windowStart > windowMs) {
-        rl = { count: 0, windowStart: now };
-        this.rateLimits.set(sender.userId, rl);
-      }
-      rl.count++;
-      if (rl.count > maxPerWindow) {
-        try { ws.send(JSON.stringify({ type: "rate_limited", retryAfter: Math.ceil((rl.windowStart + windowMs - now) / 1000) })); } catch {}
-        return;
+  _checkChatRateLimit(ws: WebSocket, sender: any, type: string) {
+    if (type !== "message" && type !== "create_poll") return false;
+    const now = Date.now();
+    const windowMs = 1000;
+    const maxPerWindow = 10;
+    let rl = this.rateLimits.get(sender.userId);
+    if (!rl || now - rl.windowStart > windowMs) {
+      rl = { count: 0, windowStart: now };
+      this.rateLimits.set(sender.userId, rl);
+    }
+    rl.count++;
+    if (rl.count > maxPerWindow) {
+      try { ws.send(JSON.stringify({ type: "rate_limited", retryAfter: Math.ceil((rl.windowStart + windowMs - now) / 1000) })); } catch {}
+      return true;
+    }
+    return false;
+  }
+
+  async _handleChatMessage(ws: WebSocket, sender: any, data: any) {
+    const content = (data.content || "").trim().slice(0, 2000);
+    if (!content) return;
+
+    const mentionRegex = /@(\w+)/g;
+    let m;
+    const mentionedUserIds: string[] = [];
+    while ((m = mentionRegex.exec(content)) !== null) {
+      const name = m[1].toLowerCase();
+      for (const [_, c] of this.connections) {
+        if (c.userName && c.userName.split(" ")[0].toLowerCase() === name && !mentionedUserIds.includes(c.userId)) {
+          mentionedUserIds.push(c.userId);
+        }
       }
     }
 
-    if (data.type === "message") {
-      const content = (data.content || "").trim().slice(0, 2000);
-      if (!content) return;
+    const msg: any = {
+      id: crypto.randomUUID().replace(/-/g, ""),
+      userId: sender.userId,
+      userName: sender.userName,
+      userRole: sender.userRole,
+      content,
+      timestamp: Date.now(),
+      isTestAccount: sender.isTestAccount,
+    };
+    if (mentionedUserIds.length > 0) msg.mentions = mentionedUserIds;
 
-      // Parse @mentions
-      const mentionRegex = /@(\w+)/g;
-      let m;
-      const mentionedUserIds: string[] = [];
-      while ((m = mentionRegex.exec(content)) !== null) {
-        const name = m[1].toLowerCase();
-        for (const [_, c] of this.connections) {
-          if (c.userName && c.userName.split(" ")[0].toLowerCase() === name && !mentionedUserIds.includes(c.userId)) {
-            mentionedUserIds.push(c.userId);
-          }
-        }
-      }
+    this.messages.push(msg);
+    await this._saveTail();
+    this.broadcast({ type: "message", ...msg }, null);
+  }
 
-      const msg: any = {
+  _handleTyping(ws: WebSocket, sender: any, data: any) {
+    this.broadcast({ type: "typing", userId: sender.userId, userName: sender.userName, active: !!data.active }, ws);
+  }
+
+  async _handleCreatePoll(ws: WebSocket, sender: any, data: any) {
+    try {
+      const question = (data.question || "").trim().slice(0, 200);
+      if (!question) return;
+      const options: string[] = (data.options || []).slice(0, 10).map((o: string) => (o || "").trim()).filter(Boolean);
+      if (options.length < 2) return;
+
+      const poll: any = {
         id: crypto.randomUUID().replace(/-/g, ""),
+        creatorId: sender.userId,
+        creatorName: sender.userName,
+        question,
+        options,
+        votes: {},
+        active: true,
+        timestamp: Date.now(),
+      };
+
+      this.polls.push(poll);
+
+      const pollMsg: any = {
+        id: poll.id,
+        type: "poll",
+        poll,
         userId: sender.userId,
         userName: sender.userName,
         userRole: sender.userRole,
-        content,
-        timestamp: Date.now(),
+        timestamp: poll.timestamp,
         isTestAccount: sender.isTestAccount,
       };
-      if (mentionedUserIds.length > 0) msg.mentions = mentionedUserIds;
 
-      this.messages.push(msg);
+      this.messages.push(pollMsg);
       await this._saveTail();
-
-      // Broadcast immediately for real-time delivery
-      this.broadcast({ type: "message", ...msg }, null);
-    }
-
-    if (data.type === "typing") {
-      this.broadcast({ type: "typing", userId: sender.userId, userName: sender.userName, active: !!data.active }, ws);
-    }
-
-    if (data.type === "create_poll") {
-      try {
-        const question = (data.question || "").trim().slice(0, 200);
-        if (!question) return;
-        const options: string[] = (data.options || []).slice(0, 10).map((o: string) => (o || "").trim()).filter(Boolean);
-        if (options.length < 2) return;
-
-        const poll: any = {
-          id: crypto.randomUUID().replace(/-/g, ""),
-          creatorId: sender.userId,
-          creatorName: sender.userName,
-          question,
-          options,
-          votes: {},
-          active: true,
-          timestamp: Date.now(),
-        };
-
-        this.polls.push(poll);
-
-        const pollMsg: any = {
-          id: poll.id,
-          type: "poll",
-          poll,
-          userId: sender.userId,
-          userName: sender.userName,
-          userRole: sender.userRole,
-          timestamp: poll.timestamp,
-          isTestAccount: sender.isTestAccount,
-        };
-
-        this.messages.push(pollMsg);
-        await this._saveTail();
-        this.state.storage.put("polls", this.polls).catch(() => {});
-
-        this.broadcast({ type: "poll", id: poll.id, poll, userId: sender.userId, userName: sender.userName, userRole: sender.userRole, timestamp: poll.timestamp, isTestAccount: sender.isTestAccount }, null);
-      } catch {} 
-    }
-
-    if (data.type === "vote") {
-      const pollId = data.pollId;
-      const optionIndex = data.optionIndex;
-      const poll = this.polls.find((p: any) => p.id === pollId);
-      if (!poll || !poll.active) return;
-      if (poll.votes[sender.userId] !== undefined) return;
-
-      if (optionIndex < 0 || optionIndex >= poll.options.length) return;
-
-      poll.votes[sender.userId] = optionIndex;
-
-      const pollMsg = this.messages.find((m: any) => m.id === pollId);
-      if (pollMsg) {
-        pollMsg.poll = poll;
-        await this._saveTail();
-      }
-
-      this.broadcast({ type: "poll_updated", poll }, null);
       this.state.storage.put("polls", this.polls).catch(() => {});
+
+      this.broadcast({ type: "poll", id: poll.id, poll, userId: sender.userId, userName: sender.userName, userRole: sender.userRole, timestamp: poll.timestamp, isTestAccount: sender.isTestAccount }, null);
+    } catch {}
+  }
+
+  async _handleVote(ws: WebSocket, sender: any, data: any) {
+    const pollId = data.pollId;
+    const optionIndex = data.optionIndex;
+    const poll = this.polls.find((p: any) => p.id === pollId);
+    if (!poll || !poll.active) return;
+    if (poll.votes[sender.userId] !== undefined) return;
+    if (optionIndex < 0 || optionIndex >= poll.options.length) return;
+
+    poll.votes[sender.userId] = optionIndex;
+
+    const pollMsg = this.messages.find((m: any) => m.id === pollId);
+    if (pollMsg) {
+      pollMsg.poll = poll;
+      await this._saveTail();
     }
 
-    if (data.type === "close_poll") {
-      const pollId = data.pollId;
-      const poll = this.polls.find((p: any) => p.id === pollId);
-      if (!poll || !poll.active) return;
-      if (poll.creatorId !== sender.userId) return;
+    this.broadcast({ type: "poll_updated", poll }, null);
+    this.state.storage.put("polls", this.polls).catch(() => {});
+  }
 
-      poll.active = false;
+  async _handleClosePoll(ws: WebSocket, sender: any, data: any) {
+    const pollId = data.pollId;
+    const poll = this.polls.find((p: any) => p.id === pollId);
+    if (!poll || !poll.active) return;
+    if (poll.creatorId !== sender.userId) return;
 
-      const pollMsg = this.messages.find((m: any) => m.id === pollId);
-      if (pollMsg) {
-        pollMsg.poll = poll;
-        await this._saveTail();
-      }
+    poll.active = false;
 
-      this.broadcast({ type: "poll_updated", poll }, null);
-      this.state.storage.put("polls", this.polls).catch(() => {});
+    const pollMsg = this.messages.find((m: any) => m.id === pollId);
+    if (pollMsg) {
+      pollMsg.poll = poll;
+      await this._saveTail();
     }
 
-    // Echo any unhandled message back for debugging
-    if (data.type !== "message" && data.type !== "typing" && data.type !== "create_poll" && data.type !== "vote" && data.type !== "close_poll" && data.type !== "ping") {
-      try { ws.send(JSON.stringify({ type: "_echo", received: data, senderId: sender.userId })); } catch {}
-    }
+    this.broadcast({ type: "poll_updated", poll }, null);
+    this.state.storage.put("polls", this.polls).catch(() => {});
   }
 
   async webSocketClose(ws: WebSocket) {

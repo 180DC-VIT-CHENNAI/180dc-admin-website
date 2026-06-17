@@ -58,8 +58,6 @@ interface PollMessage {
 
 type ChatEntry = ChatMessage | PollMessage;
 
-const POLL_OPTION_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
-
 function formatDateLabel(ts: number): string {
   const d = new Date(ts);
   const today = new Date();
@@ -112,6 +110,8 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
   const [pollOptions, setPollOptions] = useState(["", ""]);
   const [sending, setSending] = useState(false);
   const [reconnectKey, setReconnectKey] = useState(0);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [allLoaded, setAllLoaded] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<{ text: string; start: number } | null>(null);
   const [mentionIdx, setMentionIdx] = useState(0);
   const isMobile = useIsMobile();
@@ -358,6 +358,28 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
     inputRef.current?.focus();
   }
 
+  async function loadOlderMessages() {
+    if (loadingOlder || entries.length === 0) return;
+    setLoadingOlder(true);
+    try {
+      const oldest = entries.reduce((min, e) => Math.min(min, e.timestamp), Infinity);
+      const res = await fetch(apiUrl(`/api/chat/archive?room=${encodeURIComponent(room)}&before=${oldest}&limit=50`), {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const data = await res.json();
+      if (data.messages?.length) {
+        setEntries((prev) => [...data.messages, ...prev]);
+        if (data.messages.length < 50) setAllLoaded(true);
+      } else {
+        setAllLoaded(true);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
+
   function reconnect() {
     if (wsRef.current) {
       wsRef.current.close();
@@ -446,284 +468,229 @@ export default function ChatSection({ authToken, room, roomName }: ChatSectionPr
   const grouped = groupByDate(entries);
 
   return (
-    <div className="members-grid">
-      <div className="card-doodle" style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", height: "calc(100vh - 80px)", minHeight: 500 }}>
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 12, borderBottom: "1px solid var(--border-light)" }}>
-          <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-            {roomName}
-            {mentionedMessageIds.size > 0 && (
-              <span style={{ background: "#e74c3c", color: "#fff", fontSize: 11, borderRadius: 10, padding: "1px 7px", fontWeight: 600 }}>
-                {mentionedMessageIds.size}
-              </span>
-            )}
-          </h3>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: connected ? "var(--primary-green)" : "#e74c3c", display: "inline-block" }} />
-            <span style={{ color: "var(--text-secondary)" }}>{connected ? `${onlineUsers.length} online` : "Disconnected"}</span>
-            <button
-              onClick={toggleOnline}
-              title={showOnline ? "Hide online users" : "Show online users"}
-              style={{
-                background: "none", border: "1px solid var(--border-light)", borderRadius: 4,
-                cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "2px 6px",
-                color: showOnline ? "var(--primary-green)" : "var(--text-secondary)",
-                opacity: showOnline ? 1 : 0.5,
-              }}
-            >{showOnline ? "👁" : "👁‍🗨"}</button>
-            <button
-              onClick={reconnect}
-              title="Reload chat"
-              style={{ background: "none", border: "1px solid var(--border-light)", borderRadius: 4, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "2px 6px", color: "var(--text-secondary)" }}
-            >&#x21bb;</button>
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)", background: "var(--bg-card)", borderRadius: 24, border: "1px solid var(--border-light)", overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
+      {/* Error Banner */}
+      {error && (
+        <div style={{ padding: "0.75rem 1.5rem", background: "rgba(239, 68, 68, 0.1)", color: "#ef4444", fontSize: 13, fontWeight: 600, borderBottom: "1px solid rgba(239, 68, 68, 0.2)", display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>error</span>
+          {error}
+        </div>
+      )}
+      
+      {/* Header */}
+      <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-card)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: "var(--accent-bg)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span className="material-symbols-outlined">forum</span>
+          </div>
+          <div>
+             <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 700 }}>{roomName}</h3>
+             <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "12px", color: connected ? "#10b981" : "#ef4444", fontWeight: 600 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
+                {connected ? `${onlineUsers.length} active now` : "Offline"}
+             </div>
           </div>
         </div>
+        
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={toggleOnline} className="header-action-btn" title="Toggle Sidebar">
+            <span className="material-symbols-outlined">{showOnline ? "side_navigation" : "dock_to_left"}</span>
+          </button>
+          <button onClick={reconnect} className="header-action-btn" title="Reconnect">
+            <span className="material-symbols-outlined">refresh</span>
+          </button>
+        </div>
+      </div>
 
-        {error && (
-          <div style={{ padding: 12, background: "var(--bg-secondary)", borderRadius: 8, marginTop: 8, fontSize: 13, color: "#e74c3c", border: "1px solid #e74c3c" }}>{error}</div>
-        )}
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        {/* Messages area */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "var(--surface-container-low)" }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+            {entries.length > 0 && !allLoaded && (
+              <button onClick={loadOlderMessages} disabled={loadingOlder} className="btn outline" style={{ margin: "0 auto 1rem", fontSize: 12, padding: "4px 12px", borderRadius: 20 }}>
+                {loadingOlder ? "Loading..." : "Load Older Messages"}
+              </button>
+            )}
 
-        <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 12, marginTop: 12 }}>
-          {/* Messages area */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-            <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, paddingRight: 8 }}>
-              {entries.length === 0 && connected && (
-                <div style={{ textAlign: "center", color: "var(--text-secondary)", fontSize: 14, padding: "2rem 0" }}>
-                  No messages yet. Start the conversation!
+            grouped.map((group) => (
+              <div key={group.dateLabel} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "1rem 0" }}>
+                   <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} />
+                   <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase" }}>{group.dateLabel}</span>
+                   <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} />
                 </div>
-              )}
-              {grouped.map((group) => (
-                <div key={group.dateLabel}>
-                  <div style={{
-                    textAlign: "center", fontSize: 12, color: "var(--text-light)", margin: "12px 0 8px",
-                    position: "relative",
-                  }}>
-                    <span style={{ background: "var(--bg-primary)", padding: "0 12px", position: "relative", zIndex: 1 }}>{group.dateLabel}</span>
-                  </div>
-                  {group.entries.map((entry) => {
-                    if (isPoll(entry)) {
-                      const p = entry.poll;
-                      const votedOption = p.votes[currentUser?.userId || ""];
-                      const totalVotes = Object.keys(p.votes).length;
-                      const isCreator = currentUser?.userId === p.creatorId;
-                      return (
-                        <div key={entry.id} style={{
-                          maxWidth: "90%", marginBottom: 8, border: "1px solid var(--border-light)",
-                          borderRadius: 12, padding: 12, background: "var(--bg-secondary)",
-                        }}>
-                          <div style={{ fontSize: 11, color: "var(--text-light)", marginBottom: 4 }}>
-                            Poll by <strong>{p.creatorName}</strong>
-                          </div>
-                          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>{p.question}</div>
-                          {p.options.map((opt, idx) => {
+
+                group.entries.map((entry) => {
+                  if (isPoll(entry)) {
+                    const p = entry.poll;
+                    const votedOption = p.votes[currentUser?.userId || ""];
+                    const totalVotes = Object.keys(p.votes).length;
+                    const isCreator = currentUser?.userId === p.creatorId;
+                    return (
+                      <div key={entry.id} style={{ maxWidth: "400px", margin: "0 auto", width: "100%", padding: "1.5rem", borderRadius: 20, background: "var(--bg-card)", border: "1px solid var(--border-light)", boxShadow: "var(--shadow-sm)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: "1rem" }}>
+                           <span className="material-symbols-outlined" style={{ color: "var(--primary-green)", fontSize: 20 }}>poll</span>
+                           <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Poll by <strong>{p.creatorName}</strong></span>
+                        </div>
+                        <h4 style={{ margin: "0 0 1rem", fontSize: "1rem", fontWeight: 700 }}>{p.question}</h4>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                           p.options.map((opt, idx) => {
                             const voteCount = Object.values(p.votes).filter((v) => v === idx).length;
                             const pct = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
                             const isSelected = votedOption === idx;
                             return (
-                              <div key={idx} style={{ marginBottom: 6 }}>
+                              <div key={idx}>
                                 <button
                                   onClick={() => p.active && votedOption === undefined ? vote(p.id, idx) : null}
-                                  disabled={!p.active || votedOption !== undefined}
-                                  title={!p.active ? "Poll closed" : votedOption !== undefined ? "Already voted" : `Vote for ${opt}`}
+                                  disabled={!p.active || (votedOption !== undefined && !isSelected)}
                                   style={{
-                                    width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 8,
-                                    padding: "6px 10px", borderRadius: 8, border: isSelected ? "2px solid var(--primary-green)" : "1px solid var(--border-light)",
-                                    background: isSelected ? "var(--accent-bg)" : "transparent",
+                                    width: "100%", textAlign: "left", padding: "10px 12px", borderRadius: 10,
+                                    border: `1px solid ${isSelected ? "var(--primary-green)" : "var(--border-light)"}`,
+                                    background: isSelected ? "var(--accent-bg)" : "var(--bg-card)",
                                     cursor: p.active && votedOption === undefined ? "pointer" : "default",
-                                    fontSize: 13, position: "relative", overflow: "hidden",
+                                    display: "flex", justifyContent: "space-between", alignItems: "center"
                                   }}
                                 >
-                                  <span style={{ fontWeight: 600, fontSize: 12, minWidth: 16 }}>{POLL_OPTION_LABELS[idx]}</span>
-                                  <span style={{ flex: 1 }}>{opt}</span>
-                                  <span style={{ fontSize: 12, color: "var(--text-light)" }}>{voteCount}/{totalVotes}</span>
+                                  <span style={{ fontSize: 14, fontWeight: 500 }}>{opt}</span>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: isSelected ? "var(--primary-green)" : "var(--text-tertiary)" }}>{pct}%</span>
                                 </button>
-                                {totalVotes > 0 && (
-                                  <div style={{ height: 4, background: "var(--border-light)", borderRadius: 2, marginTop: 2, overflow: "hidden" }}>
-                                    <div style={{ width: `${pct}%`, height: "100%", background: "var(--primary-green)", borderRadius: 2 }} />
-                                  </div>
-                                )}
+                                <div style={{ height: 4, background: "var(--surface-variant)", borderRadius: 2, marginTop: 4, overflow: "hidden" }}>
+                                   <div style={{ width: `${pct}%`, height: "100%", background: isSelected ? "var(--primary-green)" : "var(--text-tertiary)", transition: "width 0.5s ease" }} />
+                                </div>
                               </div>
                             );
                           })}
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, fontSize: 11, color: "var(--text-light)" }}>
-                            <span>{totalVotes} vote{totalVotes !== 1 ? "s" : ""}{!p.active ? " · Closed" : ""}</span>
-                            {isCreator && p.active && (
-                              <button className="btn btn-small" style={{ fontSize: 11, padding: "2px 8px" }} onClick={() => closePoll(p.id)}>Close</button>
-                            )}
-                          </div>
                         </div>
-                      );
-                    }
-                    const msg = entry as ChatMessage;
-                    const isMentioned = msg.mentions?.includes(currentUser?.userId || "");
-                    return (
-                      <div key={msg.id} style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "flex-start",
-                        maxWidth: "80%",
-                      }}>
-                        <div style={{ fontSize: 11, color: "var(--text-light)", marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
-                          <strong>{msg.userName}</strong>
-                          {isMentioned && <span style={{ background: "#3498db", color: "#fff", fontSize: 10, borderRadius: 8, padding: "0 6px", fontWeight: 600 }}>mentioned</span>}
-                          <span>({msg.isTestAccount ? "test acc" : msg.userRole.replace(/_/g, " ")})</span>
-                        </div>
-                        <div style={{
-                          padding: "8px 14px",
-                          borderRadius: 16,
-                          background: isMentioned ? "var(--accent-bg)" : "var(--bg-secondary)",
-                          border: isMentioned ? "1px solid var(--accent-border)" : "1px solid var(--border-light)",
-                          fontSize: 14,
-                          lineHeight: 1.5,
-                          wordBreak: "break-word",
-                          whiteSpace: "pre-wrap",
-                        }}>
-                          {renderContent(msg.content)}
+                        <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                           <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{totalVotes} total votes {!p.active && "• Closed"}</span>
+                           {isCreator && p.active && <button className="btn outline" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => closePoll(p.id)}>Close Poll</button>}
                         </div>
                       </div>
                     );
-                  })}
-                </div>
-              ))}
-              <div ref={bottomRef} />
-            </div>
+                  }
 
-            {/* Poll creation form */}
-            {showPollForm && (
-              <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 8, marginTop: 4 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Create a Poll</div>
-                <input
-                  className="input"
-                  value={pollQuestion}
-                  onChange={(e) => setPollQuestion(e.target.value)}
-                  placeholder="Poll question..."
-                  style={{ width: "100%", marginBottom: 6, fontSize: 13 }}
-                />
-                {pollOptions.map((opt, idx) => (
-                  <div key={idx} style={{ display: "flex", gap: 4, marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, alignSelf: "center", minWidth: 14, fontWeight: 600 }}>{POLL_OPTION_LABELS[idx]}</span>
-                    <input
-                      className="input"
-                      value={opt}
-                      onChange={(e) => updatePollOption(idx, e.target.value)}
-                      placeholder={`Option ${idx + 1}`}
-                      style={{ flex: 1, fontSize: 13 }}
-                    />
-                    {pollOptions.length > 2 && (
-                      <button className="btn btn-small" style={{ fontSize: 11, padding: "2px 6px" }} onClick={() => removePollOption(idx)}>x</button>
-                    )}
-                  </div>
-                ))}
-                <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-                  {pollOptions.length < 10 && (
-                    <button className="btn btn-small" onClick={addPollOption}>+ Add option</button>
-                  )}
-                  <button className="btn btn-small btn-primary" onClick={createPoll} disabled={sending || !pollQuestion.trim() || pollOptions.filter((o) => o.trim()).length < 2}>
-                    {sending ? "Creating..." : "Create Poll"}
-                  </button>
-                  <button className="btn btn-small" onClick={() => { setShowPollForm(false); setPollQuestion(""); setPollOptions(["", ""]); }}>Cancel</button>
-                </div>
+                  const msg = entry as ChatMessage;
+                  const isMe = msg.userId === currentUser?.userId;
+                  const isMentioned = msg.mentions?.includes(currentUser?.userId || "");
+                  
+                  return (
+                    <div key={msg.id} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start" }}>
+                      {!isMe && (
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 4, marginLeft: 12, display: "flex", alignItems: "center", gap: 4 }}>
+                          {msg.userName}
+                          {msg.isTestAccount && <span style={{ fontSize: 9, background: "var(--surface-container-high)", padding: "1px 4px", borderRadius: 4 }}>TEST</span>}
+                        </div>
+                      )}
+                      <div style={{
+                        padding: "10px 14px", borderRadius: 18,
+                        borderBottomLeftRadius: !isMe ? 4 : 18,
+                        borderBottomRightRadius: isMe ? 4 : 18,
+                        background: isMe ? "var(--primary-green)" : isMentioned ? "var(--accent-bg)" : "var(--bg-card)",
+                        color: isMe ? "white" : "var(--text-primary)",
+                        border: isMentioned ? "1px solid var(--accent)" : isMe ? "none" : "1px solid var(--border-light)",
+                        maxWidth: "80%", fontSize: 14, lineHeight: 1.5, boxShadow: "var(--shadow-sm)",
+                        position: "relative"
+                      }}>
+                        {renderContent(msg.content)}
+                        <div style={{ fontSize: 9, marginTop: 4, textAlign: "right", opacity: 0.7 }}>
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            )}
+            ))}
+            <div ref={bottomRef} />
+          </div>
 
-            {/* Typing indicator */}
+          {/* Input area */}
+          <div style={{ padding: "1.25rem 1.5rem", background: "var(--bg-card)", borderTop: "1px solid var(--border-light)" }}>
             {typingNames.length > 0 && (
-              <div style={{ fontSize: 12, color: "var(--text-light)", padding: "4px 0", fontStyle: "italic" }}>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 8, fontStyle: "italic", display: "flex", alignItems: "center", gap: 6 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>edit</span>
                 {typingNames.join(", ")} {typingNames.length === 1 ? "is" : "are"} typing...
               </div>
             )}
-
-            {/* @mention suggestions */}
-            {mentionSuggestions.length > 0 && (
-              <div style={{
-                border: "1px solid var(--border-light)", borderRadius: 8, background: "var(--bg-primary)",
-                overflow: "hidden", marginTop: 4,
-              }}>
-                {mentionSuggestions.map((u, idx) => (
-                  <div
-                    key={u.userId}
-                    onClick={() => insertMention(u.userName)}
-                    onMouseEnter={() => setMentionIdx(idx)}
-                    style={{
-                      padding: "6px 10px", cursor: "pointer", fontSize: 13,
-                      background: idx === mentionIdx ? "var(--bg-secondary)" : "transparent",
-                      display: "flex", alignItems: "center", gap: 6,
-                    }}
-                  >
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--primary-green)", display: "inline-block", flexShrink: 0 }} />
-                    <span style={{ fontWeight: idx === mentionIdx ? 600 : 400 }}>{u.userName}</span>
-                    <span style={{ color: "var(--text-light)", fontSize: 11, marginLeft: "auto" }}>@{u.userName}</span>
+            
+            {showPollForm && (
+              <div style={{ marginBottom: "1rem", padding: "1rem", borderRadius: 16, background: "var(--surface-container-low)", border: "1px solid var(--border-light)" }}>
+                <h4 style={{ margin: "0 0 12px", fontSize: 14 }}>New Poll</h4>
+                <input className="input" value={pollQuestion} onChange={(e) => setPollQuestion(e.target.value)} placeholder="What's your question?" style={{ marginBottom: 8 }} />
+                pollOptions.map((opt, idx) => (
+                  <div key={idx} style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                    <input className="input" value={opt} onChange={(e) => updatePollOption(idx, e.target.value)} placeholder={`Option ${idx + 1}`} />
+                    {pollOptions.length > 2 && <button onClick={() => removePollOption(idx)} style={{ border: "none", background: "none", color: "#ef4444", cursor: "pointer" }}><span className="material-symbols-outlined">delete</span></button>}
                   </div>
                 ))}
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <button className="btn outline" onClick={addPollOption} style={{ fontSize: 12, padding: "6px 12px" }}>+ Add Option</button>
+                  <button className="btn" onClick={createPoll} disabled={sending || !pollQuestion.trim()} style={{ fontSize: 12, padding: "6px 12px", marginLeft: "auto" }}>Create Poll</button>
+                  <button className="btn outline" onClick={() => setShowPollForm(false)} style={{ fontSize: 12, padding: "6px 12px" }}>Cancel</button>
+                </div>
               </div>
             )}
 
-            {/* Input area */}
-            <div style={{ display: "flex", gap: 8, marginTop: 8, borderTop: "1px solid var(--border-light)", paddingTop: 12, alignItems: "flex-end" }}>
-              <button
-                className="btn btn-small"
-                onClick={() => setShowPollForm(!showPollForm)}
-                title="Create poll"
-                disabled={!connected}
-                style={{ fontSize: 18, lineHeight: 1, padding: "6px 8px", alignSelf: "flex-end", marginBottom: 0 }}
-              >
-                +
+            <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+              <button className="header-action-btn" onClick={() => setShowPollForm(true)} disabled={!connected} style={{ marginBottom: 4 }}>
+                <span className="material-symbols-outlined">add_chart</span>
               </button>
-              <textarea
-                ref={inputRef}
-                className="input"
-                value={input}
-                onChange={(e) => handleInputChange(e.target.value, e.target.selectionStart)}
-                onKeyDown={handleKeyDown}
-                placeholder={connected ? "Type a message... (@ to mention)" : "Connecting..."}
-                rows={3}
-                disabled={!connected}
-                style={{ flex: 1, resize: "none", fontSize: 14, lineHeight: 1.5 }}
-              />
-              <button className="btn" onClick={sendMessage} disabled={!connected || !input.trim()} style={{ alignSelf: "flex-end" }}>
-                Send
-              </button>
-            </div>
-          </div>
-
-          {/* Online users sidebar */}
-          {showOnline && isMobile && (
-            <div onClick={toggleOnline} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 99 }} />
-          )}
-          <div style={{
-            width: isMobile ? 220 : 200,
-            flexShrink: 0,
-            borderLeft: isMobile ? "none" : "1px solid var(--border-light)",
-            paddingLeft: isMobile ? 0 : 12,
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-            ...(isMobile ? {
-              display: showOnline ? "flex" : "none",
-              position: "fixed",
-              top: 0, right: 0, bottom: 0,
-              background: "var(--bg-primary)",
-              zIndex: 100,
-              padding: "1rem",
-              borderLeft: "1px solid var(--border-light)",
-              boxShadow: "-4px 0 12px rgba(0,0,0,0.15)",
-            } : showOnline ? {} : { display: "none" }),
-          }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              Online
-              <button onClick={toggleOnline} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--text-secondary)", padding: 0, lineHeight: 1 }}>x</button>
-            </div>
-            {onlineUsers.map((u) => (
-              <div key={u.userId} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, padding: "4px 0" }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--primary-green)", display: "inline-block", flexShrink: 0 }} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.userName}</span>
+              
+              <div style={{ flex: 1, position: "relative" }}>
+                 {mentionSuggestions.length > 0 && (
+                   <div style={{ position: "absolute", bottom: "100%", left: 0, right: 0, background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 12, boxShadow: "var(--shadow-lg)", marginBottom: 8, overflow: "hidden" }}>
+                       mentionSuggestions.map((u, idx) => (
+                        <div key={u.userId} onClick={() => insertMention(u.userName)} style={{ padding: "10px 14px", cursor: "pointer", fontSize: 13, background: idx === mentionIdx ? "var(--surface-variant)" : "transparent", display: "flex", alignItems: "center", gap: 10 }}>
+                         <div className="avatar-circle" style={{ width: 24, height: 24, fontSize: 10 }}>{u.userName[0]}</div>
+                         <span>{u.userName}</span>
+                       </div>
+                     ))}
+                   </div>
+                 )}
+                 <textarea
+                   ref={inputRef}
+                   className="input"
+                   value={input}
+                   onChange={(e) => handleInputChange(e.target.value, e.target.selectionStart)}
+                   onKeyDown={handleKeyDown}
+                   placeholder="Type your message..."
+                   rows={1}
+                   style={{ resize: "none", padding: "12px 16px", borderRadius: 24, minHeight: 46, maxHeight: 150 }}
+                 />
               </div>
-            ))}
-            {onlineUsers.length === 0 && (
-              <div style={{ fontSize: 12, color: "var(--text-light)" }}>No one online</div>
-            )}
+              
+              <button className="btn" onClick={sendMessage} disabled={!connected || !input.trim()} style={{ borderRadius: "50%", width: 46, height: 46, padding: 0, justifyContent: "center", marginBottom: 0 }}>
+                <span className="material-symbols-outlined">send</span>
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* Sidebar */}
+        {showOnline && (
+          <div style={{ width: isMobile ? "100%" : "280px", borderLeft: "1px solid var(--border-light)", background: "var(--bg-card)", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "1.25rem", borderBottom: "1px solid var(--border-light)", fontWeight: 700, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Active Members
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "1rem" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                onlineUsers.map((u) => (
+                  <div key={u.userId} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 10px", borderRadius: 12, transition: "background 0.2s" }}>
+                    <div style={{ position: "relative" }}>
+                      <div className="avatar-circle" style={{ width: 36, height: 36, fontSize: 14 }}>{u.userName[0]}</div>
+                      <div style={{ position: "absolute", bottom: 0, right: 0, width: 10, height: 10, borderRadius: "50%", background: "#10b981", border: "2px solid var(--bg-card)" }} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.userName}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)", textTransform: "capitalize" }}>{u.userRole.replace(/_/g, " ")}</div>
+                    </div>
+                  </div>
+                ))}
+                {onlineUsers.length === 0 && <div style={{ textAlign: "center", color: "var(--text-tertiary)", fontSize: 13, marginTop: "2rem" }}>No active users.</div>}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

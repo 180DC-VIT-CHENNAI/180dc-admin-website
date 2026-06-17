@@ -1,14 +1,12 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, lazy, Suspense } from "react";
 import "./index.css";
-import Globe from "./components/Globe";
-import MagicRings from "./components/MagicRings";
+const MagicRings = lazy(() => import("./components/MagicRings"));
 import VariableProximity from "./components/VariableProximity";
 import SmoothScroll from "./components/SmoothScroll";
 import PillNav from "./components/PillNav";
-import ColorBends from "./components/ColorBends";
-import ConsultingBoy from "./components/ConsultingBoy";
-import ConsultingFormModal from "./components/ConsultingFormModal";
+const ColorBends = lazy(() => import("./components/ColorBends"));
 import { apiUrl } from "./lib/api";
+import { sanitizeHtml } from "./lib/sanitize";
 import {
   ScribbleArrow,
   ScribbleCircle,
@@ -20,7 +18,12 @@ import {
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
+
 gsap.registerPlugin(ScrollTrigger);
+
+const Globe = lazy(() => import("./components/Globe"));
+const ConsultingFormModal = lazy(() => import("./components/ConsultingFormModal"));
+const ConsultingBoy = lazy(() => import("./components/ConsultingBoy"));
 
 function App() {
   const splashRef = useRef<HTMLDivElement>(null);
@@ -60,20 +63,18 @@ const [teamMembers, setTeamMembers] = useState<any[]>([
   useEffect(() => {
     async function loadContent() {
       try {
-        const [csRes, tmRes, bpRes, pRes] = await Promise.all([
+        const [csRes, tmRes, bpRes, pRes, completedRes] = await Promise.all([
           fetch(apiUrl("/api/content/case-studies")).then((r) => r.json()),
           fetch(apiUrl("/api/content/team-members")).then((r) => r.json()),
           fetch(apiUrl("/api/content/blog-posts")).then((r) => r.json()),
           fetch(apiUrl("/api/content/partners")).then((r) => r.json()),
+          fetch(apiUrl("/api/projects/completed")).then((r) => r.json()),
         ]);
         if (csRes.success) setCaseStudies(csRes.data);
         
         if (bpRes.success) setBlogPosts(bpRes.data);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (pRes.success) setPartners(pRes.data.map((p: any) => p.name));
-        const completedRes = await fetch(
-          apiUrl("/api/projects/completed"),
-        ).then((r) => r.json());
         if (completedRes.success) setCompletedProjects(completedRes.data);
       } catch (e) {
         console.error("Failed to load content", e);
@@ -83,29 +84,22 @@ const [teamMembers, setTeamMembers] = useState<any[]>([
   }, []);
 
   useEffect(() => {
-    const handleScroll = () => {
-      const sections = [
-        "about",
-        "case-studies",
-        "leadership",
-        "blog",
-        "partners",
-      ];
-      let current = "#";
-      for (const section of sections) {
-        const element = document.getElementById(section);
-        if (element) {
-          const rect = element.getBoundingClientRect();
-          if (rect.top <= 100) {
-            current = `#${section}`;
+    const sections = ["about", "case-studies", "leadership", "blog", "partners"];
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setActiveNav(`#${entry.target.id}`);
           }
         }
-      }
-      setActiveNav(current);
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+      },
+      { rootMargin: "-100px 0px -60% 0px" },
+    );
+    for (const id of sections) {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -272,6 +266,7 @@ const [teamMembers, setTeamMembers] = useState<any[]>([
     { label: "Blog", href: "#blog" },
     { label: "Partners", href: "#partners" },
     { label: "Recruitments", href: "/recruitments" },
+    { label: "Post a Blog", href: "/post-blog" },
   ];
 
   return (
@@ -286,29 +281,31 @@ const [teamMembers, setTeamMembers] = useState<any[]>([
       {/* Splash Landing Page */}
       <section className="splash-landing">
         <div className="splash-bg" ref={splashRef}>
-          <MagicRings
-            color="#8dc63f"
-            colorTwo="#a8d96a"
-            ringCount={10}
-            speed={0.8}
-            attenuation={8}
-            lineThickness={4}
-            baseRadius={0.25}
-            radiusStep={0.15}
-            scaleRate={0.12}
-            opacity={1}
-            blur={0}
-            noiseAmount={0.05}
-            rotation={0}
-            ringGap={1.4}
-            fadeIn={0.7}
-            fadeOut={0.5}
-            followMouse={true}
-            mouseInfluence={0.3}
-            hoverScale={1.3}
-            parallax={0.08}
-            clickBurst={true}
-          />
+          <Suspense fallback={<div className="splash-bg-placeholder" />}>
+            <MagicRings
+              color="#8dc63f"
+              colorTwo="#a8d96a"
+              ringCount={10}
+              speed={0.8}
+              attenuation={8}
+              lineThickness={4}
+              baseRadius={0.25}
+              radiusStep={0.15}
+              scaleRate={0.12}
+              opacity={1}
+              blur={0}
+              noiseAmount={0.05}
+              rotation={0}
+              ringGap={1.4}
+              fadeIn={0.7}
+              fadeOut={0.5}
+              followMouse={true}
+              mouseInfluence={0.3}
+              hoverScale={1.3}
+              parallax={0.08}
+              clickBurst={true}
+            />
+          </Suspense>
         </div>
         <div className="splash-content splash-white">
           <div className="splash-logo-white" />
@@ -352,14 +349,16 @@ const [teamMembers, setTeamMembers] = useState<any[]>([
       {/* Hero Section */}
       <header id="hero" className="hero">
         <div className="hero-bg-overlay">
-          <ColorBends
-            colors={["#ffffff", "#8dc63f", "#ffffff", "#a8d96a"]}
-            speed={0.15}
-            warpStrength={1.2}
-            intensity={0.8}
-            opacity={0.4}
-            iterations={2}
-          />
+          <Suspense fallback={null}>
+            <ColorBends
+              colors={["#ffffff", "#8dc63f", "#ffffff", "#a8d96a"]}
+              speed={0.15}
+              warpStrength={1.2}
+              intensity={0.8}
+              opacity={0.4}
+              iterations={2}
+            />
+          </Suspense>
         </div>
         <div className="container hero-split">
           <div className="hero-content">
@@ -442,7 +441,9 @@ const [teamMembers, setTeamMembers] = useState<any[]>([
             Chennai branch anchors our impact in India.
           </p>
           <div className="reveal reveal-delay-2">
-            <Globe />
+            <Suspense fallback={<div style={{ width: "100%", height: 700, display: "flex", alignItems: "center", justifyContent: "center" }}><p style={{ fontFamily: "'Patrick Hand', cursive", color: "var(--text-secondary)" }}>Loading globe...</p></div>}>
+              <Globe />
+            </Suspense>
           </div>
           <ScribbleSquiggle
             style={{
@@ -568,7 +569,9 @@ const [teamMembers, setTeamMembers] = useState<any[]>([
           >
             Latest Case Studies
           </h2>
-          <div className="cases-grid">
+          <div className="cases-grid"
+            style={caseStudies.length > 4 ? { maxHeight: 520, overflowY: "auto", paddingRight: 8 } : undefined}
+          >
             {caseStudies.map((cs, i) => (
               <div
                 key={i}
@@ -588,7 +591,13 @@ const [teamMembers, setTeamMembers] = useState<any[]>([
                 <span className="case-tag">{cs.tag}</span>
                 <h3>{cs.title}</h3>
                 <p>{cs.description}</p>
-                {expandedCard === i && (
+                {cs.image_url && (
+                  <img src={apiUrl(cs.image_url)} alt="" loading="lazy" style={{ width: "100%", maxHeight: 160, objectFit: "cover", borderRadius: 8, marginBottom: 8 }} />
+                )}
+                <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 4 }}>
+                  By {cs.author_name || "Anonymous"}
+                </div>
+                {expandedCard === i && cs.content && (
                   <div
                     className="card-expanded"
                     style={{
@@ -596,19 +605,8 @@ const [teamMembers, setTeamMembers] = useState<any[]>([
                       paddingTop: "1rem",
                       borderTop: "2px dashed var(--text-black)",
                     }}
-                  >
-                    <p
-                      style={{ fontSize: "0.9rem", color: "var(--text-gray)" }}
-                    >
-                      <strong>Impact:</strong> Delivered measurable results
-                      within 3 months. Client retention increased by 40%.
-                    </p>
-                    <p
-                      style={{ fontSize: "0.9rem", color: "var(--text-gray)" }}
-                    >
-                      <strong>Team:</strong> 5 consultants, 2 project managers
-                    </p>
-                  </div>
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(cs.content) }}
+                  />
                 )}
                 <span className="read-more">
                   {expandedCard === i
@@ -688,18 +686,25 @@ const [teamMembers, setTeamMembers] = useState<any[]>([
                 Insights from our consultants and network.
               </p>
             </div>
-            <a href="#post-a-blog" className="btn outline post-blog-btn">
+            <a href="/post-blog" className="btn outline post-blog-btn">
               Post a Blog
             </a>
           </div>
-          <div className="blog-grid">
-            {blogPosts.map((post, i) => (
-              <div key={i} className="blog-card card-doodle">
-                <span className="blog-date">{post.date}</span>
+          <div className="blog-grid"
+            style={blogPosts.length > 4 ? { maxHeight: 520, overflowY: "auto", paddingRight: 8 } : undefined}
+          >
+            {blogPosts.slice(0, 6).map((post, i) => (
+              <div key={i} className="blog-card card-doodle" style={{ position: "relative" }}>
+                {post.image_url && (
+                  <div style={{ width: "calc(100% + 32px)", height: 140, overflow: "hidden", borderRadius: "10px 10px 0 0", marginTop: -16, marginLeft: -16, marginRight: -16, marginBottom: 12 }}>
+                    <img src={apiUrl(post.image_url)} alt="" loading="lazy" width="700" height="140" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  </div>
+                )}
+                <span className="blog-date">{post.date || new Date(post.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
                 <h3>{post.title}</h3>
-                <p>{post.description}</p>
-                <a href="#" className="read-more-btn">
-                  Read Post
+                <p>{post.excerpt || post.description}</p>
+                <a href={post.slug ? `/blog/${post.slug}` : "#"} className="read-more-btn">
+                  {post.slug ? "Read Full Post" : "Read Post"}
                 </a>
               </div>
             ))}
@@ -794,11 +799,15 @@ const [teamMembers, setTeamMembers] = useState<any[]>([
         </div>
       </footer>
 
-      <ConsultingBoy onRequestConsulting={openConsultingForm} />
-      <ConsultingFormModal
-        isOpen={showConsultingForm}
-        onClose={() => setShowConsultingForm(false)}
-      />
+      <Suspense fallback={null}>
+        <ConsultingBoy onRequestConsulting={openConsultingForm} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <ConsultingFormModal
+          isOpen={showConsultingForm}
+          onClose={() => setShowConsultingForm(false)}
+        />
+      </Suspense>
     </SmoothScroll>
   );
 }
