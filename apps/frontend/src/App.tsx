@@ -35,7 +35,7 @@ function App() {
   const [caseStudies, setCaseStudies] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const [teamMembers, setTeamMembers] = useState<any[]>([
+const teamMembers = [
   { name: "Dr. Balaji", role: "Faculty Coordinator", initials: "DB", image: "/leads/faculty.png" },
   { name: "Saad Siddiqui", role: "President", initials: "SS", image: "/leads/prez.png" },
   { name: "S Yaswaanth", role: "Vice President", initials: "SY", image: "/leads/vp.png" },
@@ -51,7 +51,7 @@ const [teamMembers, setTeamMembers] = useState<any[]>([
   { name: "Sanjay Sivakumar", role: "Technical Director", initials: "SS", image: "/leads/tech.png" },
   { name: "Rounak Handa", role: "Business Strategy Director", initials: "RH", image: "/leads/bsd.png" },
   { name: "Paramveer Singh Vilkhu", role: "CPS Lead", initials: "PV", image: "/leads/cps.png" },
-]);
+];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [blogPosts, setBlogPosts] = useState<any[]>([]);
   const [partners, setPartners] = useState<string[]>(
@@ -63,7 +63,7 @@ const [teamMembers, setTeamMembers] = useState<any[]>([
   useEffect(() => {
     async function loadContent() {
       try {
-        const [csRes, tmRes, bpRes, pRes, completedRes] = await Promise.all([
+        const [csRes, _tmRes, bpRes, pRes, completedRes] = await Promise.all([
           fetch(apiUrl("/api/content/case-studies")).then((r) => r.json()),
           fetch(apiUrl("/api/content/team-members")).then((r) => r.json()),
           fetch(apiUrl("/api/content/blog-posts")).then((r) => r.json()),

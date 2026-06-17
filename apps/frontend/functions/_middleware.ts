@@ -16,7 +16,7 @@ function addSecurityHeaders(headers: Headers) {
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   headers.set(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com https://magnetic.clerk.accounts.dev; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://180dc.org https://static.cloudflareinsights.com; connect-src 'self' https://admin-api.technical-vitc.workers.dev wss://admin-api.technical-vitc.workers.dev https://cloudflareinsights.com https://magnetic.clerk.accounts.dev; font-src 'self' https://fonts.gstatic.com; frame-src 'self' https://magnetic.clerk.accounts.dev; worker-src 'self' blob: https://magnetic.clerk.accounts.dev; frame-ancestors 'none'; base-uri 'self'",
+    "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com https://magnetic.clerk.accounts.dev; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://180dc.org https://static.cloudflareinsights.com; connect-src 'self' https://admin-api.technical-vitc.workers.dev wss://admin-api.technical-vitc.workers.dev https://cloudflareinsights.com https://magnetic.clerk.accounts.dev https://raw.githubusercontent.com https://gist.githubusercontent.com; font-src 'self' https://fonts.gstatic.com; frame-src 'self' https://magnetic.clerk.accounts.dev; worker-src 'self' blob: https://magnetic.clerk.accounts.dev; frame-ancestors 'none'; base-uri 'self'",
   );
   headers.set("X-XSS-Protection", "0");
   headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
