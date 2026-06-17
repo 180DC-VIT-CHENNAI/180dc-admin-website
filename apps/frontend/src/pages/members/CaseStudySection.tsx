@@ -141,10 +141,12 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
     setImageUrl(cs.image_url || "");
     setImageKey("");
     setError("");
-    if (editorRef.current) {
-      editorRef.current.innerHTML = cs.content || "";
-    }
     setMode("create");
+    setTimeout(() => {
+      if (editorRef.current) {
+        editorRef.current.innerHTML = cs.content || "";
+      }
+    }, 0);
   }, []);
 
   const cancelForm = useCallback(() => {
