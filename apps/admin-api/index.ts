@@ -40,6 +40,8 @@ function isPublicRoute(pathname: string, method: string): boolean {
     ["/api/recruitment/login"],
     ["/api/recruitment/open-domains"],
     ["/api/blogs"],
+    ["/api/blogs/upload-image", "POST"],
+    ["/api/case-studies/upload-image", "POST"],
   ];
   for (const [route, requiredMethod] of PUBLIC_ROUTES) {
     if (pathname === route && (!requiredMethod || method === requiredMethod)) return true;
@@ -47,6 +49,7 @@ function isPublicRoute(pathname: string, method: string): boolean {
 
   if (pathname.startsWith("/api/content") && method === "GET") return true;
   if (pathname.startsWith("/api/blogs/") && method === "GET" && !pathname.startsWith("/api/blogs/admin")) return true;
+  if (pathname.startsWith("/api/case-studies/images/") && method === "GET") return true;
   if (pathname === "/api/admin/maintenance" && method === "GET") return true;
 
   return false;
@@ -3678,6 +3681,73 @@ app.get("/api/blogs/images/*", async (c) => {
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const url = new URL(c.req.url);
     const prefix = "/api/blogs/images/";
+    let key = decodeURIComponent(url.pathname);
+
+    if (key.startsWith(prefix)) {
+      key = key.slice(prefix.length);
+    } else {
+      key = key.replace(/^\/+/, "");
+    }
+
+    if (!key || key.includes("..")) return c.json({ error: "Invalid key" }, 400);
+
+    const obj = await c.env.BLOG_IMAGES.get(key);
+    if (!obj) return c.json({ error: "Image not found" }, 404);
+
+    const headers = new Headers();
+    headers.set("Content-Type", obj.httpMetadata?.contentType || "image/jpeg");
+    headers.set("Cache-Control", "public, max-age=86400");
+    headers.set("X-Content-Type-Options", "nosniff");
+
+    return new Response(obj.body, { headers });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ─────────────────────────────────────────────
+// CASE STUDY IMAGE UPLOAD & SERVE (uses same R2 bucket, separate folder)
+// ─────────────────────────────────────────────
+
+app.post("/api/case-studies/upload-image", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "case_study_upload_image", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+
+    const fd = await c.req.formData();
+    const file = fd.get("image");
+    if (!file || typeof file === "string") return c.json({ error: "No image file provided" }, 400);
+
+    const typedFile = file as File;
+    if (!ALLOWED_IMG_TYPES.includes(typedFile.type)) {
+      return c.json({ error: "Invalid file type. Allowed: JPEG, PNG, WebP, GIF" }, 400);
+    }
+    if (typedFile.size > MAX_IMG_SIZE) {
+      return c.json({ error: "File too large. Max 10 MB" }, 400);
+    }
+
+    const ext = typedFile.name.split(".").pop() || "jpg";
+    const key = `case-studies/${crypto.randomUUID()}.${ext}`;
+    const arrayBuffer = await typedFile.arrayBuffer();
+    await c.env.BLOG_IMAGES.put(key, arrayBuffer, {
+      httpMetadata: { contentType: typedFile.type },
+    });
+
+    const url = `/api/case-studies/images/${key}`;
+
+    return c.json({ success: true, url, key });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+app.get("/api/case-studies/images/*", async (c) => {
+  try {
+    const rl = await checkRateLimit(c, "case_study_image_serve", 200, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+    const url = new URL(c.req.url);
+    const prefix = "/api/case-studies/images/";
     let key = decodeURIComponent(url.pathname);
 
     if (key.startsWith(prefix)) {

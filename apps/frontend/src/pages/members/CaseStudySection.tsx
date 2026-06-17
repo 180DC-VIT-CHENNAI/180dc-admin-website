@@ -51,8 +51,9 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
     try {
       const fd = new FormData();
       fd.append("image", file);
-      const res = await fetch(apiUrl("/api/blogs/upload-image"), {
+      const res = await fetch(apiUrl("/api/case-studies/upload-image"), {
         method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
         body: fd,
       });
       const data = await res.json();
