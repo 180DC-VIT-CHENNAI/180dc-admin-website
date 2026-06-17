@@ -165,7 +165,7 @@ async function checkRateLimit(c: any, endpoint: string, maxRequests: number, win
       await c.env.DB.prepare("INSERT INTO rate_limits (ip, endpoint, count, window_start) VALUES (?, ?, 1, ?)").bind(ip, endpoint, now.toISOString()).run();
       return { allowed: true, retryAfter: 0 };
     }
-    const elapsed = (now.getTime() - new Date(row.window_start + "Z").getTime()) / 1000;
+    const elapsed = (now.getTime() - new Date(row.window_start).getTime()) / 1000;
     if (elapsed > windowSeconds) {
       await c.env.DB.prepare("UPDATE rate_limits SET count = 1, window_start = ? WHERE ip = ? AND endpoint = ?").bind(now.toISOString(), ip, endpoint).run();
       return { allowed: true, retryAfter: 0 };
@@ -189,7 +189,7 @@ async function checkLoginRateLimit(c: any, endpoint: string, maxRequests: number
     ).bind(ip, endpoint).first();
     const now = new Date();
     if (!row) return { allowed: true, retryAfter: 0 };
-    const elapsed = (now.getTime() - new Date(row.window_start + "Z").getTime()) / 1000;
+    const elapsed = (now.getTime() - new Date(row.window_start).getTime()) / 1000;
     if (elapsed > windowSeconds) {
       await c.env.DB.prepare("DELETE FROM rate_limits WHERE ip = ? AND endpoint = ?").bind(ip, endpoint).run();
       return { allowed: true, retryAfter: 0 };
