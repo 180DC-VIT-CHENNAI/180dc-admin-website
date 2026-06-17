@@ -3962,6 +3962,54 @@ app.put("/api/blogs/:id/reject", async (c) => {
   }
 });
 
+// 7a. Edit any blog post (power >= 100)
+app.put("/api/blogs/:id/edit", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "blog_edit", 20, 60);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
+
+    const id = c.req.param("id");
+    const existing: any = await c.env.DB.prepare("SELECT id FROM posts WHERE id = ?").bind(id).first();
+    if (!existing) return c.json({ error: "Blog not found" }, 404);
+
+    const body = await c.req.json();
+    const title = sanitizeStr(body.title);
+    const rawContent = body.content;
+    const excerpt = sanitizeStr(body.excerpt);
+    const imageUrl = sanitizeStr(body.imageUrl);
+    const authorName = sanitizeStr(body.authorName);
+    const authorAssociation = sanitizeStr(body.authorAssociation);
+    const rawSlug = sanitizeStr(body.slug);
+
+    if (!title || typeof title !== "string" || title.length < 3) {
+      return c.json({ error: "Title must be at least 3 characters" }, 400);
+    }
+    if (!rawContent || typeof rawContent !== "string" || rawContent.length < 10) {
+      return c.json({ error: "Content must be at least 10 characters" }, 400);
+    }
+    if (rawContent.length > 100000) {
+      return c.json({ error: "Content too long (max 100,000 chars)" }, 400);
+    }
+
+    const content = sanitizeBlogHtml(rawContent);
+    const slug = rawSlug ? slugify(rawSlug) : slugify(title);
+    const updatedAt = new Date().toISOString();
+
+    await c.env.DB.prepare(
+      "UPDATE posts SET title = ?, content = ?, excerpt = ?, image_url = ?, author_name = ?, author_association = ?, slug = ?, updated_at = ? WHERE id = ?",
+    ).bind(title, content, excerpt || null, imageUrl || null, authorName, authorAssociation, slug, updatedAt, id).run();
+
+    await addAuditLog(c, "blog_updated", "post", id, "Blog updated: " + title);
+
+    return c.json({ success: true, message: "Blog updated", slug });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
 // 7b. Delete a blog post permanently (power >= 100)
 app.delete("/api/blogs/:id", async (c) => {
   try {

@@ -4,10 +4,10 @@ const ASSET_EXTENSIONS = new Set([
 ]);
 
 function isAssetPath(path: string): boolean {
+  if (!path.startsWith("/assets/") && !path.startsWith("/images/") && !path.startsWith("/leads/") && !path.startsWith("/favicon")) return false;
   const dot = path.lastIndexOf(".");
   if (dot === -1) return false;
-  const ext = path.slice(dot).toLowerCase();
-  return ASSET_EXTENSIONS.has(ext);
+  return ASSET_EXTENSIONS.has(path.slice(dot).toLowerCase());
 }
 
 function addSecurityHeaders(headers: Headers) {
@@ -16,10 +16,11 @@ function addSecurityHeaders(headers: Headers) {
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   headers.set(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com https://*.clerk.accounts.dev; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://180dc.org https://static.cloudflareinsights.com; connect-src 'self' https://*.180dc.org https://*.180dc.shop https://admin-api.technical-vitc.workers.dev wss://admin-api.technical-vitc.workers.dev https://raw.githubusercontent.com https://gist.githubusercontent.com https://cloudflareinsights.com https://*.clerk.accounts.dev; font-src 'self' https://fonts.gstatic.com; frame-src 'self' https://*.clerk.accounts.dev; worker-src 'self' blob: https://*.clerk.accounts.dev; frame-ancestors 'none'; base-uri 'self'",
+    "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com https://magnetic.clerk.accounts.dev; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://180dc.org https://static.cloudflareinsights.com; connect-src 'self' https://admin-api.technical-vitc.workers.dev wss://admin-api.technical-vitc.workers.dev https://cloudflareinsights.com https://magnetic.clerk.accounts.dev; font-src 'self' https://fonts.gstatic.com; frame-src 'self' https://magnetic.clerk.accounts.dev; worker-src 'self' blob: https://magnetic.clerk.accounts.dev; frame-ancestors 'none'; base-uri 'self'",
   );
   headers.set("X-XSS-Protection", "0");
   headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), interest-cohort=()");
 }
 
 const API_BASE = "https://admin-api.technical-vitc.workers.dev";
@@ -31,10 +32,17 @@ export async function onRequest(context: any) {
 
   // Proxy API requests to the admin-api worker
   if (path.startsWith("/api/")) {
+    if (path.includes("..") || path.includes("%2e") || path.includes("%2E")) {
+      return new Response("Bad Request", { status: 400 });
+    }
     const apiUrl = new URL(path, API_BASE);
     apiUrl.search = url.search;
+    if (!apiUrl.pathname.startsWith("/api/")) {
+      return new Response("Forbidden", { status: 403 });
+    }
     const apiHeaders = new Headers(request.headers);
     apiHeaders.delete("X-Content-Type-Options");
+    apiHeaders.set("Host", new URL(API_BASE).host);
     const apiResponse = await fetch(apiUrl.toString(), {
       method: request.method,
       headers: apiHeaders,
@@ -42,6 +50,7 @@ export async function onRequest(context: any) {
     });
     const respHeaders = new Headers(apiResponse.headers);
     addSecurityHeaders(respHeaders);
+    respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
     return new Response(apiResponse.body, {
       status: apiResponse.status,
       statusText: apiResponse.statusText,
@@ -75,6 +84,7 @@ export async function onRequest(context: any) {
       status: 200,
       headers: { "content-type": "text/html" },
     });
+    newResponse.headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
     addSecurityHeaders(newResponse.headers);
     return newResponse;
   }

@@ -82,9 +82,14 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
         });
       } catch {}
     }
+    if (editorRef.current && imageUrl) {
+      const escapedUrl = imageUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`<p><br></p><img[^>]*src="[^"]*${escapedUrl}"[^>]*><p><br></p>|<img[^>]*src="[^"]*${escapedUrl}"[^>]*>`, "gi");
+      editorRef.current.innerHTML = editorRef.current.innerHTML.replace(regex, "");
+    }
     setImageUrl("");
     setImageKey("");
-  }, [imageKey, authToken]);
+  }, [imageKey, imageUrl, authToken]);
 
   const exec = useCallback((cmd: string, val?: string) => {
     document.execCommand(cmd, false, val);
