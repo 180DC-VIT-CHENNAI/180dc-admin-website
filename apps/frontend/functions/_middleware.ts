@@ -1,3 +1,15 @@
+const ASSET_EXTENSIONS = new Set([
+  ".js", ".mjs", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg",
+  ".ico", ".webp", ".avif", ".woff", ".woff2", ".ttf", ".eot",
+]);
+
+function isAssetPath(path: string): boolean {
+  const dot = path.lastIndexOf(".");
+  if (dot === -1) return false;
+  const ext = path.slice(dot).toLowerCase();
+  return ASSET_EXTENSIONS.has(ext);
+}
+
 function addSecurityHeaders(headers: Headers) {
   headers.set("X-Frame-Options", "DENY");
   headers.set("X-Content-Type-Options", "nosniff");
@@ -37,8 +49,16 @@ export async function onRequest(context: any) {
     });
   }
 
-  if (path.startsWith("/assets/") || path === "/favicon.svg" || path === "/icons.svg") {
+  // Serve known static assets — always return a proper 404 instead of HTML
+  if (
+    path.startsWith("/assets/") ||
+    path === "/favicon.svg" ||
+    path === "/icons.svg" ||
+    path.startsWith("/images/") ||
+    path.startsWith("/leads/")
+  ) {
     const response = await next();
+    if (!response.ok) return response;
     if (path.endsWith(".js") || path.endsWith(".mjs")) {
       response.headers.set("Content-Type", "text/javascript");
     }
@@ -48,7 +68,8 @@ export async function onRequest(context: any) {
 
   const response = await next();
 
-  if (response.status === 404) {
+  // SPA fallback: only for navigation (HTML) requests, never for assets
+  if (response.status === 404 && !isAssetPath(path)) {
     const index = await env.ASSETS.fetch(new URL("/index.html", url.origin));
     const newResponse = new Response(index.body, {
       status: 200,
