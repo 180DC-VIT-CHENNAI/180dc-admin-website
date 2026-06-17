@@ -114,7 +114,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
         body: JSON.stringify({
           tag: tag.trim(),
           title: title.trim(),
-          description: description.trim() || textContent.trim().slice(0, 200),
+          description: description.trim() || undefined,
           content,
           imageUrl: imageUrl || undefined,
         }),

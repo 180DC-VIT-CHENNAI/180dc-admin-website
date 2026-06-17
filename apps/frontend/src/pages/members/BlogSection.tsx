@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { apiUrl } from "../../lib/api";
 import { sanitizeHtml } from "../../lib/sanitize";
 
@@ -22,6 +22,13 @@ export default function BlogSection({ authToken, powerLevel }: { authToken: stri
   const [editContent, setEditContent] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  const blogEditorRef = useRef<HTMLDivElement>(null);
+  const blogSavedRangeRef = useRef<Range | null>(null);
+
+  const blogExec = useCallback((cmd: string, val?: string) => {
+    document.execCommand(cmd, false, val);
+    blogEditorRef.current?.focus();
+  }, []);
 
   async function load() {
     try {
@@ -88,13 +95,18 @@ export default function BlogSection({ authToken, powerLevel }: { authToken: stri
     setEditContent(blog.content || "");
     setEditError("");
     setEditSaving(false);
+    setTimeout(() => {
+      if (blogEditorRef.current) {
+        blogEditorRef.current.innerHTML = blog.content || "";
+      }
+    }, 0);
   }
 
   async function handleEditSave() {
+    const content = blogEditorRef.current?.innerHTML || editContent;
     if (!editTitle.trim() || editTitle.trim().length < 3) { setEditError("Title must be at least 3 characters"); return; }
-    if (!editContent.trim() || editContent.trim().length < 10) { setEditError("Content must be at least 10 characters"); return; }
-    if (editContent.length > 100000) { setEditError("Content too long (max 100,000 chars)"); return; }
-
+    if (!content.trim() || content.trim().length < 10) { setEditError("Content must be at least 10 characters"); return; }
+    if (content.length > 100000) { setEditError("Content too long (max 100,000 chars)"); return; }
     setEditSaving(true);
     setEditError("");
     try {
@@ -103,7 +115,7 @@ export default function BlogSection({ authToken, powerLevel }: { authToken: stri
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({
           title: editTitle.trim(),
-          content: editContent,
+          content,
           excerpt: editExcerpt.trim() || null,
           imageUrl: editImageUrl.trim() || null,
           authorName: editAuthor.trim() || "Anonymous",
@@ -328,8 +340,54 @@ export default function BlogSection({ authToken, powerLevel }: { authToken: stri
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Content * (HTML)</label>
-              <textarea value={editContent} onChange={e => setEditContent(e.target.value)} style={{ width: "100%", padding: "8px 12px", border: "2px solid var(--border-light)", borderRadius: 8, fontSize: 14, fontFamily: "monospace", minHeight: 300, resize: "vertical" }} />
+              <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Content *</label>
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 4, padding: "6px", border: "2px solid var(--border-light)", borderRadius: "8px 8px 0 0", borderBottom: "none" }}>
+                <button onClick={() => blogExec("bold")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}><b>B</b></button>
+                <button onClick={() => blogExec("italic")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}><i>I</i></button>
+                <button onClick={() => blogExec("underline")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}><u>U</u></button>
+                <button onClick={() => blogExec("formatBlock", "<h2>")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>H2</button>
+                <button onClick={() => blogExec("formatBlock", "<h3>")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>H3</button>
+                <button onClick={() => blogExec("insertUnorderedList")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>&#x2022; List</button>
+                <button onClick={() => blogExec("insertOrderedList")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>1. List</button>
+                <button onClick={() => blogExec("formatBlock", "<blockquote>")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>&ldquo; Quote</button>
+                <button onClick={() => { const url = prompt("Enter link URL:"); if (url) blogExec("createLink", url); }} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>&#x1F517;</button>
+                <button onClick={() => blogExec("formatBlock", "<p>")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>&#xb6;</button>
+              </div>
+              <div
+                ref={blogEditorRef}
+                contentEditable
+                suppressContentEditableWarning
+                data-placeholder="Write your blog content here..."
+                style={{ minHeight: 300, padding: 12, border: "2px solid var(--border-light)", borderRadius: "0 0 8px 8px", fontSize: 14, lineHeight: 1.6, fontFamily: "'Nunito', sans-serif" }}
+                onInput={() => {
+                  const html = blogEditorRef.current?.innerHTML || "";
+                  setEditContent(html);
+                }}
+                onKeyUp={() => {
+                  const html = blogEditorRef.current?.innerHTML || "";
+                  setEditContent(html);
+                  const sel = window.getSelection();
+                  if (sel && sel.rangeCount > 0 && blogEditorRef.current?.contains(sel.anchorNode)) {
+                    blogSavedRangeRef.current = sel.getRangeAt(0).cloneRange();
+                  }
+                }}
+                onMouseUp={() => {
+                  const sel = window.getSelection();
+                  if (sel && sel.rangeCount > 0 && blogEditorRef.current?.contains(sel.anchorNode)) {
+                    blogSavedRangeRef.current = sel.getRangeAt(0).cloneRange();
+                  }
+                }}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  const html = e.clipboardData.getData("text/html");
+                  if (html) {
+                    document.execCommand("insertHTML", false, html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<[^>]*on\w+\s*=[^>]*>/gi, ""));
+                  } else {
+                    const text = e.clipboardData.getData("text/plain");
+                    document.execCommand("insertText", false, text);
+                  }
+                }}
+              />
               <div style={{ fontSize: 11, color: editContent.length > 100000 ? "#dc3545" : "var(--text-secondary)", textAlign: "right", marginTop: 4 }}>
                 {editContent.length.toLocaleString()} / 100,000 characters
               </div>
