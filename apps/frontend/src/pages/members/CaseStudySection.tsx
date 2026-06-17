@@ -8,11 +8,13 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
   const editorRef = useRef<HTMLDivElement>(null);
   const savedRangeRef = useRef<Range | null>(null);
 
-  // Create form
+  // Create/Edit form
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [tag, setTag] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [imageKey, setImageKey] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -59,6 +61,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
       const data = await res.json();
       if (data.success) {
         setImageUrl(data.url);
+        setImageKey(data.key);
         insertAtCursor(`<p><br></p><img src="${data.url}" alt="case study image" style="max-width:100%;border-radius:8px;" /><p><br></p>`);
       } else {
         setError(data.error || "Upload failed");
@@ -67,7 +70,21 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
       setError("Upload failed. Try again.");
     }
     setImageUploading(false);
-  }, [insertAtCursor]);
+  }, [insertAtCursor, authToken]);
+
+  const handleRemoveImage = useCallback(async () => {
+    if (imageKey) {
+      try {
+        await fetch(apiUrl("/api/case-studies/delete-image"), {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ key: imageKey }),
+        });
+      } catch {}
+    }
+    setImageUrl("");
+    setImageKey("");
+  }, [imageKey, authToken]);
 
   const exec = useCallback((cmd: string, val?: string) => {
     document.execCommand(cmd, false, val);
@@ -84,8 +101,10 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch(apiUrl("/api/case-studies"), {
-        method: "POST",
+      const url = editingId ? apiUrl(`/api/case-studies/${editingId}`) : apiUrl("/api/case-studies");
+      const method = editingId ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({
           tag: tag.trim(),
@@ -97,16 +116,43 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
       });
       const data = await res.json();
       if (data.success) {
+        setEditingId(null);
         setMode("list");
         load();
       } else {
-        setError(data.error || "Failed to create case study");
+        setError(data.error || "Failed to save case study");
       }
     } catch {
       setError("Network error. Try again.");
     }
     setSubmitting(false);
   };
+
+  const startEdit = useCallback((cs: any) => {
+    setEditingId(cs.id);
+    setTag(cs.tag || "");
+    setTitle(cs.title || "");
+    setDescription(cs.description || "");
+    setImageUrl(cs.image_url || "");
+    setImageKey("");
+    setError("");
+    if (editorRef.current) {
+      editorRef.current.innerHTML = cs.content || "";
+    }
+    setMode("create");
+  }, []);
+
+  const cancelForm = useCallback(() => {
+    setEditingId(null);
+    setTag("");
+    setTitle("");
+    setDescription("");
+    setImageUrl("");
+    setImageKey("");
+    setError("");
+    if (editorRef.current) editorRef.current.innerHTML = "";
+    setMode("list");
+  }, []);
 
   async function handleDelete(id: string) {
     setProcessing(id);
@@ -116,13 +162,17 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
         headers: { Authorization: `Bearer ${authToken}` },
       });
       const d = await res.json();
-      if (d.success) { setCaseStudies(prev => prev.filter(c => c.id !== id)); }
+      if (d.success) {
+        setCaseStudies(prev => prev.filter(c => c.id !== id));
+        if (editingId === id) cancelForm();
+      }
       else { alert(d.error || "Failed to delete"); }
     } catch { alert("Network error"); }
     setProcessing(null);
   }
 
   const canDelete = powerLevel >= 50;
+  const canEdit = powerLevel >= 10;
 
   if (mode === "create") {
     const contentLen = editorRef.current?.textContent?.length || 0;
@@ -132,12 +182,12 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: "1.4rem" }}>Create Case Study</h2>
+            <h2 style={{ margin: 0, fontSize: "1.4rem" }}>{editingId ? "Edit Case Study" : "Create Case Study"}</h2>
             <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: 13 }}>
-              Publish a new case study (visible immediately).
+              {editingId ? "Update your case study." : "Publish a new case study (visible immediately)."}
             </p>
           </div>
-          <button className="btn outline" style={{ padding: "6px 16px", fontSize: 12 }} onClick={() => setMode("list")}>
+          <button className="btn outline" style={{ padding: "6px 16px", fontSize: 12 }} onClick={cancelForm}>
             Back to List
           </button>
         </div>
@@ -187,7 +237,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
                   <button
                     type="button"
                     style={{ position: "absolute", top: -8, right: -8, width: 24, height: 24, borderRadius: "50%", border: "2px solid #dc3545", background: "#fff", color: "#dc3545", cursor: "pointer", fontSize: 14, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }}
-                    onClick={() => setImageUrl("")}
+                    onClick={handleRemoveImage}
                   >
                     &times;
                   </button>
@@ -262,9 +312,9 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
           )}
 
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <button className="btn outline" onClick={() => setMode("list")}>Cancel</button>
+            <button className="btn outline" onClick={cancelForm}>Cancel</button>
             <button className="btn" onClick={handleSubmit} disabled={submitting || isOverLimit}>
-              {submitting ? "Publishing..." : "Publish Case Study"}
+              {submitting ? "Saving..." : editingId ? "Update Case Study" : "Publish Case Study"}
             </button>
           </div>
         </div>
@@ -313,15 +363,25 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
                   By {cs.author_name || "Anonymous"} &middot; {new Date(cs.created_at).toLocaleDateString()}
                 </div>
                 <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>{cs.description}</p>
-                {canDelete && (
-                  <button
-                    style={{ marginTop: 8, padding: "3px 10px", fontSize: 11, background: "#dc3545", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
-                    onClick={() => { if (confirm('Delete this case study permanently?')) handleDelete(cs.id); }}
-                    disabled={processing === cs.id}
-                  >
-                    {processing === cs.id ? "..." : "Delete"}
-                  </button>
-                )}
+                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                  {canEdit && (
+                    <button
+                      style={{ padding: "3px 10px", fontSize: 11, background: "var(--accent, #8dc63f)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
+                      onClick={() => startEdit(cs)}
+                    >
+                      Edit
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      style={{ padding: "3px 10px", fontSize: 11, background: "#dc3545", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
+                      onClick={() => { if (confirm('Delete this case study permanently?')) handleDelete(cs.id); }}
+                      disabled={processing === cs.id}
+                    >
+                      {processing === cs.id ? "..." : "Delete"}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}

@@ -41,7 +41,6 @@ function isPublicRoute(pathname: string, method: string): boolean {
     ["/api/recruitment/open-domains"],
     ["/api/blogs"],
     ["/api/blogs/upload-image", "POST"],
-    ["/api/case-studies/upload-image", "POST"],
   ];
   for (const [route, requiredMethod] of PUBLIC_ROUTES) {
     if (pathname === route && (!requiredMethod || method === requiredMethod)) return true;
@@ -3712,6 +3711,8 @@ app.get("/api/blogs/images/*", async (c) => {
 app.post("/api/case-studies/upload-image", async (c) => {
   try {
     await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
     const rl = await checkRateLimit(c, "case_study_upload_image", 20, 3600);
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
 
@@ -3767,6 +3768,24 @@ app.get("/api/case-studies/images/*", async (c) => {
     headers.set("X-Content-Type-Options", "nosniff");
 
     return new Response(obj.body, { headers });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Delete uploaded case study image from R2 (power >= 10)
+app.delete("/api/case-studies/delete-image", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
+
+    const { key } = await c.req.json();
+    if (!key || typeof key !== "string") return c.json({ error: "Image key is required" }, 400);
+    if (!key.startsWith("case-studies/")) return c.json({ error: "Invalid image key" }, 400);
+
+    await c.env.BLOG_IMAGES.delete(key);
+    return c.json({ success: true, message: "Image deleted" });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -4275,6 +4294,51 @@ app.delete("/api/case-studies/:id", async (c) => {
     await addAuditLog(c, "case_study_deleted", "case_study", id, "Case study deleted: " + row.title);
 
     return c.json({ success: true, message: "Case study deleted" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// 4. Edit a case study (authenticated, power >= 10)
+app.put("/api/case-studies/:id", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "case_study_edit", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
+
+    const id = c.req.param("id");
+    const existing: any = await c.env.DB.prepare("SELECT id FROM case_studies WHERE id = ?").bind(id).first();
+    if (!existing) return c.json({ error: "Case study not found" }, 404);
+
+    const body = await c.req.json();
+    const tag = sanitizeStr(body.tag);
+    const title = sanitizeStr(body.title);
+    const description = sanitizeStr(body.description);
+    const rawContent = body.content;
+    const imageUrl = sanitizeStr(body.imageUrl);
+
+    if (!tag) return c.json({ error: "Tag is required" }, 400);
+    if (!title || title.length < 3) return c.json({ error: "Title must be at least 3 characters" }, 400);
+    if (!rawContent || typeof rawContent !== "string" || rawContent.length < 10) {
+      return c.json({ error: "Content must be at least 10 characters" }, 400);
+    }
+    if (rawContent.length > 100000) return c.json({ error: "Content too long (max 100,000 chars)" }, 400);
+
+    const content = sanitizeBlogHtml(rawContent);
+    const textOnly = content.replace(/<[^>]*>/g, "").trim();
+    if (textOnly.length < 10) {
+      return c.json({ error: "Content must contain at least 10 visible characters after sanitization" }, 400);
+    }
+
+    await c.env.DB.prepare(
+      "UPDATE case_studies SET tag = ?, title = ?, description = ?, content = ?, image_url = ? WHERE id = ?",
+    ).bind(tag, title, description || "", content, imageUrl || null, id).run();
+
+    await addAuditLog(c, "case_study_updated", "case_study", id, "Case study updated: " + title);
+
+    return c.json({ success: true, message: "Case study updated" });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
