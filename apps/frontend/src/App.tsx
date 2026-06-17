@@ -31,14 +31,24 @@ function App() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [caseStudies, setCaseStudies] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [teamMembers, setTeamMembers] = useState<any[]>([
-    { name: "John Doe", role: "President", initials: "JD" },
-    { name: "John Doe", role: "Vice President", initials: "JD" },
-    { name: "John Doe", role: "Head of Operations", initials: "JD" },
-    { name: "John Doe", role: "Head of Marketing", initials: "JD" },
-    { name: "John Doe", role: "Head of Finance", initials: "JD" },
-    { name: "John Doe", role: "Head of Research", initials: "JD" },
-  ]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+const [teamMembers, setTeamMembers] = useState<any[]>([
+  { name: "Dr. Balaji", role: "Faculty Coordinator", initials: "DB", image: "/leads/faculty.png" },
+  { name: "Saad Siddiqui", role: "President", initials: "SS", image: "/leads/prez.png" },
+  { name: "S Yaswaanth", role: "Vice President", initials: "SY", image: "/leads/vp.png" },
+  { name: "Sharan K", role: "Vice President", initials: "SK", image: "/leads/vp-2.png" },
+  { name: "Sanjana Chejeti", role: "Marketing Director", initials: "SC", image: "/leads/marketing.png" },
+  { name: "Khyati Mohapatra", role: "Social Media Lead", initials: "KM", image: "/leads/sm.png" },
+  { name: "Riddhima Singh", role: "Finance and Legal Director", initials: "RS", image: "/leads/finlegal.png" },
+  { name: "Sowmiya Vijayakumar", role: "HR Director", initials: "SV", image: "/leads/hr.png" },
+  { name: "Sonakshi Agrawal", role: "Events & Initiatives Lead", initials: "SA", image: "/leads/events.png" },
+  { name: "Vansh Goel", role: "Events & Initiatives Lead", initials: "VG", image: "/leads/events-2.png" },
+  { name: "Mahak Khetan", role: "R&D Lead", initials: "MK", image: "/leads/rnd-1.png" },
+  { name: "Shivam Pandey", role: "R&D Lead", initials: "SP", image: "/leads/rnd-2.png" },
+  { name: "Sanjay Sivakumar", role: "Technical Director", initials: "SS", image: "/leads/tech.png" },
+  { name: "Rounak Handa", role: "Business Strategy Director", initials: "RH", image: "/leads/bsd.png" },
+  { name: "Paramveer Singh Vilkhu", role: "CPS Lead", initials: "PV", image: "/leads/cps.png" },
+]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [blogPosts, setBlogPosts] = useState<any[]>([]);
   const [partners, setPartners] = useState<string[]>(
@@ -57,7 +67,7 @@ function App() {
           fetch(apiUrl("/api/content/partners")).then((r) => r.json()),
         ]);
         if (csRes.success) setCaseStudies(csRes.data);
-        if (tmRes.success) setTeamMembers(tmRes.data);
+        
         if (bpRes.success) setBlogPosts(bpRes.data);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (pRes.success) setPartners(pRes.data.map((p: any) => p.name));
@@ -632,7 +642,17 @@ function App() {
           <div className="team-grid">
             {teamMembers.map((member, i) => (
               <div key={i} className="team-card card-doodle">
-                <div className="team-image-placeholder">{member.initials}</div>
+                <div className="team-image-placeholder">
+  {member.image ? (
+    <img
+      src={member.image}
+      alt={member.name}
+      style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
+    />
+  ) : (
+    member.initials
+  )}
+</div>
                 <h4>{member.name}</h4>
                 <p>{member.role}</p>
               </div>
