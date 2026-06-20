@@ -257,14 +257,18 @@ export default function MembersLayout() {
             if (clerkJwt) break;
             await new Promise(r => setTimeout(r, 500));
           }
-          if (!clerkJwt) { setOauthLoading(false); setOauthStatusMsg("Google sign-in is taking longer than expected. Try again."); return; }
+          if (!clerkJwt) { console.error("Clerk login: getToken() returned null after 5 attempts"); setOauthLoading(false); setOauthStatusMsg("Google sign-in is taking longer than expected. Try again."); return; }
           const clerkUserEmail = clerk.user?.primaryEmailAddress?.emailAddress || null;
+          console.log("Clerk login: got JWT, email=" + clerkUserEmail + ", userId=" + clerkUserId);
           const res = await fetch(apiUrl("/api/auth/clerk-login"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ clerkToken: clerkJwt, email: clerkUserEmail }),
           });
+          console.log("Clerk login: backend status=" + res.status);
+          if (!res.ok) { const text = await res.text(); console.error("Clerk login: backend error body=" + text); }
           const data = await res.json();
+          console.log("Clerk login: backend response success=" + data.success + " error=" + (data.error || "none"));
           setOauthLoading(false);
           if (data.success) {
             handleLogin(data.token, data.email, data.powerLevel, data.departmentId, data.roleId);
@@ -273,7 +277,8 @@ export default function MembersLayout() {
             setOauthStatusMsg(data.error || "Google login failed");
           }
           return;
-        } catch {
+        } catch (e) {
+          console.error("Clerk login: exception", e);
           setOauthLoading(false);
           setOauthStatusMsg("Google login failed. Try again.");
           return;
