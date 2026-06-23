@@ -1,5 +1,5 @@
 // OrgChart.tsx
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { facultyAdvisor, orgChartTree } from './orgChartData';
 import type { OrgChartPerson } from './orgChartData';
 import './OrgChart.css';
