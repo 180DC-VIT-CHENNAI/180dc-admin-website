@@ -1,0 +1,246 @@
+/* OrgChart.css */
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght=500;700&family=Patrick+Hand&display=swap');
+
+:root {
+  --orgchart-bg: #EFF7E2;          
+  --orgchart-trunk: #6B5842;        
+  --orgchart-left: #3B7A33;         
+  --orgchart-right: #2F8073;        
+  --orgchart-line-width: 3px;
+  --vertical-gap: 30px;
+  --corner-radius: 12px;
+}
+
+.orgchart-outer-container {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+}
+
+.orgchart-wrapper {
+  background: var(--orgchart-bg);
+  border: 2px solid var(--orgchart-left);
+  border-radius: 16px;
+  padding: 24px 20px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* ---------- Viewport Layout Containers ---------- */
+.orgchart-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+}
+
+.orgchart-tree-canvas {
+  display: block;
+  min-width: max-content;
+  padding: 10px 20px;
+  margin: 0 auto;
+}
+
+/* ---------- Top Level Alignment Configuration ---------- */
+.orgchart-top-header-row {
+  display: flex;
+  position: relative;
+  width: 100%;
+}
+
+.orgchart-advisor-cell {
+  position: absolute;
+  left: 40px;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.orgchart-president-cell {
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+}
+
+.orgchart-president-drop-line {
+  width: 0;
+  height: var(--vertical-gap);
+  border-left: var(--orgchart-line-width) solid var(--orgchart-trunk);
+}
+
+/* ---------- Polaroid Card Specifications ---------- */
+.orgchart-card {
+  background: #ffffff !important; 
+  width: 140px;
+  padding: 10px 10px 14px 10px;
+  box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 5;
+}
+
+.orgchart-avatar {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: #fafafa;
+  border: 1px solid #dddddd;
+  overflow: hidden;
+}
+
+.orgchart-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.orgchart-placeholder-icon {
+  width: 100%;
+  height: 100%;
+  padding: 22%;
+  box-sizing: border-box;
+}
+
+.orgchart-name {
+  font-family: 'Caveat', cursive;
+  font-weight: 700;
+  font-size: 18px;
+  color: #111111;
+  margin: 8px 0 1px 0;
+  text-align: center;
+  line-height: 1.1;
+}
+
+.orgchart-role {
+  font-family: 'Patrick Hand', cursive;
+  font-size: 13px;
+  color: #666666;
+  margin: 0;
+  text-align: center;
+  line-height: 1.15;
+}
+
+/* Variant Branding Colors */
+.orgchart-card--advisor { border: 1px dashed #8E6BAE; }
+.orgchart-card--advisor .orgchart-role { color: #8E6BAE; font-weight: bold; }
+.orgchart-card--president { border-color: #2B2B28; width: 145px; }
+.orgchart-card--president .orgchart-role { color: #000000; font-weight: bold; }
+.orgchart-card--vp { background: #FFE9A8; border-color: #B9802A; }
+.orgchart-card--vp .orgchart-role { color: #5C3A12; font-weight: bold; }
+.orgchart-card--left { background: #EAF5DE; border-color: var(--orgchart-left); }
+.orgchart-card--left .orgchart-role { color: var(--orgchart-left); }
+.orgchart-card--right { background: #F0FAF6; border-color: var(--orgchart-right); }
+.orgchart-card--right .orgchart-role { color: var(--orgchart-right); }
+
+/* ---------- Flowchart Vector Connector Rails System ---------- */
+.orgchart-tree {
+  display: flex;
+  justify-content: center;
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+  position: relative;
+}
+
+/* Setup for tree nodes */
+.orgchart-node-item {
+  text-align: center;
+  position: relative;
+  padding: var(--vertical-gap) 10px 0 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* FIX: Sharp Top Level Master Line Drop Only.
+   Only allows the core root tree base to extend down a baseline track line.
+*/
+ul.line-trunk > .orgchart-node-item > ul::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: var(--vertical-gap);
+  border-left: var(--orgchart-line-width) solid currentColor;
+  z-index: 1;
+}
+
+/* Left & Right horizontal connector paths */
+.orgchart-node-item::before,
+.orgchart-node-item::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: var(--vertical-gap);
+  border-top: var(--orgchart-line-width) solid currentColor;
+  box-sizing: border-box;
+}
+
+.orgchart-node-item::before {
+  right: 50%;
+}
+
+.orgchart-node-item::after {
+  left: 50%;
+  border-left: var(--orgchart-line-width) solid currentColor;
+}
+
+/* Clears global absolute layout leaks */
+.orgchart-tree::before {
+  display: none !important;
+}
+
+/* Fixes overlapping branches and redundant up-ticks */
+.orgchart-node-item:last-child::after {
+  border-left: none !important;
+}
+.orgchart-node-item:last-child::before {
+  border-right: var(--orgchart-line-width) solid currentColor;
+}
+
+/* Edge Trimming: Removes outer tracks extending past the canvas walls */
+.orgchart-node-item:first-child::before,
+.orgchart-node-item:last-child::after {
+  border-top: none !important;
+}
+
+/* Isolated single children cleanup configuration */
+.orgchart-node-item:only-child::before,
+.orgchart-node-item:only-child::after {
+  display: none !important;
+}
+.orgchart-node-item:only-child {
+  padding-top: var(--vertical-gap);
+}
+
+/* ---------- Perfect Smooth Clean Cut Arcs ---------- */
+.orgchart-node-item:first-child::after {
+  border-top-left-radius: var(--corner-radius);
+}
+.orgchart-node-item:last-child::before {
+  border-top-right-radius: var(--corner-radius);
+}
+
+/* ---------- Branch Color Mappings ---------- */
+.line-trunk {
+  color: var(--orgchart-trunk);
+}
+
+.line-branch-left, 
+.line-branch-left .sub-branch {
+  color: var(--orgchart-left) !important;
+}
+
+.line-branch-right, 
+.line-branch-right .sub-branch {
+  color: var(--orgchart-right) !important;
+}
