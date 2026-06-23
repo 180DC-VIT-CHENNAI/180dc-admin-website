@@ -43,7 +43,7 @@ export const orgChartTree: TreeNode = {
         },
         {
           name: "Sowmiya Vijayakumar",
-          role: "HR Lead",
+          role: "HR Lead", 
           photo: "/leads/hr.png",
         },
         {
