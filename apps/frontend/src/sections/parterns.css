@@ -1,0 +1,71 @@
+.partners-logo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 2.5rem 2rem;
+  padding: 1rem 0;
+}
+
+.partner-logo-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 2px dashed var(--text-black);
+  border-radius: 12px;
+  padding: 1.5rem 1rem;
+  aspect-ratio: 1 / 1;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor: pointer;
+}
+
+.partner-logo-card:nth-child(5n + 1) { transform: rotate(-1.5deg); }
+.partner-logo-card:nth-child(5n + 2) { transform: rotate(1deg); }
+.partner-logo-card:nth-child(5n + 3) { transform: rotate(-1deg); }
+.partner-logo-card:nth-child(5n + 4) { transform: rotate(1.5deg); }
+.partner-logo-card:nth-child(5n + 5) { transform: rotate(0deg); }
+
+.partner-logo-card:hover {
+  transform: scale(1.08) rotate(0deg);
+  box-shadow: 4px 4px 0 var(--primary-green);
+  will-change: transform;
+  z-index: 2;
+}
+
+.partner-logo-card img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: grayscale(100%);
+  opacity: 0.7;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
+.partner-logo-card:hover img {
+  filter: grayscale(0%);
+  opacity: 1;
+}
+
+.partner-name-tooltip {
+  position: absolute;
+  bottom: -2.4rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(-6px);
+  background: var(--text-black, #1a1a1a);
+  color: #fff;
+  font-family: "Patrick Hand", cursive;
+  font-size: 0.85rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: normal;
+  max-width: 220px;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.partner-logo-card:hover .partner-name-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
