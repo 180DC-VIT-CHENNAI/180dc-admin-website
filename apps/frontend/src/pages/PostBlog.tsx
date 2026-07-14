@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform } from "motion/react";
 import { 
@@ -42,9 +42,6 @@ const pageVariants = {
   exit: { opacity: 0, y: -20, transition: { duration: 0.3 } }
 };
 
-const staggerContainer = {
-  animate: { transition: { staggerChildren: 0.1 } }
-};
 
 export default function PostBlog() {
   const navigate = useNavigate();
