@@ -29,9 +29,9 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
 
   const handleGoogleLogin = async () => {
     console.log("[gauth] handleGoogleLogin called");
-    console.log("[gauth] clerk object:", clerk);
-    console.log("[gauth] redirectToSignIn type:", typeof clerk?.redirectToSignIn);
     try {
+      console.log("[gauth] signing out any existing session first...");
+      await clerk.signOut().catch(() => {});
       console.log("[gauth] calling clerk.redirectToSignIn...");
       await clerk.redirectToSignIn({
         signInFallbackRedirectUrl: "/members",
