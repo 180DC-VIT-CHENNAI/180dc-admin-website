@@ -108,6 +108,7 @@ export default function MembersLayout() {
   const [oauthStatusMsg, setOauthStatusMsg] = useState<string | null>(null);
   const [maintenanceMode, setMaintenanceMode] = useState<{ enabled: boolean; message: string } | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
   // Auto-logout after 7 days of inactivity
@@ -498,6 +499,9 @@ export default function MembersLayout() {
           <button className="header-action-btn" onClick={toggleTheme}>
             <span className="material-symbols-outlined">{isDark ? "light_mode" : "dark_mode"}</span>
           </button>
+          <button className="header-action-btn" onClick={() => setShowLogoutConfirm(true)} title="Logout" style={{ color: "#ef4444" }}>
+            <span className="material-symbols-outlined">logout</span>
+          </button>
           <div className="user-profile-trigger" onClick={() => setActivePanel("profile")}>
             <div className="avatar-circle">
               {email?.[0].toUpperCase()}
@@ -555,7 +559,7 @@ export default function MembersLayout() {
               <span className="material-symbols-outlined">{sidebarCollapsed ? "side_navigation" : "menu_open"}</span>
               {!sidebarCollapsed && <span>{sidebarCollapsed ? "Expand" : "Collapse"} Sidebar</span>}
             </button>
-            <button className="nav-item" onClick={async () => { sessionStorage.clear(); sessionStorage.setItem("loggedOut", "true"); setAuthToken(null); try { await clerk.signOut(); } catch {} }} style={{ color: "#ef4444" }}>
+            <button className="nav-item" onClick={() => setShowLogoutConfirm(true)} style={{ color: "#ef4444" }}>
               <span className="material-symbols-outlined">logout</span>
               {!sidebarCollapsed && <span>Logout</span>}
             </button>
@@ -1042,6 +1046,32 @@ export default function MembersLayout() {
         <button className="fab" onClick={() => setActivePanel("announcements")} title="Post Announcement">
           <span className="material-symbols-outlined">add</span>
         </button>
+      )}
+
+      {/* LOGOUT CONFIRMATION */}
+      {showLogoutConfirm && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
+          <div onClick={() => setShowLogoutConfirm(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }} />
+          <div style={{ position: "relative", maxWidth: 400, width: "100%", background: "var(--bg-card)", borderRadius: 24, border: "1px solid var(--border-light)", boxShadow: "var(--shadow-lg)", padding: "2rem", textAlign: "center" }}>
+            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(239,68,68,0.12)", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem" }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 28 }}>logout</span>
+            </div>
+            <h3 style={{ margin: "0 0 8px", fontSize: "1.15rem", fontWeight: 800 }}>Sign out?</h3>
+            <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: "0 0 1.5rem", lineHeight: 1.5 }}>
+              You'll be signed out of the portal. You can sign back in anytime.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn outline" style={{ flex: 1, justifyContent: "center", padding: "0.75rem" }} onClick={() => setShowLogoutConfirm(false)}>Cancel</button>
+              <button className="btn" style={{ flex: 1, justifyContent: "center", padding: "0.75rem", background: "#ef4444", border: "2px solid #1a1a1a", boxShadow: "3px 3px 0 #1a1a1a" }} onClick={async () => {
+                setShowLogoutConfirm(false);
+                sessionStorage.clear();
+                sessionStorage.setItem("loggedOut", "true");
+                setAuthToken(null);
+                try { await clerk.signOut(); } catch {}
+              }}>Sign Out</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
