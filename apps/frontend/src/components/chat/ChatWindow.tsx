@@ -1,5 +1,10 @@
+<<<<<<< HEAD
 import { useRef, useEffect } from 'react';
 import { X, RefreshCcw } from 'lucide-react';
+=======
+import React, { useRef, useEffect } from 'react';
+import { X, RefreshCcw, Trash2 } from 'lucide-react';
+>>>>>>> 1596579 (upgrade)
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import TypingIndicator from './TypingIndicator';
@@ -12,7 +17,7 @@ interface ChatWindowProps {
 }
 
 export default function ChatWindow({ onClose, isOpen }: ChatWindowProps) {
-  const { messages, isLoading, error, sendMessage } = useChat();
+  const { messages, isLoading, error, sendMessage, clearChat } = useChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,12 +40,24 @@ export default function ChatWindow({ onClose, isOpen }: ChatWindowProps) {
             <p className="chat-subtitle">Business Consulting Assistant</p>
           </div>
         </div>
-        <button 
-          onClick={onClose}
-          className="chat-close-btn"
-        >
-          <X size={20} />
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {messages.length > 0 && (
+            <button 
+              onClick={clearChat}
+              className="chat-close-btn"
+              title="Clear Chat"
+            >
+              <Trash2 size={18} />
+            </button>
+          )}
+          <button 
+            onClick={onClose}
+            className="chat-close-btn"
+            title="Close"
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Chat Area */}
@@ -49,16 +66,16 @@ export default function ChatWindow({ onClose, isOpen }: ChatWindowProps) {
           <div className="chat-welcome">
             <h4>Hi! I'm ConsultAI.</h4>
             <p>
-              I'm your AI Business Consulting Assistant. I can help with:
+              I'm the official AI assistant for <strong>180 Degrees Consulting VIT Chennai</strong>. We are a student consultancy providing high-quality, free services to socially conscious organizations.
+            </p>
+            <p>
+              I can help you with:
             </p>
             <ul>
               <li>• Business Strategy</li>
-              <li>• SWOT Analysis</li>
               <li>• Market Research</li>
-              <li>• Competitor Analysis</li>
-              <li>• Startup Validation</li>
-              <li>• Pricing Strategy</li>
-              <li>• Financial Planning</li>
+              <li>• SWOT & Competitor Analysis</li>
+              <li>• 180DC Information</li>
             </ul>
             <p>How can I assist you today?</p>
             <QuickActions onActionSelect={sendMessage} />

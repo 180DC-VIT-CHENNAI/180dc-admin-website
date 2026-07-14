@@ -504,3 +504,22 @@
   background: transparent;
   padding: 0;
 }
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  .chat-window {
+    bottom: 0;
+    right: 0;
+    width: 100vw;
+    height: 100vh;
+    max-height: 100dvh;
+    max-width: none;
+    border-radius: 0;
+    z-index: 10000;
+  }
+  
+  .chat-launcher {
+    bottom: 16px;
+    right: 16px;
+  }
+}
