@@ -645,7 +645,7 @@ export default function MembersLayout() {
                     {[
                       { label: "Executive Board", pct: 12, color: "var(--primary-green)" },
                       { label: "Lead Consultants", pct: 28, color: "#3b82f6" },
-                      { label: "General Members", pct: 60, color: "var(--outline-variant)" },
+                      { label: "General Members", pct: 60, color: "#f59e0b" },
                     ].map((bar) => (
                       <div key={bar.label} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700 }}>
