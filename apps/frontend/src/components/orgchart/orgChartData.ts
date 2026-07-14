@@ -12,7 +12,7 @@ export interface TreeNode extends OrgChartPerson {
 export const facultyAdvisor: OrgChartPerson = {
   name: "Dr. Balaji",
   role: "Faculty Coordinator",
-  photo: "/leads/faculty.png", 
+  photo: "/leads/faculty.png",
 };
 
 export const orgChartTree: TreeNode = {
@@ -30,7 +30,11 @@ export const orgChartTree: TreeNode = {
           role: "Business Strategy Director",
           photo: "/leads/bsd.png",
           children: [
-            { name: "Paramveer Singh Vilkhu", role: "CPS Lead", photo: "/leads/cps.png" },
+            {
+              name: "Paramveer Singh Vilkhu",
+              role: "CPS Lead",
+              photo: "/leads/cps.png",
+            },
           ],
         },
         {
@@ -38,12 +42,16 @@ export const orgChartTree: TreeNode = {
           role: "Marketing Director",
           photo: "/leads/marketing.png",
           children: [
-            { name: "Khyati Mohapatra", role: "Social Media Lead", photo: "/leads/sm.png" },
+            {
+              name: "Khyati Mohapatra",
+              role: "Social Media Lead",
+              photo: "/leads/sm.png",
+            },
           ],
         },
         {
           name: "Sowmiya Vijayakumar",
-          role: "HR Lead", 
+          role: "HR Lead",
           photo: "/leads/hr.png",
         },
         {
@@ -51,8 +59,12 @@ export const orgChartTree: TreeNode = {
           role: "Finance & Legal Director",
           photo: "/leads/finlegal.png",
           children: [
-            { name: "Mahak Khetan", role: "Research & Development", photo: "/leads/rnd-1.png" }
-          ]
+            {
+              name: "Mahak Khetan",
+              role: "Research & Development",
+              photo: "/leads/rnd-1.png",
+            },
+          ],
         },
       ],
     },
@@ -61,16 +73,28 @@ export const orgChartTree: TreeNode = {
       role: "Vice President",
       photo: "/leads/vp-2.png",
       children: [
-        { 
-          name: "Sanjay Sivakumar", 
-          role: "Technical Director", 
+        {
+          name: "Sanjay Sivakumar",
+          role: "Technical Director",
           photo: "/leads/tech.png",
           children: [
-            { name: "Shivam Pandey", role: "Research & Development", photo: "/leads/rnd-2.png" }
-          ]
+            {
+              name: "Shivam Pandey",
+              role: "Research & Development",
+              photo: "/leads/rnd-2.png",
+            },
+          ],
         },
-        { name: "Sonakshi Agrawal", role: "Events & Initiatives", photo: "/leads/events.png" },
-        { name: "Vansh Goel", role: "Events & Initiatives", photo: "/leads/events-2.png" },
+        {
+          name: "Sonakshi Agrawal",
+          role: "Events & Initiatives",
+          photo: "/leads/event.jpeg",
+        },
+        {
+          name: "Vansh Goel",
+          role: "Events & Initiatives",
+          photo: "/leads/events-2.png",
+        },
       ],
     },
   ],
