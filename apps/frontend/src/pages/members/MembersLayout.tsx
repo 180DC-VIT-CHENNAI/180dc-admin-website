@@ -245,8 +245,7 @@ export default function MembersLayout() {
     async function handleClerkCallback() {
       console.log("[clerk-cb] handleClerkCallback start", { loggedOut: sessionStorage.getItem("loggedOut"), authToken: authToken ? "yes" : "no", pending });
 
-      if (sessionStorage.getItem("loggedOut")) {
-        if (!authToken) { console.log("[clerk-cb] loggedOut flag set, no authToken — skipping"); return; }
+      if (sessionStorage.getItem("loggedOut") && !authToken) {
         sessionStorage.removeItem("loggedOut");
       }
 
