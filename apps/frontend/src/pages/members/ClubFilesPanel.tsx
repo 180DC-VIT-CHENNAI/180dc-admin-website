@@ -28,7 +28,7 @@ function formatDate(iso: string): string {
 
 const CATEGORY_MAP: Record<Tab, string> = { General: "general", Projects: "projects", Events: "events" };
 
-export default function ClubFilesPanel({ authToken }: { authToken: string }) {
+export default function ClubFilesPanel({ authToken, powerLevel }: { authToken: string; powerLevel: number }) {
   const [tab, setTab] = useState<Tab>("General");
   const [files, setFiles] = useState<ClubFile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -184,10 +184,12 @@ export default function ClubFilesPanel({ authToken }: { authToken: string }) {
           ))}
         </div>
         
-        <button onClick={() => { resetUploadForm(); setShowUpload(true); }} className="btn" style={{ gap: 8 }}>
-          <span className="material-symbols-outlined">upload</span>
-          Upload File
-        </button>
+        {powerLevel >= 50 && (
+          <button onClick={() => { resetUploadForm(); setShowUpload(true); }} className="btn" style={{ gap: 8 }}>
+            <span className="material-symbols-outlined">upload</span>
+            Upload File
+          </button>
+        )}
       </div>
 
       <div className="dashboard-card" style={{ padding: "1.5rem" }}>
@@ -269,9 +271,11 @@ export default function ClubFilesPanel({ authToken }: { authToken: string }) {
                         <button onClick={() => handleDownload(file)} className="header-action-btn" title="Download">
                           <span className="material-symbols-outlined">download</span>
                         </button>
-                        <button onClick={() => handleDelete(file.id)} className="header-action-btn" style={{ color: "#ef4444" }} title="Delete">
-                          <span className="material-symbols-outlined">delete</span>
-                        </button>
+                        {powerLevel >= 50 && (
+                          <button onClick={() => handleDelete(file.id)} className="header-action-btn" style={{ color: "#ef4444" }} title="Delete">
+                            <span className="material-symbols-outlined">delete</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

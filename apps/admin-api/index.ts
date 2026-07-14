@@ -4754,14 +4754,14 @@ app.get("/api/club-files/projects", async (c) => {
   }
 });
 
-// Upload a file
-app.post("/api/club-files/upload", async (c) => {
+// Delete a file (power >= 50 only)
+app.delete("/api/club-files/:id", async (c) => {
   try {
     await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "club_files_upload", 20, 3600);
+    const rl = await checkRateLimit(c, "club_files_delete", 20, 3600);
     if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
-    if (!user || user.power_level < 50) return c.json({ error: "Forbidden" }, 403);
+    if (!user || user.power_level < 50) return c.json({ error: "Forbidden: Lead Consultants and above only" }, 403);
 
     const id = c.req.param("id");
     const listed = await c.env.CLUB_FILES.list();
@@ -4775,7 +4775,87 @@ app.post("/api/club-files/upload", async (c) => {
     if (!targetKey) return c.json({ error: "File not found" }, 404);
 
     await c.env.CLUB_FILES.delete(targetKey);
+    await addAuditLog(c, "club_file_deleted", "club_file", id, "Deleted file " + targetKey + " by " + user.email);
     return c.json({ success: true });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Download a file
+app.get("/api/club-files/:id/download", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+
+    const id = c.req.param("id");
+    const listed = await c.env.CLUB_FILES.list();
+    let targetKey = "";
+    for (const obj of listed.objects) {
+      if (obj.key.endsWith(`/${id}.`) || obj.key.includes(`/${id}.`)) {
+        targetKey = obj.key;
+        break;
+      }
+    }
+    if (!targetKey) return c.json({ error: "File not found" }, 404);
+
+    const obj = await c.env.CLUB_FILES.get(targetKey);
+    if (!obj) return c.json({ error: "File not found" }, 404);
+
+    const head = await c.env.CLUB_FILES.head(targetKey);
+    const fileName = head?.customMetadata?.fileName || targetKey.split("/").pop() || "download";
+    const contentType = head?.httpMetadata?.contentType || "application/octet-stream";
+
+    return new Response(obj.body, {
+      headers: {
+        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+      },
+    });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Upload a file (power >= 50 only)
+app.post("/api/club-files/upload", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "club_files_upload", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 50) return c.json({ error: "Forbidden: Lead Consultants and above only" }, 403);
+
+    const formData = await c.req.formData();
+    const file = formData.get("file") as File | null;
+    if (!file) return c.json({ error: "No file provided" }, 400);
+
+    const category = (formData.get("category") as string) || "general";
+    const id = crypto.randomUUID().replace(/-/g, "");
+    const ext = file.name.split(".").pop() || "bin";
+    const key = `${category}/${id}.${ext}`;
+
+    const metadata: Record<string, string> = {
+      fileName: file.name,
+      fileType: file.type,
+      uploadedBy: user.email,
+      uploadedByName: user.name || user.email,
+      createdAt: new Date().toISOString(),
+    };
+    if (formData.get("eventName")) metadata.eventName = formData.get("eventName") as string;
+    if (formData.get("eventFor")) metadata.eventFor = formData.get("eventFor") as string;
+    if (formData.get("projectName")) metadata.projectName = formData.get("projectName") as string;
+    if (formData.get("meetingTitle")) metadata.meetingTitle = formData.get("meetingTitle") as string;
+    if (formData.get("meetingDate")) metadata.meetingDate = formData.get("meetingDate") as string;
+    if (formData.get("description")) metadata.description = formData.get("description") as string;
+
+    await c.env.CLUB_FILES.put(key, file.stream(), {
+      httpMetadata: { contentType: file.type },
+      customMetadata: metadata,
+    });
+
+    await addAuditLog(c, "club_file_uploaded", "club_file", id, "Uploaded " + file.name + " to " + category + " by " + user.email);
+    return c.json({ success: true, id, key });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }

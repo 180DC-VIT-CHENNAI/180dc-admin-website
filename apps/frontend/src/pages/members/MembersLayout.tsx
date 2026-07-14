@@ -723,7 +723,7 @@ export default function MembersLayout() {
           )}
 
           {activePanel === "club-files" && (
-            <ClubFilesPanel authToken={authToken!} />
+            <ClubFilesPanel authToken={authToken!} powerLevel={powerLevel} />
           )}
 
           {activePanel.startsWith("chat") && (() => {
