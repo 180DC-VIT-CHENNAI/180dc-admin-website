@@ -365,9 +365,9 @@ async function incrementEmailCount(db: any) {
   await db.prepare("INSERT INTO daily_email_count (date, count) VALUES (?, 1) ON CONFLICT(date) DO UPDATE SET count = count + 1").bind(today).run();
 }
 
-async function sendMeetEmail(c: any, to: string, name: string, title: string, description: string | null, meetLink: string | null, scheduledAt: string, meetType: string) {
+async function sendMeetEmail(c: any, to: string, name: string, title: string, description: string | null, meetLink: string | null, scheduledAt: string, meetType: string): Promise<boolean> {
   const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) return;
+  if (!apiKey) { console.warn("[email] RESEND_API_KEY not configured — skipping meet email to " + to); return false; }
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -379,31 +379,38 @@ async function sendMeetEmail(c: any, to: string, name: string, title: string, de
         html: meetEmailHtml(title, description, meetLink, scheduledAt, meetType),
       }),
     });
+    const body = await res.text();
     if (!res.ok) {
-      const body = await res.text();
-      console.error("Meet email failed (" + res.status + "): " + body);
+      console.error("[email] Meet email FAILED (" + res.status + ") to=" + to + ": " + body);
+      return false;
     }
+    console.log("[email] Meet email OK (" + res.status + ") to=" + to);
+    return true;
   } catch (e: any) {
-    console.error("Meet email error: " + e.message);
+    console.error("[email] Meet email error to=" + to + ": " + e.message);
+    return false;
   }
 }
 
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+
 async function queueOrSendMeetEmails(c: any, recipients: { email: string; name: string }[], meetId: string, meetType: string, title: string, description: string | null, meetLink: string | null, scheduledAt: string) {
   const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) { console.warn("RESEND_API_KEY not configured — skipping meet emails"); return { sent: 0, queued: 0 }; }
+  if (!apiKey) { console.warn("[email] RESEND_API_KEY not configured — skipping meet emails"); return { sent: 0, queued: 0 }; }
 
   let count = await getTodayEmailCount(c.env.DB);
   const MAX_DAILY = 100;
   let sent = 0;
   let queued = 0;
+  let failed = 0;
 
   for (const r of recipients) {
     if (r.email === DEV_ADMIN_EMAIL) continue;
     if (count < MAX_DAILY) {
-      await sendMeetEmail(c, r.email, r.name, title, description, meetLink, scheduledAt, meetType);
-      await incrementEmailCount(c.env.DB);
-      count++;
-      sent++;
+      const ok = await sendMeetEmail(c, r.email, r.name, title, description, meetLink, scheduledAt, meetType);
+      if (ok) { await incrementEmailCount(c.env.DB); count++; sent++; }
+      else { failed++; }
+      await sleep(550);
     } else {
       await c.env.DB.prepare(
         "INSERT INTO pending_emails (id, meet_id, meet_type, recipient_email, recipient_name, meet_title, meet_description, meet_link, scheduled_at) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -411,7 +418,8 @@ async function queueOrSendMeetEmails(c: any, recipients: { email: string; name: 
       queued++;
     }
   }
-  return { sent, queued };
+  console.log(`[email] Meet emails: sent=${sent}, queued=${queued}, failed=${failed}, total_recipients=${recipients.length}`);
+  return { sent, queued, failed };
 }
 
 async function getMeetRecipients(db: any, meetType: string, departmentId?: string, departments?: string[]): Promise<{ email: string; name: string }[]> {
