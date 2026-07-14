@@ -88,7 +88,7 @@ export const orgChartTree: TreeNode = {
         {
           name: "Sonakshi Agrawal",
           role: "Events & Initiatives",
-          photo: "/leads/event.jpeg",
+          photo: "/leads/events.jpeg",
         },
         {
           name: "Vansh Goel",
