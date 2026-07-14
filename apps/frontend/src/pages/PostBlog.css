@@ -21,7 +21,7 @@
 }
 
 .post-blog-page.focus-mode-active .dynamic-bg {
-  opacity: 0.2; /* Dim shapes during focus mode */
+  opacity: 0.3; /* Slightly dim shapes during focus mode */
 }
 
 .bg-shape {
@@ -54,9 +54,7 @@
 }
 
 .post-blog-page.focus-mode-active .content-layer > *:not(.post-blog-form-container) {
-  opacity: 0.3;
-  filter: blur(4px);
-  pointer-events: none;
+  opacity: 1;
 }
 
 .post-blog-hero {
@@ -126,8 +124,7 @@
 .post-blog-field { margin-bottom: 24px; transition: opacity 0.4s ease; }
 
 .post-blog-page.focus-mode-active .post-blog-field:not(.focus-editor-wrapper) {
-  opacity: 0.2;
-  pointer-events: none;
+  opacity: 1;
 }
 
 .post-blog-field label {
