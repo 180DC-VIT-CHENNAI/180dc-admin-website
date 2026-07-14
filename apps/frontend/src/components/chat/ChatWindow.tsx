@@ -59,20 +59,20 @@ export default function ChatWindow({ onClose, isOpen }: ChatWindowProps) {
       <div className="chat-body">
         {messages.length === 0 && (
           <div className="chat-welcome">
-            <h4>Hi! I'm ConsultAI.</h4>
-            <p>
-              I'm the official AI assistant for <strong>180 Degrees Consulting VIT Chennai</strong>. We are a student consultancy providing high-quality, free services to socially conscious organizations.
+            <h4 style={{ fontSize: '1.1rem', marginBottom: '12px' }}>Welcome to 180 Degrees Consulting VIT Chennai.</h4>
+            <p style={{ lineHeight: '1.6', marginBottom: '16px', color: '#e5e7eb' }}>
+              I am ConsultAI, your dedicated advisory assistant. We specialize in providing high-impact, pro-bono consulting to socially conscious organizations.
             </p>
-            <p>
-              I can help you with:
+            <p style={{ fontWeight: 600, color: '#8dc63f', marginBottom: '8px' }}>
+              Core Competencies:
             </p>
-            <ul>
-              <li>• Business Strategy</li>
-              <li>• Market Research</li>
-              <li>• SWOT & Competitor Analysis</li>
-              <li>• 180DC Information</li>
+            <ul style={{ lineHeight: '1.8', marginBottom: '20px' }}>
+              <li>• Business & Growth Strategy</li>
+              <li>• Market Research & Expansion</li>
+              <li>• Competitor & SWOT Analysis</li>
+              <li>• 180DC Information & Operations</li>
             </ul>
-            <p>How can I assist you today?</p>
+            <p style={{ fontStyle: 'italic', color: '#9ca3af' }}>How may I provide value to you today?</p>
             <QuickActions onActionSelect={sendMessage} />
           </div>
         )}
