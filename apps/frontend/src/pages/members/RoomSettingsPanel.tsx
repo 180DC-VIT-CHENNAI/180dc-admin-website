@@ -31,7 +31,7 @@ export default function RoomSettingsPanel({ authToken, powerLevel, departmentId,
     if (!r.id.startsWith("dept-")) return false;
     const deptId = r.id.replace("dept-", "");
     if (powerLevel >= 50 && deptId === departmentId) return true;
-    const roleDeptAccess: Record<string, string[]> = { marketing_director: ["marketing", "social_media"] };
+    const roleDeptAccess: Record<string, string[]> = { marketing_director: ["marketing", "social_media"], business_strategy_director: ["client-partner-sponsor"] };
     const allowedDepts = roleDeptAccess[roleId || ""];
     if (allowedDepts && allowedDepts.includes(deptId)) return true;
     return false;

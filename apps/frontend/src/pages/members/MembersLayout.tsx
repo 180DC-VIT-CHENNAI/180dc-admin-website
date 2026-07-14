@@ -236,45 +236,68 @@ export default function MembersLayout() {
   // Clerk callback handler — runs after OAuth redirect
   const linkingFlag = useRef(false);
   useEffect(() => {
-    if (!clerkLoaded) return;
-    if (!clerkUserId) return;
+    console.log("[clerk-cb] effect fired", { clerkLoaded, clerkUserId: clerkUserId ?? null, authToken: authToken ? "yes" : "no" });
+    if (!clerkLoaded) { console.log("[clerk-cb] clerk not loaded yet, waiting…"); return; }
+    if (!clerkUserId) { console.log("[clerk-cb] no clerkUserId — Clerk session absent"); return; }
 
     const pending = sessionStorage.getItem("clnk");
 
     async function handleClerkCallback() {
+      console.log("[clerk-cb] handleClerkCallback start", { loggedOut: sessionStorage.getItem("loggedOut"), authToken: authToken ? "yes" : "no", pending });
+
       if (sessionStorage.getItem("loggedOut")) {
-        if (!authToken) return; // user just logged out — don't auto-login
+        if (!authToken) { console.log("[clerk-cb] loggedOut flag set, no authToken — skipping"); return; }
         sessionStorage.removeItem("loggedOut");
       }
 
       // Login flow: Clerk session exists but no token session
       if (!authToken) {
         setOauthLoading(true);
+        console.log("[clerk-cb] login flow — no authToken, fetching Clerk JWT");
         try {
           // Retry getToken() a few times — Clerk may not have the JWT ready after OAuth redirect
           let clerkJwt: string | null = null;
           for (let attempt = 0; attempt < 5; attempt++) {
             clerkJwt = await getToken();
+            console.log("[clerk-cb] getToken attempt", attempt + 1, "→", clerkJwt ? "got JWT (" + clerkJwt.length + " chars)" : "null");
             if (clerkJwt) break;
             await new Promise(r => setTimeout(r, 500));
           }
-          if (!clerkJwt) { setOauthLoading(false); setOauthStatusMsg("Google sign-in is taking longer than expected. Try again."); return; }
-          const clerkUserEmail = clerk.user?.primaryEmailAddress?.emailAddress || null;
+          if (!clerkJwt) {
+            console.log("[clerk-cb] getToken returned null after 5 attempts");
+            setOauthLoading(false);
+            setOauthStatusMsg("Google sign-in is taking longer than expected. Try again.");
+            return;
+          }
+          // clerk.user may not be loaded immediately after OAuth redirect — retry
+          let clerkUserEmail: string | null = null;
+          for (let i = 0; i < 5; i++) {
+            clerkUserEmail = clerk.user?.primaryEmailAddress?.emailAddress || null;
+            console.log("[clerk-cb] clerk.user email attempt", i + 1, "→", clerkUserEmail);
+            if (clerkUserEmail) break;
+            await new Promise(r => setTimeout(r, 500));
+          }
+          console.log("[clerk-cb] calling /api/auth/clerk-login", { email: clerkUserEmail, clerkUserId });
           const res = await fetch(apiUrl("/api/auth/clerk-login"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ clerkToken: clerkJwt, email: clerkUserEmail }),
           });
+          console.log("[clerk-cb] clerk-login response status:", res.status);
           const data = await res.json();
+          console.log("[clerk-cb] clerk-login response:", JSON.stringify(data));
           setOauthLoading(false);
           if (data.success) {
+            console.log("[clerk-cb] login success — calling handleLogin", { token: data.token?.slice(0, 8) + "…", email: data.email, power: data.powerLevel });
             handleLogin(data.token, data.email, data.powerLevel, data.departmentId, data.roleId);
             setOauthStatusMsg(null);
           } else {
+            console.log("[clerk-cb] login failed:", data.error);
             setOauthStatusMsg(data.error || "Google login failed");
           }
           return;
-        } catch {
+        } catch (err) {
+          console.error("[clerk-cb] login flow exception:", err);
           setOauthLoading(false);
           setOauthStatusMsg("Google login failed. Try again.");
           return;
@@ -285,6 +308,7 @@ export default function MembersLayout() {
       if (authToken && pending === "link" && !linkingFlag.current) {
         linkingFlag.current = true;
         sessionStorage.removeItem("clnk");
+        console.log("[clerk-cb] linking flow — calling /api/auth/link-clerk");
         try {
           const res = await fetch(apiUrl("/api/auth/link-clerk"), {
             method: "POST",
@@ -295,6 +319,7 @@ export default function MembersLayout() {
             body: JSON.stringify({ clerkUserId }),
           });
           const data = await res.json();
+          console.log("[clerk-cb] link-clerk response:", JSON.stringify(data));
           if (data.success) {
             setOauthEnabled(true);
             setOauthStatusMsg("Google login enabled! You can now sign in with Google.");
@@ -302,7 +327,8 @@ export default function MembersLayout() {
           } else {
             setOauthStatusMsg(data.error || "Failed to link Google account");
           }
-        } catch {
+        } catch (err) {
+          console.error("[clerk-cb] link-clerk exception:", err);
           setOauthStatusMsg("Failed to link Google account. Try again.");
         }
       }
@@ -319,6 +345,7 @@ export default function MembersLayout() {
 
   const roleDeptAccess: Record<string, string[]> = {
     marketing_director: ["marketing", "social_media"],
+    business_strategy_director: ["client-partner-sponsor"],
   };
   const multiDeptRoles = roleDeptAccess[roleId || ""];
   const allowedDeptIds = multiDeptRoles || (hasDepartment && powerLevel >= 50 ? [departmentId!] : []);

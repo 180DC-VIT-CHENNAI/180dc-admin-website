@@ -7,6 +7,7 @@ const EX_TITLES = [
   "x-vice_president",
   "x-technical_director",
   "x-marketing_director",
+  "x-business_strategy_director",
   "x-secretary",
   "x-lead",
   "x-lead_rnd",
@@ -377,6 +378,7 @@ export default function AdminConsole({
                 <option value="vice_president">vice_president</option>
                 <option value="technical_director">technical_director</option>
                 <option value="marketing_director">marketing_director</option>
+                <option value="business_strategy_director">business_strategy_director</option>
                 <option value="secretary">secretary</option>
                 <option value="lead">Technical Lead</option>
                 <option value="lead_rnd">R&D Lead</option>

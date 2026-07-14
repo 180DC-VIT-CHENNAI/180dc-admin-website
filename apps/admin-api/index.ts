@@ -701,6 +701,7 @@ async function seedData(db: any, env?: any) {
     await db.prepare(roleSql).bind("lead_social", "Social Media Lead", 50, "system").run();
     await db.prepare(roleSql).bind("lead_finance", "Finance Lead", 50, "system").run();
     await db.prepare(roleSql).bind("lead_events", "Events and Initiatives Lead", 50, "system").run();
+    await db.prepare(roleSql).bind("business_strategy_director", "Business Strategy Director", 70, "system").run();
     await db.prepare(roleSql).bind("lead_cps", "Client Partner Sponsor Lead", 50, "system").run();
     await db.prepare(roleSql).bind("lead_hr", "HR Lead", 50, "system").run();
     await db.prepare(roleSql).bind("member", "General Member", 10, "system").run();
@@ -2294,6 +2295,7 @@ async function canAccessDept(c: any, deptId: string) {
   // Roles with multi-department access
   const roleDeptAccess: Record<string, string[]> = {
     marketing_director: ["marketing", "social_media"],
+    business_strategy_director: ["client-partner-sponsor"],
   };
   const allowedDepts = roleDeptAccess[user.role_id];
   if (allowedDepts && allowedDepts.includes(deptId)) return true;
@@ -4504,7 +4506,7 @@ app.post("/api/chat/rooms/:room/toggle", async (c) => {
       canManage = true;
     } else if (user.power_level >= 50 && isDeptRoom && (() => {
       if (user.department_id === deptId) return true;
-      const roleDeptAccess: Record<string, string[]> = { marketing_director: ["marketing", "social_media"] };
+      const roleDeptAccess: Record<string, string[]> = { marketing_director: ["marketing", "social_media"], business_strategy_director: ["client-partner-sponsor"] };
       const allowedDepts = roleDeptAccess[user.role_id];
       return allowedDepts && allowedDepts.includes(deptId);
     })()) {
@@ -4556,6 +4558,7 @@ app.post("/api/chat/init", async (c) => {
       if (user.power_level >= 100) return true;
       const roleDeptAccess: Record<string, string[]> = {
         marketing_director: ["marketing", "social_media"],
+        business_strategy_director: ["client-partner-sponsor"],
       };
       const allowedDepts = roleDeptAccess[user.role_id];
       if (allowedDepts && allowedDepts.includes(room.replace("dept-", ""))) return true;
