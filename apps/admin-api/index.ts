@@ -1465,7 +1465,7 @@ app.get("/api/dashboard", async (c) => {
     const adminTokens =
       user.power_level >= 100
         ? await c.env.DB.prepare(
-            "SELECT token, email, name, role_id, created_by, created_at, revoked_at FROM admin_tokens ORDER BY created_at DESC",
+            "SELECT t.token, t.email, t.name, COALESCE(r.name, t.role_id) as role_id, t.created_by, t.created_at, t.revoked_at FROM admin_tokens t LEFT JOIN users u ON t.email = u.email LEFT JOIN roles r ON u.role_id = r.id ORDER BY t.created_at DESC",
           ).all()
         : { results: [] };
 
