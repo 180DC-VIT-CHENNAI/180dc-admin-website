@@ -1,10 +1,5 @@
-<<<<<<< HEAD
-import { useRef, useEffect } from 'react';
-import { X, RefreshCcw } from 'lucide-react';
-=======
 import React, { useRef, useEffect } from 'react';
 import { X, RefreshCcw, Trash2 } from 'lucide-react';
->>>>>>> 1596579 (upgrade)
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import TypingIndicator from './TypingIndicator';
