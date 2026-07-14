@@ -12,6 +12,7 @@ type Bindings = {
   ENVIRONMENT?: string;
   RESEND_API_KEY?: string;
   CLERK_SECRET_KEY?: string;
+  GEMINI_API_KEY?: string;
 };
 
 type Variables = {
@@ -41,6 +42,7 @@ function isPublicRoute(pathname: string, method: string): boolean {
     ["/api/recruitment/open-domains"],
     ["/api/blogs"],
     ["/api/blogs/upload-image", "POST"],
+    ["/api/chat", "POST"],
   ];
   for (const [route, requiredMethod] of PUBLIC_ROUTES) {
     if (pathname === route && (!requiredMethod || method === requiredMethod)) return true;
@@ -5316,6 +5318,55 @@ export class ChatRoomDO {
     }
   }
 }
+
+app.post("/api/chat", async (c) => {
+  try {
+    const { messages } = await c.req.json();
+    const apiKey = c.env.GEMINI_API_KEY;
+    
+    if (!apiKey) {
+      return c.json({ error: "Gemini API Key not configured" }, 500);
+    }
+
+    const systemPrompt = "You are ConsultAI, an expert business consultant inspired by McKinsey, Bain, and BCG. You specialize in business strategy, market research, SWOT analysis, startup consulting, financial planning, pricing strategy, operations, digital transformation, AI adoption, customer segmentation, and growth strategy. Always provide structured, actionable recommendations. Explain assumptions, identify risks, suggest next steps, and ask clarifying questions when needed. Never fabricate facts.";
+
+    const geminiMessages = messages.map((msg: any) => ({
+      role: msg.role === "assistant" ? "model" : "user",
+      parts: [{ text: msg.content }]
+    }));
+
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: systemPrompt }]
+        },
+        contents: geminiMessages
+      })
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("Gemini API Error:", errorText);
+      return c.json({ error: "Failed to communicate with AI provider" }, res.status);
+    }
+
+    const data = await res.json();
+    const assistantMessage = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    return c.json({
+      choices: [
+        { message: { content: assistantMessage } }
+      ]
+    });
+  } catch (error: any) {
+    console.error("Chat API error:", error);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
 
 export default {
   async fetch(request: Request, env: any, ctx: any) {

@@ -8,6 +8,7 @@ import { GrainOverlay } from "./components/DoodleSVG";
 import { apiUrl } from "./lib/api";
 import { attachCardHover } from "./lib/animations";
 import LazyReveal from "./components/LazyReveal";
+import FloatingChatButton from "./components/chat/FloatingChatButton";
 
 // Above the fold — static imports, load immediately with the page
 import SplashSection from "./sections/SplashSection";
@@ -144,6 +145,7 @@ function App() {
   ];
 
   return (
+    <>
     <SmoothScroll>
       <GrainOverlay />
       <PillNav
@@ -219,6 +221,8 @@ function App() {
         />
       </Suspense>
     </SmoothScroll>
+    <FloatingChatButton />
+    </>
   );
 }
 

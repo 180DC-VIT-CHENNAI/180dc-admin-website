@@ -2,6 +2,7 @@
   "name": "adminwebsite-monorepo",
   "private": true,
   "version": "1.0.0",
+  "packageManager": "pnpm@11.8.0",
   "scripts": {
     "build:frontend": "pnpm --filter frontend run build",
     "deploy:backend": "pnpm --filter admin-api exec wrangler deploy",

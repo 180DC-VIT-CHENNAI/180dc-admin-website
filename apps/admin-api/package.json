@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev index.ts --remote",
+    "dev": "wrangler dev index.ts",
     "deploy": "wrangler deploy index.ts"
   },
   "dependencies": {

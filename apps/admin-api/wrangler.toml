@@ -32,10 +32,12 @@ new_sqlite_classes = ["ChatRoomDO"]
 [[r2_buckets]]
 binding = "CLUB_FILES"
 bucket_name = "180dc-club-files"
+preview_bucket_name = "preview-180dc-club-files"
 
 [[r2_buckets]]
 binding = "BLOG_IMAGES"
 bucket_name = "180dc-blog-images"
+preview_bucket_name = "preview-180dc-blog-images"
 
 [[queues.producers]]
 binding = "QUEUE"
