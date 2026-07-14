@@ -96,7 +96,7 @@ body {
 
 /* Navigation */
 .navbar {
-  position: fixed;
+  position: sticky;
   top: 0;
   width: 100%;
   z-index: 1000;
@@ -130,7 +130,7 @@ body {
 .navbar-logo-bg {
   width: 140px;
   height: 40px;
-  background-image: url("/images/official-logo.jpg");
+  background-image: url("/images/official-logo.png");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: left center;
@@ -457,7 +457,7 @@ p {
 .splash-logo-white {
   width: 160px;
   height: 160px;
-  background-image: url("/images/official-logo.jpg");
+  background-image: url("/images/official-logo.png");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;

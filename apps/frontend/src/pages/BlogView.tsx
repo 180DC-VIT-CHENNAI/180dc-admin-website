@@ -40,7 +40,7 @@ export default function BlogView() {
   if (loading) {
     return (
       <div className="blog-view-page">
-        <PillNav items={navItems} activeHref="" logo="/images/official-logo.jpg" />
+        <PillNav items={navItems} activeHref="" logo="/images/official-logo.png" />
         <div className="blog-view-loading">Loading blog post...</div>
       </div>
     );
@@ -49,7 +49,7 @@ export default function BlogView() {
   if (error || !blog) {
     return (
       <div className="blog-view-page">
-        <PillNav items={navItems} activeHref="" logo="/images/official-logo.jpg" />
+        <PillNav items={navItems} activeHref="" logo="/images/official-logo.png" />
         <div className="blog-view-error">
           <h2>Blog Not Found</h2>
           <p>{error || "The blog post you're looking for doesn't exist or hasn't been published yet."}</p>
@@ -61,7 +61,7 @@ export default function BlogView() {
 
   return (
     <div className="blog-view-page">
-      <PillNav items={navItems} activeHref="" logo="/images/official-logo.jpg" />
+      <PillNav items={navItems} activeHref="" logo="/images/official-logo.png" />
       <div className="blog-view-hero">
         <h1>{blog.title}</h1>
         <div className="blog-view-meta">

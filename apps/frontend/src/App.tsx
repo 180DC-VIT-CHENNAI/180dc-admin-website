@@ -149,7 +149,7 @@ function App() {
       <PillNav
         items={navItems}
         activeHref={activeNav}
-        logo="/images/official-logo.jpg"
+        logo="/images/official-logo.png"
       />
 
       {/* ── Above the fold ── static, loads with the page */}

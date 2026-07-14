@@ -200,7 +200,7 @@ const RecruitmentsPage = () => {
 
   return (
     <div className="recruitments-page">
-      <PillNav items={navItems} activeHref="/recruitments" logo="/images/official-logo.jpg" />
+      <PillNav items={navItems} activeHref="/recruitments" logo="/images/official-logo.png" />
 
       <section className="recruitments-hero">
         <div className={`recruitments-badge ${isRecruitmentOpen ? "" : "closed"}`}>

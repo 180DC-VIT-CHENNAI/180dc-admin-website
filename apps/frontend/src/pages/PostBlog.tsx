@@ -129,7 +129,7 @@ export default function PostBlog() {
   if (submitted) {
     return (
       <div className="post-blog-page">
-        <PillNav items={navItems} activeHref="" logo="/images/official-logo.jpg" />
+        <PillNav items={navItems} activeHref="" logo="/images/official-logo.png" />
         <div className="post-blog-hero">
           <h1>Blog <span>Submitted</span></h1>
           <p>Your post is pending review by the admin team.</p>
@@ -153,7 +153,7 @@ export default function PostBlog() {
 
   return (
     <div className="post-blog-page">
-      <PillNav items={navItems} activeHref="" logo="/images/official-logo.jpg" />
+      <PillNav items={navItems} activeHref="" logo="/images/official-logo.png" />
       <div className="post-blog-hero">
         <h1>Write a <span>Blog Post</span></h1>
         <p>Share your consulting insights with the 180DC community.</p>

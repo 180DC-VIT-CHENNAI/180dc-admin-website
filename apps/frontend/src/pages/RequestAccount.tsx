@@ -62,7 +62,7 @@ export default function RequestAccount() {
             </p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <img src="/images/official-logo.jpg" alt="logo" className="request-logo" />
+            <img src="/images/official-logo.png" alt="logo" className="request-logo" />
           </div>
         </div>
 
