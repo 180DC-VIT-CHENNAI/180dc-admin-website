@@ -405,7 +405,6 @@ async function queueOrSendMeetEmails(c: any, recipients: { email: string; name: 
   let failed = 0;
 
   for (const r of recipients) {
-    if (r.email === DEV_ADMIN_EMAIL) continue;
     if (count < MAX_DAILY) {
       const ok = await sendMeetEmail(c, r.email, r.name, title, description, meetLink, scheduledAt, meetType);
       if (ok) { await incrementEmailCount(c.env.DB); count++; sent++; }
@@ -425,16 +424,16 @@ async function queueOrSendMeetEmails(c: any, recipients: { email: string; name: 
 async function getMeetRecipients(db: any, meetType: string, departmentId?: string, departments?: string[]): Promise<{ email: string; name: string }[]> {
   const advisoryFilter = " AND NOT (role_id = 'advisory' AND secondary_role_id IS NULL)";
   if (meetType === "department_meet" && departmentId) {
-    const rows: any = await db.prepare("SELECT email, name FROM users WHERE department_id = ? AND email != ?" + advisoryFilter).bind(departmentId, DEV_ADMIN_EMAIL).all();
+    const rows: any = await db.prepare("SELECT email, name FROM users WHERE department_id = ?" + advisoryFilter).bind(departmentId).all();
     return rows.results || [];
   }
   if (meetType === "club_meet") {
-    const rows: any = await db.prepare("SELECT email, name FROM users WHERE email != ?" + advisoryFilter).bind(DEV_ADMIN_EMAIL).all();
+    const rows: any = await db.prepare("SELECT email, name FROM users WHERE 1=1" + advisoryFilter).all();
     return rows.results || [];
   }
   if (meetType === "inter_dept_meet" && departments && departments.length > 0) {
     const placeholders = departments.map(() => "?").join(",");
-    const rows: any = await db.prepare(`SELECT email, name FROM users WHERE department_id IN (${placeholders}) AND email != ?` + advisoryFilter).bind(...departments, DEV_ADMIN_EMAIL).all();
+    const rows: any = await db.prepare(`SELECT email, name FROM users WHERE department_id IN (${placeholders})` + advisoryFilter).bind(...departments).all();
     return rows.results || [];
   }
   return [];
@@ -445,8 +444,8 @@ async function sendProjectAssignmentEmail(c: any, projectName: string, departmen
   if (!apiKey) return;
   const safeProjectName = escapeHtml(projectName);
   const rows: any = await c.env.DB.prepare(
-    `SELECT u.email, u.name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id IN (${departmentIds.map(() => "?").join(",")}) AND r.power_level >= 50 AND u.email != ? AND NOT (u.role_id = 'advisory' AND u.secondary_role_id IS NULL)`
-  ).bind(...departmentIds, DEV_ADMIN_EMAIL).all();
+    `SELECT u.email, u.name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id IN (${departmentIds.map(() => "?").join(",")}) AND r.power_level >= 50 AND NOT (u.role_id = 'advisory' AND u.secondary_role_id IS NULL)`
+  ).bind(...departmentIds).all();
   const leads = rows.results || [];
   let count = await getTodayEmailCount(c.env.DB);
   const MAX_DAILY = 100;

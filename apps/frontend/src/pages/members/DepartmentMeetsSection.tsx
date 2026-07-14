@@ -25,6 +25,7 @@ export default function DepartmentMeetsSection({ authToken, departments, powerLe
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       {scheduling && <FullPageLoader message="Creating meet and sending emails..." />}
+      {sendingEmail && <FullPageLoader message="Sending notifications..." />}
       
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {meets.length === 0 && <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-tertiary)", border: "1px dashed var(--outline-variant)", borderRadius: 12 }}>No department meets scheduled.</div>}
