@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { apiUrl } from '../lib/api';
 
 export type Message = {

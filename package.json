@@ -6,8 +6,8 @@
   "scripts": {
     "build:frontend": "pnpm --filter frontend run build",
     "deploy:backend": "pnpm --filter admin-api exec wrangler deploy",
-    "deploy:frontend": "pnpm --filter frontend run build; pnpm --filter frontend exec wrangler pages deploy dist --project-name 180dc-admin-frontend",
-    "deploy:all": "pnpm run deploy:backend; pnpm run deploy:frontend"
+    "deploy:frontend": "pnpm --filter frontend run build && pnpm --filter frontend exec wrangler pages deploy dist --project-name 180dc-admin-frontend",
+    "deploy:all": "pnpm run deploy:backend && pnpm run deploy:frontend"
   },
   "devDependencies": {
     "turbo": "latest",
