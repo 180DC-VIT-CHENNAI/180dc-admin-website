@@ -283,11 +283,11 @@ function tokenEmailHtml(token: string, name: string): string {
 </html>`;
 }
 
-async function sendTokenEmail(c: any, email: string, token: string, name: string) {
+async function sendTokenEmail(c: any, email: string, token: string, name: string): Promise<{ ok: boolean; status?: number; error?: string }> {
   const apiKey = c.env.RESEND_API_KEY;
   if (!apiKey) {
     console.warn("RESEND_API_KEY not configured — skipping email to " + email);
-    return;
+    return { ok: false, error: "RESEND_API_KEY not configured" };
   }
   const from = "180DC Admin <noreply@180dc.shop>";
   try {
@@ -301,12 +301,16 @@ async function sendTokenEmail(c: any, email: string, token: string, name: string
         html: tokenEmailHtml(token, name),
       }),
     });
+    const body = await res.text();
     if (!res.ok) {
-      const body = await res.text();
-      console.error("Resend email failed (" + res.status + "): " + body);
+      console.error(`[email] Resend FAILED (${res.status}) to=${email}: ${body}`);
+      return { ok: false, status: res.status, error: body };
     }
+    console.log(`[email] Resend OK (${res.status}) to=${email}: ${body}`);
+    return { ok: true, status: res.status };
   } catch (e: any) {
-    console.error("Resend email error: " + e.message);
+    console.error("[email] Resend error to=" + email + ": " + e.message);
+    return { ok: false, error: e.message };
   }
 }
 
@@ -1217,8 +1221,11 @@ app.post("/api/auth/forgot-token", async (c) => {
     ).bind(email).first();
 
     if (row && !row.revoked_at && (!row.expires_at || new Date(row.expires_at + "Z") > new Date())) {
-      await sendTokenEmail(c, email, row.token, row.name || email.split("@")[0]);
+      const emailResult = await sendTokenEmail(c, email, row.token, row.name || email.split("@")[0]);
+      console.log(`[forgot-token] Token found for ${email}, email sent: ${emailResult.ok}${emailResult.error ? `, error: ${emailResult.error}` : ""}`);
       await incrementEmailCount(c.env.DB);
+    } else {
+      console.warn(`[forgot-token] No active token found for ${email}${row ? " (token exists but revoked or expired)" : " (no token record)"}`);
     }
 
     return c.json({ success: true, message: "If the email is registered, your token has been sent." });

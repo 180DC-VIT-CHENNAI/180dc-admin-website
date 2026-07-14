@@ -27,11 +27,21 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
   const [forgotLoading, setForgotLoading] = useState(false);
   const [dualRolePending, setDualRolePending] = useState<any>(null);
 
-  const handleGoogleLogin = () => {
-    clerk.redirectToSignIn({
-      signInFallbackRedirectUrl: "/members",
-      signInForceRedirectUrl: "/members",
-    });
+  const handleGoogleLogin = async () => {
+    console.log("[gauth] handleGoogleLogin called");
+    console.log("[gauth] clerk object:", clerk);
+    console.log("[gauth] redirectToSignIn type:", typeof clerk?.redirectToSignIn);
+    try {
+      console.log("[gauth] calling clerk.redirectToSignIn...");
+      await clerk.redirectToSignIn({
+        signInFallbackRedirectUrl: "/members",
+        signInForceRedirectUrl: "/members",
+      });
+      console.log("[gauth] redirectToSignIn resolved successfully");
+    } catch (err) {
+      console.error("[gauth] redirectToSignIn failed:", err);
+      alert("Google sign-in failed: " + (err instanceof Error ? err.message : String(err)));
+    }
   };
 
   const handleTokenLogin = async (loginAs?: string) => {
