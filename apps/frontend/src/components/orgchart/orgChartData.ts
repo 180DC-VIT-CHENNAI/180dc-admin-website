@@ -61,7 +61,7 @@ export const orgChartTree: TreeNode = {
         },
         {
           name: "Riddhima Singh",
-          role: "Finance & Legal Director",
+          role: "Finance Director",
           photo: "/leads/finlegal.png",
           children: [
             {

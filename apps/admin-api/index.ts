@@ -730,6 +730,10 @@ async function seedData(db: any, env?: any) {
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("business_strategy", "Business Strategy", "Handles business strategy, client partner sponsorship, and organizational planning").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("hr", "Human Resources", "Handles recruitment and people management").run();
 
+    // Cleanup: remove legacy "Legal" department and role if they exist
+    await db.prepare("DELETE FROM departments WHERE id = 'legal' OR name = 'Legal'").run();
+    await db.prepare("DELETE FROM roles WHERE id = 'lead_legal'").run();
+
     if (!currentEnv || (currentEnv.ENVIRONMENT || "").toLowerCase() !== "production") {
       const devToken = crypto.randomUUID().replace(/-/g, "");
       await db.prepare("INSERT OR REPLACE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)").bind(devToken, "admin@vitstudent.ac.in", "Dev Admin", "president", "system").run();
@@ -5345,7 +5349,7 @@ Our Leadership Team (Board Members):
 - Marketing Director: Sanjana Chejeti
 - Social Media Lead: Khyati Mohapatra
 - HR Lead: Sowmiya Vijayakumar
-- Finance & Legal Director: Riddhima Singh
+- Finance Director: Riddhima Singh
 - Technical Director: Sanjay Sivakumar
 - Research & Development: Mahak Khetan, Shivam Pandey
 - Events & Initiatives: Sonakshi Agrawal, Vansh Goel
