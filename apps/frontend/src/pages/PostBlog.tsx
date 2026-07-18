@@ -356,7 +356,7 @@ export default function PostBlog() {
                         contentEditable
                         suppressContentEditableWarning
                         data-placeholder="Start writing your blog post here..."
-                        style={{ fontFamily: "'Nunito', sans-serif" }}
+                        style={{ fontFamily: "var(--font-sans)" }}
                         onFocus={() => setIsEditorFocused(true)}
                         onBlur={() => setIsEditorFocused(false)}
                         onSelect={() => {

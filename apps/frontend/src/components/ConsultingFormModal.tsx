@@ -69,6 +69,8 @@ export default function ConsultingFormModal({ isOpen, onClose }: Props) {
         alignItems: "center",
         justifyContent: "center",
         background: "rgba(0,0,0,0.4)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
         padding: 20,
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -83,10 +85,12 @@ export default function ConsultingFormModal({ isOpen, onClose }: Props) {
           overflowY: "auto",
           padding: "2rem",
           cursor: "default",
+          borderRadius: "var(--radius-2xl)",
+          boxShadow: "var(--shadow-prominent)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h2 style={{ margin: 0, fontFamily: "'Caveat', cursive", fontSize: 28 }}>
+          <h2 style={{ margin: 0, fontFamily: "var(--font-sans)", fontSize: "1.5rem", fontWeight: 300, letterSpacing: "-0.02em" }}>
             Free Consulting Request
           </h2>
           <button
@@ -94,10 +98,12 @@ export default function ConsultingFormModal({ isOpen, onClose }: Props) {
             style={{
               border: "none",
               background: "none",
-              fontSize: 24,
+              fontSize: 20,
               cursor: "pointer",
-              color: "var(--text-secondary)",
-              padding: "0 4px",
+              color: "var(--text-tertiary)",
+              padding: "4px 8px",
+              borderRadius: "var(--radius-sm)",
+              transition: "all 200ms ease-out",
             }}
           >
             ✕
@@ -106,7 +112,7 @@ export default function ConsultingFormModal({ isOpen, onClose }: Props) {
 
         {success ? (
           <div style={{ textAlign: "center", padding: "2rem 0" }}>
-            <h3 style={{ fontFamily: "'Caveat', cursive", fontSize: 24, margin: "0 0 8px" }}>
+            <h3 style={{ fontFamily: "var(--font-sans)", fontSize: "1.25rem", fontWeight: 400, margin: "0 0 8px" }}>
               Request Submitted
             </h3>
             <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
@@ -118,49 +124,15 @@ export default function ConsultingFormModal({ isOpen, onClose }: Props) {
           </div>
         ) : (
           <div style={{ display: "grid", gap: 12 }}>
-            <input
-              className="input"
-              name="name"
-              placeholder="Your Name *"
-              defaultValue=""
-            />
-            <input
-              className="input"
-              name="email"
-              placeholder="Email Address *"
-              type="email"
-              defaultValue=""
-            />
-            <input
-              className="input"
-              name="phone"
-              placeholder="Phone Number *"
-              type="tel"
-              defaultValue=""
-            />
-            <input
-              className="input"
-              name="organization"
-              placeholder="Organization *"
-              defaultValue=""
-            />
-            <input
-              className="input"
-              name="roleInOrg"
-              placeholder="Role in Organization (optional)"
-              defaultValue=""
-            />
-            <textarea
-              className="input"
-              name="requirement"
-              placeholder="Your Requirement *"
-              rows={4}
-              style={{ resize: "vertical" }}
-              defaultValue=""
-            />
+            <input className="input" name="name" placeholder="Your Name *" defaultValue="" />
+            <input className="input" name="email" placeholder="Email Address *" type="email" defaultValue="" />
+            <input className="input" name="phone" placeholder="Phone Number *" type="tel" defaultValue="" />
+            <input className="input" name="organization" placeholder="Organization *" defaultValue="" />
+            <input className="input" name="roleInOrg" placeholder="Role in Organization (optional)" defaultValue="" />
+            <textarea className="input" name="requirement" placeholder="Your Requirement *" rows={4} style={{ resize: "vertical" }} defaultValue="" />
 
             {error && (
-              <div style={{ color: "#e74c3c", fontSize: 13, fontWeight: 600 }}>{error}</div>
+              <div style={{ color: "var(--status-error)", fontSize: 13, fontWeight: 500 }}>{error}</div>
             )}
 
             <button className="btn" disabled={busy} onClick={handleSubmit}>

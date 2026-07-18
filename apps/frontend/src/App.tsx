@@ -4,7 +4,6 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import SmoothScroll from "./components/SmoothScroll";
 import PillNav from "./components/PillNav";
-import { GrainOverlay } from "./components/DoodleSVG";
 import { apiUrl } from "./lib/api";
 import { attachCardHover } from "./lib/animations";
 import LazyReveal from "./components/LazyReveal";
@@ -147,7 +146,6 @@ function App() {
   return (
     <>
     <SmoothScroll>
-      <GrainOverlay />
       <PillNav
         items={navItems}
         activeHref={activeNav}
