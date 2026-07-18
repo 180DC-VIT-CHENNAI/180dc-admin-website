@@ -1,36 +1,23 @@
-import { ScribbleSquiggle } from "../components/DoodleSVG";
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface Props {
   completedProjects: any[];
 }
 
-// Card hover and .reveal animations are handled globally by the
-// MutationObserver in App.tsx — no local GSAP needed here.
 export default function CompletedProjectsSection({ completedProjects }: Props) {
   if (completedProjects.length === 0) return null;
 
   return (
     <section className="projects-section">
       <div className="container">
-        <span className="section-label">Our Work</span>
-        <h2
-          className="reveal section-heading"
-          style={{ marginBottom: "0.5rem" }}
-        >
-          Completed Projects
-        </h2>
-        <p
-          style={{
-            fontFamily: "'Patrick Hand', cursive",
-            fontSize: "1.2rem",
-            textAlign: "center",
-            marginBottom: "3rem",
-            color: "var(--text-secondary)",
-          }}
-        >
-          Projects delivered by our consulting teams
-        </p>
+        <div className="section-header reveal">
+          <span className="eyebrow">Our Work</span>
+          <h2 className="section-heading" style={{ margin: 0 }}>
+            Completed Projects
+          </h2>
+          <p style={{ fontSize: "1.125rem", color: "var(--text-secondary)", margin: 0 }}>
+            Projects delivered by our consulting teams
+          </p>
+        </div>
         <div
           className="projects-grid"
           style={
@@ -46,30 +33,23 @@ export default function CompletedProjectsSection({ completedProjects }: Props) {
               {p.company_org && (
                 <div
                   style={{
-                    fontSize: 13,
-                    color: "var(--primary-green)",
-                    marginBottom: 8,
+                    fontSize: "0.8125rem",
+                    color: "var(--accent-primary)",
+                    marginBottom: "8px",
+                    fontWeight: 500,
                   }}
                 >
                   {p.company_org}
                 </div>
               )}
               {p.description && (
-                <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+                <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>
                   {p.description}
                 </p>
               )}
             </div>
           ))}
         </div>
-        <ScribbleSquiggle
-          style={{
-            width: 150,
-            color: "#8dc63f",
-            margin: "3rem auto 0",
-            display: "block",
-          }}
-        />
       </div>
     </section>
   );

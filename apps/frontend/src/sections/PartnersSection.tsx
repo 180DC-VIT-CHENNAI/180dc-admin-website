@@ -1,17 +1,15 @@
-import { ScribbleSquiggle } from "../components/DoodleSVG";
 import { PARTNERS } from "../data/partners";
 
 export default function PartnersSection() {
   return (
     <section id="partners" className="partners-section">
       <div className="container">
-        <span className="section-label">05 — Partners</span>
-        <h2
-          className="reveal section-heading"
-          style={{ marginBottom: "2rem", textAlign: "center" }}
-        >
-          Our Clients
-        </h2>
+        <div className="section-header reveal" style={{ textAlign: "center", margin: "0 auto 2rem" }}>
+          <span className="eyebrow">05 — Partners</span>
+          <h2 className="section-heading" style={{ margin: 0 }}>
+            Our Clients
+          </h2>
+        </div>
         <div className="partners-logo-grid reveal">
           {PARTNERS.map((partner) => (
             <div key={partner.slug} className="partner-logo-card">
@@ -20,14 +18,6 @@ export default function PartnersSection() {
             </div>
           ))}
         </div>
-        <ScribbleSquiggle
-          style={{
-            width: 150,
-            color: "#8dc63f",
-            margin: "3rem auto 0",
-            display: "block",
-          }}
-        />
       </div>
     </section>
   );

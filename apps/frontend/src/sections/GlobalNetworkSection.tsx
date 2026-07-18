@@ -1,28 +1,21 @@
 import { lazy, Suspense } from "react";
-import { ScribbleSquiggle } from "../components/DoodleSVG";
 
-// Globe is the heaviest component on the page (WebGL).
-// It only gets imported + initialised when this section mounts via LazyReveal.
 const Globe = lazy(() => import("../components/Globe"));
 
 export default function GlobalNetworkSection() {
   return (
     <section id="global-network" className="global-network-section">
       <div className="container" style={{ textAlign: "center" }}>
-        <span className="section-label">Our Reach</span>
-        <h2 className="reveal section-heading">Our Global Network</h2>
-        <p
-          className="reveal reveal-delay-1"
-          style={{
-            maxWidth: "600px",
-            margin: "0 auto 3rem auto",
-            fontFamily: "'Patrick Hand', cursive",
-            fontSize: "1.2rem",
-          }}
-        >
-          180 Degrees Consulting spans the globe. Here is where the VIT Chennai
-          branch anchors our impact in India.
-        </p>
+        <div className="section-header reveal" style={{ margin: "0 auto 3rem", textAlign: "center" }}>
+          <span className="eyebrow">Our Reach</span>
+          <h2 className="section-heading" style={{ margin: 0 }}>
+            Our Global Network
+          </h2>
+          <p style={{ maxWidth: "600px", margin: "0 auto", fontSize: "1.125rem", color: "var(--text-secondary)" }}>
+            180 Degrees Consulting spans the globe. Here is where the VIT Chennai
+            branch anchors our impact in India.
+          </p>
+        </div>
         <div className="reveal reveal-delay-2">
           <Suspense
             fallback={
@@ -35,12 +28,7 @@ export default function GlobalNetworkSection() {
                   justifyContent: "center",
                 }}
               >
-                <p
-                  style={{
-                    fontFamily: "'Patrick Hand', cursive",
-                    color: "var(--text-secondary)",
-                  }}
-                >
+                <p style={{ color: "var(--text-tertiary)", fontSize: "0.875rem" }}>
                   Loading globe...
                 </p>
               </div>
@@ -49,14 +37,6 @@ export default function GlobalNetworkSection() {
             <Globe />
           </Suspense>
         </div>
-        <ScribbleSquiggle
-          style={{
-            width: 150,
-            color: "#8dc63f",
-            margin: "3rem auto 0",
-            display: "block",
-          }}
-        />
       </div>
     </section>
   );

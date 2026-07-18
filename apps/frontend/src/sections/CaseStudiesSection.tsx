@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { ScribbleStar, ScribbleSquiggle } from "../components/DoodleSVG";
 import { apiUrl } from "../lib/api";
 import { sanitizeHtml } from "../lib/sanitize";
 
@@ -17,7 +16,6 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
   const sectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    // Don't try to animate before data arrives
     if (caseStudies.length === 0) return;
 
     const ctx = gsap.context(() => {
@@ -25,12 +23,12 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
         const cards = grid.querySelectorAll(".case-card");
         gsap.fromTo(
           cards,
-          { y: 60, opacity: 0 },
+          { y: 40, opacity: 0 },
           {
             y: 0,
             opacity: 1,
             duration: 0.8,
-            stagger: 0.15,
+            stagger: 0.12,
             ease: "power3.out",
             scrollTrigger: {
               trigger: grid,
@@ -43,20 +41,18 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
     }, sectionRef);
 
     return () => ctx.revert();
-  // Re-run only when length flips from 0 → N, not on every keystroke
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseStudies.length]);
 
   return (
     <section id="case-studies" className="cases-section" ref={sectionRef}>
       <div className="container">
-        <span className="section-label">02 — Case Studies</span>
-        <h2
-          className="reveal section-heading"
-          style={{ marginBottom: "3rem" }}
-        >
-          Latest Case Studies
-        </h2>
+        <div className="section-header reveal">
+          <span className="eyebrow">02 — Case Studies</span>
+          <h2 className="section-heading" style={{ margin: 0 }}>
+            Latest Case Studies
+          </h2>
+        </div>
         <div
           className="cases-grid"
           style={
@@ -73,15 +69,6 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
               onClick={() => setExpandedCard(expandedCard === i ? null : i)}
               style={{ cursor: "pointer" }}
             >
-              <ScribbleStar
-                style={{
-                  width: 30,
-                  color: "#8dc63f",
-                  position: "absolute",
-                  top: "-15px",
-                  left: "20px",
-                }}
-              />
               <span className="case-tag">{cs.tag}</span>
               <h3>{cs.title}</h3>
               <p>{cs.description}</p>
@@ -94,16 +81,16 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
                     width: "100%",
                     maxHeight: 160,
                     objectFit: "cover",
-                    borderRadius: 8,
-                    marginBottom: 8,
+                    borderRadius: "12px",
+                    marginBottom: "8px",
                   }}
                 />
               )}
               <div
                 style={{
-                  fontSize: 11,
-                  color: "var(--text-secondary)",
-                  marginBottom: 4,
+                  fontSize: "0.8125rem",
+                  color: "var(--text-tertiary)",
+                  marginBottom: "4px",
                 }}
               >
                 By {cs.author_name || "Anonymous"}
@@ -114,25 +101,17 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
                   style={{
                     marginTop: "1rem",
                     paddingTop: "1rem",
-                    borderTop: "2px dashed var(--text-black)",
+                    borderTop: "1px solid var(--border-default)",
                   }}
                   dangerouslySetInnerHTML={{ __html: sanitizeHtml(cs.content) }}
                 />
               )}
               <span className="read-more">
-                {expandedCard === i ? "Show less \u2191" : "Click to expand \u2192"}
+                {expandedCard === i ? "Show less" : "Click to expand"}
               </span>
             </div>
           ))}
         </div>
-        <ScribbleSquiggle
-          style={{
-            width: 150,
-            color: "#8dc63f",
-            margin: "3rem auto 0",
-            display: "block",
-          }}
-        />
       </div>
     </section>
   );

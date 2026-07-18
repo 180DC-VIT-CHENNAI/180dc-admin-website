@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import './PillNav.css';
 
@@ -26,7 +26,15 @@ const PillNav = ({
   onMobileMenuClick,
 }: PillNavProps) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const { isDark, toggle } = useTheme();
+
+  useEffect(() => {
+    const onScroll = () => setIsScrolled(window.scrollY > 20);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(prev => !prev);
@@ -42,7 +50,7 @@ const PillNav = ({
   };
 
   return (
-    <div className="pill-nav-container">
+    <div className={`pill-nav-container${isScrolled ? ' scrolled' : ''}`}>
       <nav className={`pill-nav ${className}`} aria-label="Primary">
         <div className="pill-nav-left">
           <a className="pill-logo" href={items?.[0]?.href || '#'} aria-label="Home">
