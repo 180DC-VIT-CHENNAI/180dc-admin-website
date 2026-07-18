@@ -182,8 +182,8 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
         >
           <path d="M25 42 C20 28, 30 15, 50 12 C70 9, 80 22, 75 38" stroke="var(--text-primary)" strokeWidth="2.5" fill="#4a3728" />
           <circle cx="50" cy="48" r="22" stroke="var(--text-primary)" strokeWidth="2.5" fill="#fddbc1" />
-          <circle cx="40" cy="45" r="4" fill="var(--text-primary)" />
-          <circle cx="60" cy="45" r="4" fill="var(--text-primary)" />
+          <circle cx="40" cy="45" r="4" fill="#2d2d2d" />
+          <circle cx="60" cy="45" r="4" fill="#2d2d2d" />
           <circle cx="38" cy="43" r="1.5" fill="#fff" />
           <circle cx="58" cy="43" r="1.5" fill="#fff" />
           <ellipse cx="33" cy="53" rx="5" ry="3" fill="#f4a8a8" opacity="0.5" />
