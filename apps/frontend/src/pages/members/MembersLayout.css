@@ -542,6 +542,7 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 1rem;
+  max-width: none;
 }
 .section-header h3 {
   margin: 0;

@@ -1,6 +1,7 @@
 import { useEffect, lazy, Suspense } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import ErrorBoundary from "../components/ErrorBoundary";
 
 const ColorBends = lazy(() => import("../components/ColorBends"));
 
@@ -64,16 +65,18 @@ export default function HeroSection({ onWorkWithUs }: Props) {
   return (
     <header id="hero" className="hero">
       <div className="hero-bg-overlay">
-        <Suspense fallback={null}>
-          <ColorBends
-            colors={["#ffffff", "#f4f9e8", "#ffffff", "#e8f5d0"]}
-            speed={0.1}
-            warpStrength={0.8}
-            intensity={0.5}
-            opacity={0.3}
-            iterations={2}
-          />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <ColorBends
+              colors={["#ffffff", "#f4f9e8", "#ffffff", "#e8f5d0"]}
+              speed={0.1}
+              warpStrength={0.8}
+              intensity={0.5}
+              opacity={0.3}
+              iterations={2}
+            />
+          </Suspense>
+        </ErrorBoundary>
       </div>
 
       <div className="container hero-split">

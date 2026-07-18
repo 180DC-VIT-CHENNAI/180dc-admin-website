@@ -32,7 +32,9 @@
   --accent-soft: rgba(141, 198, 63, 0.08);
   --accent-glow: rgba(141, 198, 63, 0.15);
   --accent-border: #8dc63f;
+  --accent: #8dc63f;
   --accent-bg: rgba(141, 198, 63, 0.08);
+  --bg-card-rgb: 255, 255, 255;
   --primary-green: #8dc63f;
   --primary-dark-green: #75a633;
   --primary-white: #ffffff;
@@ -143,6 +145,7 @@
   --accent-soft: rgba(141, 198, 63, 0.12);
   --accent-glow: rgba(141, 198, 63, 0.2);
   --accent-bg: rgba(141, 198, 63, 0.12);
+  --bg-card-rgb: 26, 26, 26;
 
   --green-50: #1a2410;
   --green-100: #2a3315;
@@ -1153,6 +1156,7 @@ a:hover {
 .partners-logo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+  justify-content: center;
   gap: var(--space-6) var(--space-5);
   padding: var(--space-4) 0;
 }

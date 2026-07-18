@@ -75,3 +75,8 @@ export function sanitizeHtml(input: string): string {
 
   return s;
 }
+
+/** Strip all HTML tags — for plain-text contexts (announcements, previews, etc.) */
+export function stripHtmlTags(input: string): string {
+  return input.replace(/<[^>]*>/g, "");
+}

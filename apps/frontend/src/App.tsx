@@ -7,6 +7,7 @@ import PillNav from "./components/PillNav";
 import { apiUrl } from "./lib/api";
 import { attachCardHover } from "./lib/animations";
 import LazyReveal from "./components/LazyReveal";
+import ErrorBoundary from "./components/ErrorBoundary";
 import FloatingChatButton from "./components/chat/FloatingChatButton";
 
 // Above the fold — static imports, load immediately with the page
@@ -162,62 +163,82 @@ function App() {
           Both work together: no download + no mount until needed. */}
 
       <LazyReveal>
-        <Suspense fallback={null}>
-          <GlobalNetworkSection />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <GlobalNetworkSection />
+          </Suspense>
+        </ErrorBoundary>
       </LazyReveal>
 
       <LazyReveal>
-        <Suspense fallback={null}>
-          <AboutSection />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <AboutSection />
+          </Suspense>
+        </ErrorBoundary>
       </LazyReveal>
 
       <LazyReveal>
-        <Suspense fallback={null}>
-          <CompletedProjectsSection completedProjects={completedProjects} />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <CompletedProjectsSection completedProjects={completedProjects} />
+          </Suspense>
+        </ErrorBoundary>
       </LazyReveal>
 
       <LazyReveal>
-        <Suspense fallback={null}>
-          <CaseStudiesSection caseStudies={caseStudies} />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <CaseStudiesSection caseStudies={caseStudies} />
+          </Suspense>
+        </ErrorBoundary>
       </LazyReveal>
 
       <LazyReveal>
-        <Suspense fallback={null}>
-          <LeadershipSection />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <LeadershipSection />
+          </Suspense>
+        </ErrorBoundary>
       </LazyReveal>
 
       <LazyReveal>
-        <Suspense fallback={null}>
-          <BlogSection blogPosts={blogPosts} />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <BlogSection blogPosts={blogPosts} />
+          </Suspense>
+        </ErrorBoundary>
       </LazyReveal>
 
       <LazyReveal>
-        <Suspense fallback={null}>
-          <PartnersSection />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <PartnersSection />
+          </Suspense>
+        </ErrorBoundary>
       </LazyReveal>
 
       <LazyReveal>
-        <Suspense fallback={null}>
-          <FooterSection />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <FooterSection />
+          </Suspense>
+        </ErrorBoundary>
       </LazyReveal>
 
-      <Suspense fallback={null}>
-        <ConsultingBoy onRequestConsulting={openConsultingForm} />
-      </Suspense>
-      <Suspense fallback={null}>
-        <ConsultingFormModal
-          isOpen={showConsultingForm}
-          onClose={() => setShowConsultingForm(false)}
-        />
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={null}>
+          <ConsultingBoy onRequestConsulting={openConsultingForm} />
+        </Suspense>
+      </ErrorBoundary>
+      <ErrorBoundary>
+        <Suspense fallback={null}>
+          <ConsultingFormModal
+            isOpen={showConsultingForm}
+            onClose={() => setShowConsultingForm(false)}
+          />
+        </Suspense>
+      </ErrorBoundary>
     </SmoothScroll>
     <FloatingChatButton />
     </>

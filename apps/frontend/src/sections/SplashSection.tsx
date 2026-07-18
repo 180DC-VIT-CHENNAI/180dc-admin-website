@@ -1,6 +1,7 @@
 import { useRef, lazy, Suspense } from "react";
 import { TOKENS } from "../lib/tokens";
 import VariableProximity from "../components/VariableProximity";
+import ErrorBoundary from "../components/ErrorBoundary";
 
 const MagicRings = lazy(() => import("../components/MagicRings"));
 
@@ -10,31 +11,33 @@ export default function SplashSection() {
   return (
     <section className="splash-landing">
       <div className="splash-bg" ref={splashRef}>
-        <Suspense fallback={<div className="splash-bg-placeholder" />}>
-          <MagicRings
-            color={TOKENS.accentPrimary}
-            colorTwo={TOKENS.green300}
-            ringCount={8}
-            speed={0.5}
-            attenuation={10}
-            lineThickness={2}
-            baseRadius={0.2}
-            radiusStep={0.12}
-            scaleRate={0.08}
-            opacity={0.6}
-            blur={0}
-            noiseAmount={0.03}
-            rotation={0}
-            ringGap={1.6}
-            fadeIn={0.8}
-            fadeOut={0.6}
-            followMouse={true}
-            mouseInfluence={0.2}
-            hoverScale={1.2}
-            parallax={0.05}
-            clickBurst={true}
-          />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<div className="splash-bg-placeholder" />}>
+            <MagicRings
+              color={TOKENS.accentPrimary}
+              colorTwo={TOKENS.green300}
+              ringCount={8}
+              speed={0.5}
+              attenuation={10}
+              lineThickness={2}
+              baseRadius={0.2}
+              radiusStep={0.12}
+              scaleRate={0.08}
+              opacity={0.6}
+              blur={0}
+              noiseAmount={0.03}
+              rotation={0}
+              ringGap={1.6}
+              fadeIn={0.8}
+              fadeOut={0.6}
+              followMouse={true}
+              mouseInfluence={0.2}
+              hoverScale={1.2}
+              parallax={0.05}
+              clickBurst={true}
+            />
+          </Suspense>
+        </ErrorBoundary>
       </div>
 
       <div className="splash-content splash-white">

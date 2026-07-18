@@ -9,9 +9,16 @@ import RequestAccount from "./pages/RequestAccount.tsx";
 import PostBlog from "./pages/PostBlog.tsx";
 import BlogView from "./pages/BlogView.tsx";
 import { ThemeProvider } from "./context/ThemeContext.tsx";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 const MembersLayout = lazy(() => import("./pages/members/MembersLayout.tsx"));
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault();
+  console.warn("[Vite] Chunk preload failed, reloading...", event.payload);
+  window.location.reload();
+});
 
 if (!CLERK_PUBLISHABLE_KEY) {
   console.error("[Clerk] VITE_CLERK_PUBLISHABLE_KEY is missing! Google login will not work.");
@@ -30,16 +37,25 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/members" element={
             CLERK_PUBLISHABLE_KEY ? (
               <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} afterSignOutUrl="/members">
-                <Suspense fallback={
+                <ErrorBoundary fallback={
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "var(--bg-primary)" }}>
-                    <div className="card-doodle" style={{ padding: 24, textAlign: "center" }}>
-                      <p style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>Loading Portal...</p>
-                      <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Please wait, this may take a moment.</p>
+                    <div className="card-doodle" style={{ padding: 24, textAlign: "center", maxWidth: 420 }}>
+                      <p style={{ fontSize: 16, fontWeight: 700, color: "#ef4444", margin: "0 0 8px" }}>Something went wrong</p>
+                      <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Failed to load the members portal. Please refresh the page.</p>
                     </div>
                   </div>
                 }>
-                  <MembersLayout />
-                </Suspense>
+                  <Suspense fallback={
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "var(--bg-primary)" }}>
+                      <div className="card-doodle" style={{ padding: 24, textAlign: "center" }}>
+                        <p style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px" }}>Loading Portal...</p>
+                        <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Please wait, this may take a moment.</p>
+                      </div>
+                    </div>
+                  }>
+                    <MembersLayout />
+                  </Suspense>
+                </ErrorBoundary>
               </ClerkProvider>
             ) : (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "var(--bg-primary)" }}>

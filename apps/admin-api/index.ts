@@ -2812,8 +2812,8 @@ app.post("/api/announcements", async (c) => {
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
     }
-    const title = sanitizeStr(body.title);
-    const content = sanitizeStr(body.content);
+    const title = sanitizeStr(body.title)?.replace(/<[^>]*>/g, "");
+    const content = sanitizeStr(body.content)?.replace(/<[^>]*>/g, "");
     if (!title || !content) return c.json({ error: "Missing title or content" }, 400);
     await c.env.DB.prepare(
       "INSERT INTO announcements (id, title, content, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",

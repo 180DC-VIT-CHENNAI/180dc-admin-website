@@ -22,6 +22,7 @@ import TransfersSection from "./TransfersSection";
 import AdminConsole from "./AdminConsole";
 import { apiUrl } from "../../lib/api";
 import { useTheme } from "../../context/ThemeContext";
+import { stripHtmlTags } from "../../lib/sanitize";
 import { DEPT_NAMES } from "./constants";
 import "./MembersLayout.css";
 
@@ -509,8 +510,8 @@ export default function MembersLayout() {
                 ) : (
                   announcements.slice(0, 2).map((a: any) => (
                     <div key={a.id} style={{ padding: "0.5rem", borderRadius: 8, cursor: "pointer" }} onClick={() => { setShowNotifications(false); setActivePanel("announcements"); }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{a.title}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.content}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{stripHtmlTags(a.title)}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stripHtmlTags(a.content)}</div>
                     </div>
                   ))
                 )}
@@ -704,8 +705,8 @@ export default function MembersLayout() {
                       {announcements.slice(0, 3).map((a: any) => (
                         <div key={a.id} style={{ padding: "0.875rem 1rem", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--border-light)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", cursor: "pointer" }} onClick={() => setActivePanel("announcements")}>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.title}</div>
-                            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.content}</div>
+                            <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stripHtmlTags(a.title)}</div>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stripHtmlTags(a.content)}</div>
                           </div>
                           <div style={{ fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap", marginLeft: 12 }}>{a.created_at?.slice(0, 10)}</div>
                         </div>
@@ -898,9 +899,9 @@ export default function MembersLayout() {
                 <div key={a.id} className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div style={{ flex: 1 }}>
-                      <h3 style={{ margin: 0 }}>{a.title}</h3>
+                      <h3 style={{ margin: 0 }}>{stripHtmlTags(a.title)}</h3>
                       <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>{a.created_at?.slice(0, 10)}</div>
-                      <div style={{ marginTop: 12, whiteSpace: "pre-wrap", color: "var(--text-secondary)", fontSize: 14 }}>{a.content}</div>
+                      <div style={{ marginTop: 12, whiteSpace: "pre-wrap", color: "var(--text-secondary)", fontSize: 14 }}>{stripHtmlTags(a.content)}</div>
                     </div>
                     {powerLevel >= 100 && (
                       <button className="header-action-btn" style={{ color: "#ef4444" }} onClick={async () => {
