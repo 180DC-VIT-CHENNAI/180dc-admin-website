@@ -344,7 +344,7 @@ export default function MembersLayout() {
 
   const roleDeptAccess: Record<string, string[]> = {
     marketing_director: ["marketing", "social_media"],
-    business_strategy_director: ["client-partner-sponsor"],
+    business_strategy_director: ["business_strategy", "client-partner-sponsor"],
   };
   const multiDeptRoles = roleDeptAccess[roleId || ""];
   const allowedDeptIds = multiDeptRoles || (hasDepartment && powerLevel >= 50 ? [departmentId!] : []);

@@ -32,6 +32,11 @@ export const orgChartTree: TreeNode = {
           children: [
             {
               name: "Paramveer Singh Vilkhu",
+              role: "Business Strategy",
+              photo: "/leads/bsd-team.png",
+            },
+            {
+              name: "",
               role: "CPS Lead",
               photo: "/leads/cps.png",
             },

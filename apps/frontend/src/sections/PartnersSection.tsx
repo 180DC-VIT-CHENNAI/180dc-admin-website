@@ -10,7 +10,7 @@ export default function PartnersSection() {
           className="reveal section-heading"
           style={{ marginBottom: "2rem", textAlign: "center" }}
         >
-          Our Partners
+          Our Clients
         </h2>
         <div className="partners-logo-grid reveal">
           {PARTNERS.map((partner) => (

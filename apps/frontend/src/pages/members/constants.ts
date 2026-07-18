@@ -6,5 +6,6 @@ export const DEPT_NAMES: Record<string, string> = {
   finance: "Finance",
   "events-initiatives": "Events and Initiatives",
   "client-partner-sponsor": "Client Partner Sponsor",
+  business_strategy: "Business Strategy",
   hr: "Human Resources",
 };

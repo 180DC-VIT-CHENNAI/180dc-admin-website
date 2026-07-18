@@ -13,6 +13,7 @@ type Bindings = {
   RESEND_API_KEY?: string;
   CLERK_SECRET_KEY?: string;
   GEMINI_API_KEY?: string;
+  GROQ_API_KEY?: string;
 };
 
 type Variables = {
@@ -291,7 +292,7 @@ async function sendTokenEmail(c: any, email: string, token: string, name: string
     console.warn("RESEND_API_KEY not configured — skipping email to " + email);
     return { ok: false, error: "RESEND_API_KEY not configured" };
   }
-  const from = "180DC Admin <noreply@180dc.shop>";
+  const from = "180DC Admin <team@180dc.shop>";
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -375,7 +376,7 @@ async function sendMeetEmail(c: any, to: string, name: string, title: string, de
       method: "POST",
       headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "180DC Admin <noreply@180dc.shop>",
+        from: "180DC Admin <team@180dc.shop>",
         to,
         subject: "New Meet: " + title,
         html: meetEmailHtml(title, description, meetLink, scheduledAt, meetType),
@@ -458,7 +459,7 @@ async function sendProjectAssignmentEmail(c: any, projectName: string, departmen
         method: "POST",
         headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: "180DC Admin <noreply@180dc.shop>",
+          from: "180DC Admin <team@180dc.shop>",
           to: lead.email,
           subject: "New Project Assigned: " + projectName,
           html: `<!DOCTYPE html>
@@ -504,7 +505,7 @@ async function sendRoleAssignmentEmail(c: any, email: string, name: string, role
       method: "POST",
       headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "180DC Admin <noreply@180dc.shop>",
+        from: "180DC Admin <team@180dc.shop>",
         to: email,
         subject: "Role Assigned: " + roleName + " for " + projectName,
         html: `<!DOCTYPE html>
@@ -547,7 +548,7 @@ async function sendRoleChangeEmail(c: any, email: string, name: string, roleName
       method: "POST",
       headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "180DC Admin <noreply@180dc.shop>",
+        from: "180DC Admin <team@180dc.shop>",
         to: email,
         subject: "Your Role Has Been Updated",
         html: `<!DOCTYPE html>
@@ -712,6 +713,7 @@ async function seedData(db: any, env?: any) {
     await db.prepare(roleSql).bind("lead_events", "Events and Initiatives Lead", 50, "system").run();
     await db.prepare(roleSql).bind("business_strategy_director", "Business Strategy Director", 70, "system").run();
     await db.prepare(roleSql).bind("lead_cps", "Client Partner Sponsor Lead", 50, "system").run();
+    await db.prepare(roleSql).bind("lead_business_strategy", "Business Strategy Lead", 50, "system").run();
     await db.prepare(roleSql).bind("lead_hr", "HR Lead", 50, "system").run();
     await db.prepare(roleSql).bind("member", "General Member", 10, "system").run();
     await db.prepare(roleSql).bind("advisory", "Advisory Board", 30, "system").run();
@@ -725,6 +727,7 @@ async function seedData(db: any, env?: any) {
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("finance", "Finance", "Handles budgeting and financial planning").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("events-initiatives", "Events and Initiatives", "Plans and executes events and club initiatives").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("client-partner-sponsor", "Client Partner Sponsor", "Manages client relationships, partnerships, and sponsorships").run();
+    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("business_strategy", "Business Strategy", "Handles business strategy, client partner sponsorship, and organizational planning").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("hr", "Human Resources", "Handles recruitment and people management").run();
 
     if (!currentEnv || (currentEnv.ENVIRONMENT || "").toLowerCase() !== "production") {
@@ -771,7 +774,7 @@ async function seedData(db: any, env?: any) {
       await db.prepare("INSERT OR IGNORE INTO recruitment_rounds (id, name, is_active) VALUES (?, ?, ?)").bind("round2", "Round 2", 0).run();
     }
 
-    const knownDomains = ["Technical", "Research & Development", "Marketing", "Social Media", "Finance", "Events and Initiatives", "Client Partner Sponsor", "Human Resources"];
+    const knownDomains = ["Technical", "Research & Development", "Marketing", "Social Media", "Finance", "Events and Initiatives", "Client Partner Sponsor", "Business Strategy", "Human Resources"];
     for (const domain of knownDomains) {
       await db.prepare("INSERT OR IGNORE INTO recruitment_domain_settings (domain_name, is_open) VALUES (?, ?)").bind(domain, 1).run();
     }
@@ -2304,7 +2307,7 @@ async function canAccessDept(c: any, deptId: string) {
   // Roles with multi-department access
   const roleDeptAccess: Record<string, string[]> = {
     marketing_director: ["marketing", "social_media"],
-    business_strategy_director: ["client-partner-sponsor"],
+    business_strategy_director: ["business_strategy", "client-partner-sponsor"],
   };
   const allowedDepts = roleDeptAccess[user.role_id];
   if (allowedDepts && allowedDepts.includes(deptId)) return true;
@@ -4154,7 +4157,7 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
         method: "POST",
         headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: "180DC Consulting <noreply@180dc.shop>",
+          from: "180DC Consulting <team@180dc.shop>",
           to: request.email,
           subject: emailSubject,
           html: `<!DOCTYPE html>
@@ -4224,7 +4227,7 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
         method: "POST",
         headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: "180DC Consulting <noreply@180dc.shop>",
+          from: "180DC Consulting <team@180dc.shop>",
           to: request.email,
           subject: emailSubject,
           html: `<!DOCTYPE html>
@@ -4452,7 +4455,7 @@ app.post("/api/send-email", async (c) => {
         method: "POST",
         headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: "180DC Admin <noreply@180dc.shop>",
+          from: "180DC Admin <team@180dc.shop>",
           to: recipient,
           subject,
           html: `<!DOCTYPE html>
@@ -4515,7 +4518,7 @@ app.post("/api/chat/rooms/:room/toggle", async (c) => {
       canManage = true;
     } else if (user.power_level >= 50 && isDeptRoom && (() => {
       if (user.department_id === deptId) return true;
-      const roleDeptAccess: Record<string, string[]> = { marketing_director: ["marketing", "social_media"], business_strategy_director: ["client-partner-sponsor"] };
+      const roleDeptAccess: Record<string, string[]> = { marketing_director: ["marketing", "social_media"], business_strategy_director: ["business_strategy", "client-partner-sponsor"] };
       const allowedDepts = roleDeptAccess[user.role_id];
       return allowedDepts && allowedDepts.includes(deptId);
     })()) {
@@ -4567,7 +4570,7 @@ app.post("/api/chat/init", async (c) => {
       if (user.power_level >= 100) return true;
       const roleDeptAccess: Record<string, string[]> = {
         marketing_director: ["marketing", "social_media"],
-        business_strategy_director: ["client-partner-sponsor"],
+        business_strategy_director: ["business_strategy", "client-partner-sponsor"],
       };
       const allowedDepts = roleDeptAccess[user.role_id];
       if (allowedDepts && allowedDepts.includes(room.replace("dept-", ""))) return true;
@@ -5323,10 +5326,7 @@ app.post("/api/chat", async (c) => {
   try {
     const { messages } = await c.req.json();
     const apiKey = c.env.GEMINI_API_KEY;
-    
-    if (!apiKey) {
-      return c.json({ error: "Gemini API Key not configured" }, 500);
-    }
+    const groqKey = c.env.GROQ_API_KEY;
 
     const systemPrompt = `You are ConsultAI, the highly professional, elite AI consulting assistant for 180 Degrees Consulting (180DC) VIT Chennai. Your tone should mirror that of a top-tier management consultant (e.g., McKinsey, BCG, Bain) — extremely articulate, well-versed, empathetic, and strictly professional. You speak on behalf of 180DC VIT Chennai using "we" and "our".
 
@@ -5359,32 +5359,77 @@ Guidelines:
 6. Keep responses relatively concise but extremely impactful. Never overwhelm with a wall of text.
 7. EASTER EGG: If and ONLY IF the user specifically asks about "L Kevin Daniel" or "Kevin" (or similar spellings), you must answer that he is a great leader and the technical backbone of 180DC VIT Chennai. Also mention that Ibhan will not dare to mess with 180DC's chatbot. Keep it lighthearted and proud.`;
 
-    const geminiMessages = messages.map((msg: any) => ({
-      role: msg.role === "assistant" ? "model" : "user",
-      parts: [{ text: msg.content }]
-    }));
+    async function callGemini(): Promise<string | null> {
+      if (!apiKey) return null;
+      try {
+        const geminiMessages = messages.map((msg: any) => ({
+          role: msg.role === "assistant" ? "model" : "user",
+          parts: [{ text: msg.content }]
+        }));
 
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: systemPrompt }]
-        },
-        contents: geminiMessages
-      })
-    });
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            contents: geminiMessages
+          })
+        });
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error("Gemini API Error:", errorText);
-      return c.json({ error: "Failed to communicate with AI provider" }, res.status);
+        if (!res.ok) {
+          console.error("Gemini API Error:", await res.text());
+          return null;
+        }
+
+        const data = await res.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
+      } catch (e) {
+        console.error("Gemini call failed:", e);
+        return null;
+      }
     }
 
-    const data = await res.json();
-    const assistantMessage = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    async function callGroq(): Promise<string | null> {
+      if (!groqKey) return null;
+      try {
+        const groqMessages = [
+          { role: "system", content: systemPrompt },
+          ...messages.map((msg: any) => ({ role: msg.role, content: msg.content }))
+        ];
+
+        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${groqKey}`
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: groqMessages
+          })
+        });
+
+        if (!res.ok) {
+          console.error("Groq API Error:", await res.text());
+          return null;
+        }
+
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content ?? null;
+      } catch (e) {
+        console.error("Groq call failed:", e);
+        return null;
+      }
+    }
+
+    let assistantMessage = await callGemini();
+    if (!assistantMessage) {
+      console.warn("Gemini unavailable, falling back to Groq");
+      assistantMessage = await callGroq();
+    }
+    if (!assistantMessage) {
+      return c.json({ error: "All AI providers are currently unavailable" }, 503);
+    }
 
     return c.json({
       choices: [

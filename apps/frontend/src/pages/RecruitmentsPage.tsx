@@ -18,6 +18,7 @@ const domains = [
   "Finance",
   "Events and Initiatives",
   "Client Partner Sponsor",
+  "Business Strategy",
   "Human Resources",
 ];
 

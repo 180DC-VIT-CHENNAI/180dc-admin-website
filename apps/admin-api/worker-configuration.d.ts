@@ -3,6 +3,8 @@
 interface Env {
 	AUTH_SESSIONS: KVNamespace;
 	RESEND_API_KEY: string;
+	GEMINI_API_KEY: string;
+	GROQ_API_KEY: string;
 	CHAT_ROOM: DurableObjectNamespace<import("./index").ChatRoomDO>;
 	DB: D1Database;
 	ARCHIVE_DB: D1Database;

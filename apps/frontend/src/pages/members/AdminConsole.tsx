@@ -16,6 +16,7 @@ const EX_TITLES = [
   "x-lead_finance",
   "x-lead_events",
   "x-lead_cps",
+  "x-lead_business_strategy",
   "x-lead_hr",
 ];
 
@@ -387,6 +388,7 @@ export default function AdminConsole({
                 <option value="lead_finance">Finance Lead</option>
                 <option value="lead_events">Events Lead</option>
                 <option value="lead_cps">Client Partner Sponsor Lead</option>
+                <option value="lead_business_strategy">Business Strategy Lead</option>
                 <option value="lead_hr">HR Lead</option>
               </select>
               <select className="input" value={boardDepartmentId} onChange={(e) => setBoardDepartmentId(e.target.value)}>
