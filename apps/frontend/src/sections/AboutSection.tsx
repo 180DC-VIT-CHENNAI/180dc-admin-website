@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { ScribbleStar } from "../components/DoodleSVG";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -9,17 +8,16 @@ export default function AboutSection() {
   const sectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    // Scoped to this section so cleanup only kills these triggers
     const ctx = gsap.context(() => {
       gsap.utils.toArray<HTMLElement>(".stat-item").forEach((stat) => {
         gsap.fromTo(
           stat,
-          { scale: 0.8, opacity: 0 },
+          { y: 30, opacity: 0 },
           {
-            scale: 1,
+            y: 0,
             opacity: 1,
             duration: 0.8,
-            ease: "back.out(1.7)",
+            ease: "power3.out",
             scrollTrigger: {
               trigger: stat,
               start: "top 85%",
@@ -37,16 +35,7 @@ export default function AboutSection() {
     <section id="about" className="about-section" ref={sectionRef}>
       <div className="container">
         <div className="about-card reveal">
-          <ScribbleStar
-            style={{
-              width: 30,
-              color: "#8dc63f",
-              position: "absolute",
-              top: "-15px",
-              right: "30px",
-            }}
-          />
-          <span className="section-label">01 — About</span>
+          <span className="eyebrow">01 — About</span>
           <h2>About Our Branch</h2>
           <p>
             Founded at VIT Chennai, our branch consists of high-achieving,

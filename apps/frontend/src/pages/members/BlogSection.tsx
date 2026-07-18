@@ -247,7 +247,7 @@ export default function BlogSection({ authToken, powerLevel }: { authToken: stri
                     {canManage && (
                       <>
                         <button
-                          style={{ padding: "3px 10px", fontSize: 11, background: "var(--accent, #8dc63f)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
+                          style={{ padding: "3px 10px", fontSize: 11, background: "var(--accent-primary)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
                           onClick={() => openEdit(blog)}
                         >
                           Edit
@@ -358,7 +358,7 @@ export default function BlogSection({ authToken, powerLevel }: { authToken: stri
                 contentEditable
                 suppressContentEditableWarning
                 data-placeholder="Write your blog content here..."
-                style={{ minHeight: 300, padding: 12, border: "2px solid var(--border-light)", borderRadius: "0 0 8px 8px", fontSize: 14, lineHeight: 1.6, fontFamily: "'Nunito', sans-serif" }}
+                style={{ minHeight: 300, padding: 12, border: "2px solid var(--border-light)", borderRadius: "0 0 8px 8px", fontSize: 14, lineHeight: 1.6, fontFamily: "var(--font-sans)" }}
                 onInput={() => {
                   const html = blogEditorRef.current?.innerHTML || "";
                   setEditContent(html);

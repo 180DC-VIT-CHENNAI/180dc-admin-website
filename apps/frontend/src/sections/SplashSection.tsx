@@ -1,6 +1,6 @@
 import { useRef, lazy, Suspense } from "react";
+import { TOKENS } from "../lib/tokens";
 import VariableProximity from "../components/VariableProximity";
-import { ScribbleUnderline } from "../components/DoodleSVG";
 
 const MagicRings = lazy(() => import("../components/MagicRings"));
 
@@ -12,26 +12,26 @@ export default function SplashSection() {
       <div className="splash-bg" ref={splashRef}>
         <Suspense fallback={<div className="splash-bg-placeholder" />}>
           <MagicRings
-            color="#8dc63f"
-            colorTwo="#a8d96a"
-            ringCount={10}
-            speed={0.8}
-            attenuation={8}
-            lineThickness={4}
-            baseRadius={0.25}
-            radiusStep={0.15}
-            scaleRate={0.12}
-            opacity={1}
+            color={TOKENS.accentPrimary}
+            colorTwo={TOKENS.green300}
+            ringCount={8}
+            speed={0.5}
+            attenuation={10}
+            lineThickness={2}
+            baseRadius={0.2}
+            radiusStep={0.12}
+            scaleRate={0.08}
+            opacity={0.6}
             blur={0}
-            noiseAmount={0.05}
+            noiseAmount={0.03}
             rotation={0}
-            ringGap={1.4}
-            fadeIn={0.7}
-            fadeOut={0.5}
+            ringGap={1.6}
+            fadeIn={0.8}
+            fadeOut={0.6}
             followMouse={true}
-            mouseInfluence={0.3}
-            hoverScale={1.3}
-            parallax={0.08}
+            mouseInfluence={0.2}
+            hoverScale={1.2}
+            parallax={0.05}
             clickBurst={true}
           />
         </Suspense>
@@ -44,8 +44,8 @@ export default function SplashSection() {
             label="180 Degrees Consulting"
             className="splash-title-variable"
             containerRef={splashRef}
-            fromFontVariationSettings="'wght' 400, 'opsz' 9"
-            toFontVariationSettings="'wght' 1000, 'opsz' 40"
+            fromFontVariationSettings="'wght' 200"
+            toFontVariationSettings="'wght' 800"
             radius={120}
             falloff="linear"
           />
@@ -54,26 +54,23 @@ export default function SplashSection() {
             label="VIT Chennai"
             className="splash-subtitle-variable"
             containerRef={splashRef}
-            fromFontVariationSettings="'wght' 300, 'opsz' 9"
-            toFontVariationSettings="'wght' 900, 'opsz' 40"
+            fromFontVariationSettings="'wght' 200"
+            toFontVariationSettings="'wght' 700"
             radius={100}
             falloff="linear"
           />
         </div>
         <p className="splash-tagline">
-          "Empowering organizations to reach their full potential and maximize
-          their social impact."
+          Empowering organizations to reach their full potential and maximize
+          their social impact.
         </p>
-        <ScribbleUnderline
-          style={{ width: 200, color: "#8dc63f", margin: "1rem auto" }}
-        />
       </div>
 
       <div className="scroll-indicator">
         <div className="scroll-mouse">
           <div className="scroll-wheel" />
         </div>
-        <span className="scroll-text">Scroll to explore</span>
+        <span className="scroll-text">SCROLL TO EXPLORE</span>
       </div>
     </section>
   );

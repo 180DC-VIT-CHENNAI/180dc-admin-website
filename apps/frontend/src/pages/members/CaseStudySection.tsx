@@ -277,7 +277,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
               contentEditable
               suppressContentEditableWarning
               data-placeholder="Write your case study content here..."
-              style={{ minHeight: 250, padding: 12, border: "2px solid var(--border-light)", borderRadius: "0 0 8px 8px", fontSize: 14, lineHeight: 1.6, fontFamily: "'Nunito', sans-serif" }}
+              style={{ minHeight: 250, padding: 12, border: "2px solid var(--border-light)", borderRadius: "0 0 8px 8px", fontSize: 14, lineHeight: 1.6, fontFamily: "var(--font-sans)" }}
               onSelect={() => {
                 const sel = window.getSelection();
                 if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
@@ -363,7 +363,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: "#8dc63f", color: "#fff" }}>{cs.tag}</span>
+                  <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: "var(--accent-primary)", color: "#fff" }}>{cs.tag}</span>
                   <strong style={{ fontSize: 14, color: "var(--text-primary)" }}>{cs.title}</strong>
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>
@@ -373,7 +373,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
                 <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                   {canEdit && (
                     <button
-                      style={{ padding: "3px 10px", fontSize: 11, background: "var(--accent, #8dc63f)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
+                      style={{ padding: "3px 10px", fontSize: 11, background: "var(--accent-primary)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
                       onClick={() => startEdit(cs)}
                     >
                       Edit

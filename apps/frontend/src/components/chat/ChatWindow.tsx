@@ -63,7 +63,7 @@ export default function ChatWindow({ onClose, isOpen }: ChatWindowProps) {
             <p style={{ lineHeight: '1.6', marginBottom: '16px', color: '#e5e7eb' }}>
               I am ConsultAI, your dedicated advisory assistant. We specialize in providing high-impact, pro-bono consulting to socially conscious organizations.
             </p>
-            <p style={{ fontWeight: 600, color: '#8dc63f', marginBottom: '8px' }}>
+            <p style={{ fontWeight: 600, color: 'var(--accent-primary)', marginBottom: '8px' }}>
               Core Competencies:
             </p>
             <ul style={{ lineHeight: '1.8', marginBottom: '20px' }}>
