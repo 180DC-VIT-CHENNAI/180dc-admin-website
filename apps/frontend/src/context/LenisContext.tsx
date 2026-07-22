@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-type ScrollToFn = (target: string | number | Element, opts?: { offset?: number }) => void;
+type ScrollToFn = (target: string | number | HTMLElement, opts?: { offset?: number }) => void;
 
 const LenisContext = createContext<ScrollToFn | null>(null);
 

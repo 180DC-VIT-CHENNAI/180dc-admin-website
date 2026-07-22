@@ -14,15 +14,15 @@ export default function SmoothScroll({ children }: SmoothScrollProps) {
   const lenisRef = useRef<Lenis | null>(null);
 
   const scrollTo = useCallback(
-    (target: string | number | Element, opts?: { offset?: number }) => {
+    (target: string | number | HTMLElement, opts?: { offset?: number }) => {
       const lenis = lenisRef.current;
       if (!lenis) return;
       if (typeof target === "string" && target.startsWith("#")) {
-        const el = document.querySelector(target);
+        const el = document.querySelector(target) as HTMLElement | null;
         if (el) lenis.scrollTo(el, { offset: opts?.offset ?? 0 });
       } else if (typeof target === "number") {
         lenis.scrollTo(target, { offset: opts?.offset ?? 0 });
-      } else if (target instanceof Element) {
+      } else if (target instanceof HTMLElement) {
         lenis.scrollTo(target, { offset: opts?.offset ?? 0 });
       }
     },
