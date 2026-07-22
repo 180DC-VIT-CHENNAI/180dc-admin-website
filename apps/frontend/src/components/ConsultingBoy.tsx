@@ -43,58 +43,80 @@ export default function ConsultingBoy({ onRequestConsulting }: Props) {
   }
 
   useEffect(() => {
-    const sections = document.querySelectorAll("#about, .projects-section");
-    if (sections.length === 0) return;
     if (!wrapperRef.current || !bubble1Ref.current || !bubble2Ref.current) return;
 
-    const tl = gsap.timeline({ paused: true });
+    let st: gsap.core.Tween | ScrollTrigger | null = null;
+    let tl: gsap.core.Timeline | null = null;
+    let checkInterval: ReturnType<typeof setInterval> | null = null;
 
-    tl.to(wrapperRef.current, { x: 0, duration: 0.8, ease: "power3.out" });
-    tl.to(bubble1Ref.current, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2)" });
-    tl.to({}, { duration: 4 });
-    tl.to(bubble1Ref.current, { opacity: 0, scale: 0.8, duration: 0.3 });
-    tl.to(bubble2Ref.current, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2)" });
+    function setup() {
+      const aboutEl = document.querySelector("#about");
+      const projectsEl = document.querySelector(".projects-section");
+      const trigger = aboutEl || projectsEl;
+      if (!trigger || !wrapperRef.current || !bubble1Ref.current || !bubble2Ref.current) return false;
 
-    tl.eventCallback("onStart", () => { setStep(0); });
+      tl = gsap.timeline({ paused: true });
 
-    const st = ScrollTrigger.create({
-      trigger: sections[0],
-      start: "top 75%",
-      onEnter: () => {
-        if (dismissedRef.current) return;
-        visibleRef.current = true;
-        if (!hasEnteredRef.current) {
-          hasEnteredRef.current = true;
-          setVisible(true);
-          tl.play();
-        } else if (wrapperRef.current) {
-          slideIn();
+      tl.to(wrapperRef.current, { x: 0, duration: 0.8, ease: "power3.out" });
+      tl.to(bubble1Ref.current, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2)" });
+      tl.to({}, { duration: 4 });
+      tl.to(bubble1Ref.current, { opacity: 0, scale: 0.8, duration: 0.3 });
+      tl.to(bubble2Ref.current, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(2)" });
+
+      tl.eventCallback("onStart", () => { setStep(0); });
+
+      st = ScrollTrigger.create({
+        trigger,
+        start: "top 75%",
+        onEnter: () => {
+          if (dismissedRef.current) return;
+          visibleRef.current = true;
+          if (!hasEnteredRef.current) {
+            hasEnteredRef.current = true;
+            setVisible(true);
+            tl?.play();
+          } else if (wrapperRef.current) {
+            slideIn();
+          }
+        },
+        onLeaveBack: () => {
+          visibleRef.current = false;
+          if (wrapperRef.current) {
+            gsap.to(wrapperRef.current, { x: "-120%", duration: 0.4, ease: "power3.in", onComplete: () => setVisible(false) });
+          }
+        },
+      });
+
+      checkInterval = setInterval(() => {
+        if (!visibleRef.current) return;
+        const b1 = bubble1Ref.current;
+        const b2 = bubble2Ref.current;
+        if (b1 && b2) {
+          const b1Opacity = parseFloat(getComputedStyle(b1).opacity);
+          const b2Opacity = parseFloat(getComputedStyle(b2).opacity);
+          if (b1Opacity > 0.5) setStep(1);
+          else if (b2Opacity > 0.5) setStep(2);
         }
-      },
-      onLeaveBack: () => {
-        visibleRef.current = false;
-        if (wrapperRef.current) {
-          gsap.to(wrapperRef.current, { x: "-120%", duration: 0.4, ease: "power3.in", onComplete: () => setVisible(false) });
-        }
-      },
-    });
+      }, 200);
 
-    const checkInterval = setInterval(() => {
-      if (!visibleRef.current) return;
-      const b1 = bubble1Ref.current;
-      const b2 = bubble2Ref.current;
-      if (b1 && b2) {
-        const b1Opacity = parseFloat(getComputedStyle(b1).opacity);
-        const b2Opacity = parseFloat(getComputedStyle(b2).opacity);
-        if (b1Opacity > 0.5) setStep(1);
-        else if (b2Opacity > 0.5) setStep(2);
-      }
+      return true;
+    }
+
+    if (setup()) return () => {
+      st?.kill();
+      tl?.kill();
+      if (checkInterval) clearInterval(checkInterval);
+    };
+
+    const pollId = setInterval(() => {
+      if (setup()) clearInterval(pollId);
     }, 200);
 
     return () => {
-      st.kill();
-      tl.kill();
-      clearInterval(checkInterval);
+      clearInterval(pollId);
+      st?.kill();
+      tl?.kill();
+      if (checkInterval) clearInterval(checkInterval);
     };
   }, []);
 
