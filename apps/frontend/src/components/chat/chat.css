@@ -59,6 +59,8 @@
   right: 24px;
   width: 420px;
   height: 650px;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 120px);
   background: var(--surface-elevated);
   border: 1px solid var(--border-default);
   border-radius: 20px;
@@ -84,7 +86,6 @@
 .chat-window.size-large {
   width: 560px;
   height: 80vh;
-  max-height: 800px;
 }
 
 @keyframes slideIn {
