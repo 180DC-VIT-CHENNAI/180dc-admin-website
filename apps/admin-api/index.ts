@@ -259,7 +259,7 @@ function tokenEmailHtml(token: string, name: string): string {
 <tr><td align="center">
 <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
 <tr><td style="background:#8dc63f;padding:28px 24px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="56" style="margin-bottom:8px">
+<img src="https://vitc-180dc.org/images/180DC.png" alt="180DC" width="56" style="margin-bottom:8px">
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:28px;margin:0;font-weight:600;text-shadow:2px 2px 0 rgba(0,0,0,0.15)">180 Degrees Consulting</h1>
 <p style="color:#1a1a1a;font-size:13px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
 </td></tr>
@@ -272,7 +272,7 @@ function tokenEmailHtml(token: string, name: string): string {
 </div>
 <table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto 20px">
 <tr><td style="padding:10px 28px;text-align:center">
-<a href="https://180dc.shop" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Open Admin Portal</a>
+<a href="https://vitc-180dc.org" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Open Admin Portal</a>
 </td></tr>
 </table>
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">This is the only time this token will be shown in full. Keep it safe and don't share it with anyone.</p>
@@ -292,7 +292,7 @@ async function sendTokenEmail(c: any, email: string, token: string, name: string
     console.warn("RESEND_API_KEY not configured — skipping email to " + email);
     return { ok: false, error: "RESEND_API_KEY not configured" };
   }
-  const from = "180DC Admin <team@180dc.shop>";
+  const from = "180DC Admin <team@vitc-180dc.org>";
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -333,7 +333,7 @@ function meetEmailHtml(title: string, description: string | null, meetLink: stri
 <tr><td align="center">
 <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
 <tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<img src="https://vitc-180dc.org/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">New Meet Scheduled</h1>
 <p style="color:#1a1a1a;font-size:12px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">${safeMeetType.replace(/_/g, " ").toUpperCase()}</p>
 </td></tr>
@@ -376,7 +376,7 @@ async function sendMeetEmail(c: any, to: string, name: string, title: string, de
       method: "POST",
       headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "180DC Admin <team@180dc.shop>",
+        from: "180DC Admin <team@vitc-180dc.org>",
         to,
         subject: "New Meet: " + title,
         html: meetEmailHtml(title, description, meetLink, scheduledAt, meetType),
@@ -459,7 +459,7 @@ async function sendProjectAssignmentEmail(c: any, projectName: string, departmen
         method: "POST",
         headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: "180DC Admin <team@180dc.shop>",
+          from: "180DC Admin <team@vitc-180dc.org>",
           to: lead.email,
           subject: "New Project Assigned: " + projectName,
           html: `<!DOCTYPE html>
@@ -470,7 +470,7 @@ async function sendProjectAssignmentEmail(c: any, projectName: string, departmen
 <tr><td align="center">
 <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
 <tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<img src="https://vitc-180dc.org/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">New Project Assigned</h1>
 </td></tr>
 <tr><td style="padding:28px">
@@ -505,7 +505,7 @@ async function sendRoleAssignmentEmail(c: any, email: string, name: string, role
       method: "POST",
       headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "180DC Admin <team@180dc.shop>",
+        from: "180DC Admin <team@vitc-180dc.org>",
         to: email,
         subject: "Role Assigned: " + roleName + " for " + projectName,
         html: `<!DOCTYPE html>
@@ -516,7 +516,7 @@ async function sendRoleAssignmentEmail(c: any, email: string, name: string, role
 <tr><td align="center">
 <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
 <tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<img src="https://vitc-180dc.org/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">New Role Assigned</h1>
 </td></tr>
 <tr><td style="padding:28px">
@@ -548,7 +548,7 @@ async function sendRoleChangeEmail(c: any, email: string, name: string, roleName
       method: "POST",
       headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "180DC Admin <team@180dc.shop>",
+        from: "180DC Admin <team@vitc-180dc.org>",
         to: email,
         subject: "Your Role Has Been Updated",
         html: `<!DOCTYPE html>
@@ -559,7 +559,7 @@ async function sendRoleChangeEmail(c: any, email: string, name: string, roleName
 <tr><td align="center">
 <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
 <tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<img src="https://vitc-180dc.org/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">Role Updated</h1>
 </td></tr>
 <tr><td style="padding:28px">
@@ -718,7 +718,7 @@ async function seedData(db: any, env?: any) {
     await db.prepare(roleSql).bind("member", "General Member", 10, "system").run();
     await db.prepare(roleSql).bind("advisory", "Advisory Board", 30, "system").run();
 
-    await db.prepare("INSERT OR IGNORE INTO users (id, name, email, role_id) VALUES (?, ?, ?, ?)").bind("anonymous", "Anonymous", "anonymous@180dc.shop", "member").run();
+    await db.prepare("INSERT OR IGNORE INTO users (id, name, email, role_id) VALUES (?, ?, ?, ?)").bind("anonymous", "Anonymous", "anonymous@vitc-180dc.org", "member").run();
 
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("tech", "Technical", "Handles technical infrastructure and UI").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("rnd", "Research & Development", "Handles consulting research").run();
@@ -801,9 +801,8 @@ app.use("*", async (c, next) => {
 });
 
 const ALLOWED_ORIGINS = [
-  "https://180dc.shop",
-  "https://vitc.180dc.org.in",
   "https://vitc-180dc.org",
+  "https://vitc.180dc.org.in",
   "https://180dc-admin.pages.dev",
   "https://admin.180dc.org",
   "https://180dc-admin-frontend.pages.dev",
@@ -4163,7 +4162,7 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
         method: "POST",
         headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: "180DC Consulting <team@180dc.shop>",
+          from: "180DC Consulting <team@vitc-180dc.org>",
           to: request.email,
           subject: emailSubject,
           html: `<!DOCTYPE html>
@@ -4174,7 +4173,7 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
 <tr><td align="center">
 <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
 <tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<img src="https://vitc-180dc.org/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">Consulting Request Update</h1>
 </td></tr>
 <tr><td style="padding:28px">
@@ -4233,7 +4232,7 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
         method: "POST",
         headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: "180DC Consulting <team@180dc.shop>",
+          from: "180DC Consulting <team@vitc-180dc.org>",
           to: request.email,
           subject: emailSubject,
           html: `<!DOCTYPE html>
@@ -4244,7 +4243,7 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
 <tr><td align="center">
 <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
 <tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<img src="https://vitc-180dc.org/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">Consulting Request Update</h1>
 </td></tr>
 <tr><td style="padding:28px">
@@ -4461,7 +4460,7 @@ app.post("/api/send-email", async (c) => {
         method: "POST",
         headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: "180DC Admin <team@180dc.shop>",
+          from: "180DC Admin <team@vitc-180dc.org>",
           to: recipient,
           subject,
           html: `<!DOCTYPE html>
@@ -4472,7 +4471,7 @@ app.post("/api/send-email", async (c) => {
 <tr><td align="center">
 <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
 <tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dc.shop/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
+<img src="https://vitc-180dc.org/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
 <h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">180DC Admin Message</h1>
 </td></tr>
 <tr><td style="padding:28px">

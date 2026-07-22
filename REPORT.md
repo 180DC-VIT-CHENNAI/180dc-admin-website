@@ -42,7 +42,7 @@ Think of it as a **private workplace tool** (like a company intranet) where:
 - **Members** can log in to manage projects, chat with each other, share files, attend meetings, and handle club operations
 - **Board members (leadership)** can manage everything: users, roles, departments, emails, recruitments, and club-wide settings
 
-The entire system runs on cloud infrastructure (Cloudflare) and is accessible at **180dc.shop**.
+The entire system runs on cloud infrastructure (Cloudflare) and is accessible at **vitc-180dc.org**.
 
 ---
 
@@ -51,7 +51,7 @@ The entire system runs on cloud infrastructure (Cloudflare) and is accessible at
 These pages are visible to anyone on the internet.
 
 ### Landing Page
-The main homepage at **180dc.shop** includes:
+The main homepage at **vitc-180dc.org** includes:
 
 - **Animated Splash Screen** - A visually impressive intro animation that appears on your first visit. You click "ENTER" to dismiss it. It won't show again.
 
@@ -105,7 +105,7 @@ The main homepage at **180dc.shop** includes:
 ## 3. Login & Authentication
 
 ### How Members Log In
-Go to **180dc.shop/members** to access the login page.
+Go to **vitc-180dc.org/members** to access the login page.
 
 **Two login methods:**
 
@@ -335,7 +335,7 @@ Three types of meetings, each with scheduling and email notification features.
 - Emails are sent automatically when a meet is created (if notifications are enabled)
 - Daily limit of 100 emails per day
 - If the limit is hit, extra emails are queued and can be sent later by board via "Process Queue"
-- Emails are sent from `noreply@180dc.shop` with a branded HTML template
+- Emails are sent from `noreply@vitc-180dc.org` with a branded HTML template
 
 ---
 
