@@ -3,8 +3,7 @@ main = "./index.ts"
 compatibility_date = "2024-04-05"
 
 routes = [
-  { pattern = "*vitc-180dc.org/api/*", zone_name = "vitc-180dc.org" },
-  { pattern = "vitc.180dc.org.in/api/*", zone_name = "180dc.org.in" },
+  { pattern = "*180dcvitc.org/api/*", zone_name = "180dcvitc.org" },
 ]
 
 [[d1_databases]]
