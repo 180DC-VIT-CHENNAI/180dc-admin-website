@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
+import { useLenisScroll } from '../context/LenisContext';
 import './PillNav.css';
 
 interface PillNavItem {
@@ -41,11 +42,12 @@ const PillNav = ({
     onMobileMenuClick?.();
   };
 
+  const scrollTo = useLenisScroll();
+
   const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     if (href.startsWith('#')) {
       e.preventDefault();
-      const target = document.querySelector(href);
-      if (target) target.scrollIntoView({ behavior: 'smooth' });
+      scrollTo(href);
     }
   };
 
