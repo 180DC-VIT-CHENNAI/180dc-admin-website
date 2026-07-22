@@ -801,7 +801,7 @@ app.use("*", async (c, next) => {
 });
 
 const ALLOWED_ORIGINS = [
-  "https://vitc-180dc.org",
+  "https://180dc.vitcc.org",
   "https://vitc.180dc.org.in",
   "https://180dc-admin.pages.dev",
   "https://admin.180dc.org",
