@@ -4,6 +4,8 @@ compatibility_date = "2024-04-05"
 
 routes = [
   { pattern = "*180dc.shop/api/*", zone_name = "180dc.shop" },
+  { pattern = "vitc.180dc.org.in/api/*", zone_name = "180dc.org.in" },
+  { pattern = "*vitc-180dc.org/api/*", zone_name = "vitc-180dc.org" },
 ]
 
 [[d1_databases]]
