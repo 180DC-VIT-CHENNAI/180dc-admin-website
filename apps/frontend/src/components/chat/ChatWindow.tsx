@@ -1,10 +1,12 @@
-import { useRef, useEffect } from 'react';
-import { X, RefreshCcw, Trash2 } from 'lucide-react';
+import { useRef, useEffect, useState } from 'react';
+import { X, Trash2, Minus, Square, Maximize2 } from 'lucide-react';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import TypingIndicator from './TypingIndicator';
 import QuickActions from './QuickActions';
 import { useChat } from '../../hooks/useChat';
+
+type ChatSize = 'small' | 'medium' | 'large';
 
 interface ChatWindowProps {
   onClose: () => void;
@@ -14,15 +16,19 @@ interface ChatWindowProps {
 export default function ChatWindow({ onClose, isOpen }: ChatWindowProps) {
   const { messages, isLoading, error, sendMessage, clearChat } = useChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState<ChatSize>('medium');
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const body = bodyRef.current;
+    if (!body) return;
+    body.scrollTop = body.scrollHeight;
   }, [messages, isLoading, error]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="chat-window">
+    <div className={`chat-window size-${size}`}>
       {/* Header */}
       <div className="chat-header">
         <div className="chat-header-info">
@@ -35,9 +41,34 @@ export default function ChatWindow({ onClose, isOpen }: ChatWindowProps) {
             <p className="chat-subtitle">Business Consulting Assistant</p>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div className="chat-header-actions">
+          {/* Resize Controls */}
+          <div className="chat-resize-group">
+            <button
+              onClick={() => setSize('small')}
+              className={`chat-resize-btn${size === 'small' ? ' active' : ''}`}
+              title="Small"
+            >
+              <Minus size={14} />
+            </button>
+            <button
+              onClick={() => setSize('medium')}
+              className={`chat-resize-btn${size === 'medium' ? ' active' : ''}`}
+              title="Medium"
+            >
+              <Square size={12} />
+            </button>
+            <button
+              onClick={() => setSize('large')}
+              className={`chat-resize-btn${size === 'large' ? ' active' : ''}`}
+              title="Large"
+            >
+              <Maximize2 size={14} />
+            </button>
+          </div>
+
           {messages.length > 0 && (
-            <button 
+            <button
               onClick={clearChat}
               className="chat-close-btn"
               title="Clear Chat"
@@ -45,7 +76,7 @@ export default function ChatWindow({ onClose, isOpen }: ChatWindowProps) {
               <Trash2 size={18} />
             </button>
           )}
-          <button 
+          <button
             onClick={onClose}
             className="chat-close-btn"
             title="Close"
@@ -56,11 +87,11 @@ export default function ChatWindow({ onClose, isOpen }: ChatWindowProps) {
       </div>
 
       {/* Chat Area */}
-      <div className="chat-body">
+      <div className="chat-body" ref={bodyRef}>
         {messages.length === 0 && (
           <div className="chat-welcome">
             <h4 style={{ fontSize: '1.1rem', marginBottom: '12px' }}>Welcome to 180 Degrees Consulting VIT Chennai.</h4>
-            <p style={{ lineHeight: '1.6', marginBottom: '16px', color: '#e5e7eb' }}>
+            <p style={{ lineHeight: '1.6', marginBottom: '16px' }}>
               I am ConsultAI, your dedicated advisory assistant. We specialize in providing high-impact, pro-bono consulting to socially conscious organizations.
             </p>
             <p style={{ fontWeight: 600, color: 'var(--accent-primary)', marginBottom: '8px' }}>
@@ -72,7 +103,7 @@ export default function ChatWindow({ onClose, isOpen }: ChatWindowProps) {
               <li>• Competitor & SWOT Analysis</li>
               <li>• 180DC Information & Operations</li>
             </ul>
-            <p style={{ fontStyle: 'italic', color: '#9ca3af' }}>How may I provide value to you today?</p>
+            <p style={{ fontStyle: 'italic', opacity: 0.6 }}>How may I provide value to you today?</p>
             <QuickActions onActionSelect={sendMessage} />
           </div>
         )}
@@ -90,7 +121,7 @@ export default function ChatWindow({ onClose, isOpen }: ChatWindowProps) {
               onClick={() => sendMessage(messages[messages.length - 1]?.content || '')}
               className="chat-retry-btn"
             >
-              <RefreshCcw size={12} /> Retry
+              Retry
             </button>
           </div>
         )}
