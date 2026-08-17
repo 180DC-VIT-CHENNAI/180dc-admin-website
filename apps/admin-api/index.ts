@@ -3770,15 +3770,43 @@ app.post("/api/case-studies/upload-document", async (c) => {
     let suggestedDescription = "";
 
     if (typedFile.type === "application/pdf") {
-      const { getDocumentProxy, extractText } = await import("unpdf");
-      const pdf = await getDocumentProxy(uint8);
-      const metadata = await pdf.getMetadata();
-      const info = metadata?.info as Record<string, string> | undefined;
-      if (info?.Title && info.Title.trim()) suggestedTitle = info.Title.trim();
+      const raw = new TextDecoder("latin1").decode(uint8);
+      const textChunks: string[] = [];
+      const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+      let match;
+      while ((match = streamRegex.exec(raw)) !== null) {
+        const stream = match[1];
+        const textParts: string[] = [];
+        const tjRegex = /\(([^)]*)\)\s*Tj/g;
+        let tjMatch;
+        while ((tjMatch = tjRegex.exec(stream)) !== null) {
+          textParts.push(tjMatch[1]);
+        }
+        const TJRegex = /\[([^\]]*)\]\s*TJ/g;
+        let TJMatch;
+        while ((TJMatch = TJRegex.exec(stream)) !== null) {
+          const arr = TJMatch[1];
+          const strRegex = /\(([^)]*)\)/g;
+          let sMatch;
+          while ((sMatch = strRegex.exec(arr)) !== null) {
+            textParts.push(sMatch[1]);
+          }
+        }
+        if (textParts.length > 0) textChunks.push(textParts.join(" "));
+      }
 
-      const result = await extractText(pdf, { mergePages: true });
-      const text = typeof result.text === "string" ? result.text : result.text.join("\n\n");
-      const paragraphs = text.split(/\n{2,}/).filter((p: string) => p.trim());
+      const decodedChunks = textChunks.map(chunk =>
+        chunk
+          .replace(/\\n/g, "\n")
+          .replace(/\\r/g, "")
+          .replace(/\\t/g, " ")
+          .replace(/\\\(/g, "(")
+          .replace(/\\\)/g, ")")
+          .replace(/\\\\/g, "\\")
+      );
+
+      const text = decodedChunks.join("\n\n");
+      const paragraphs = text.split(/\n{2,}/).filter((p: string) => p.trim().length > 0);
       html = paragraphs
         .map((p: string) => {
           const trimmed = p.trim();
@@ -3789,6 +3817,9 @@ app.post("/api/case-studies/upload-document", async (c) => {
           return lines.map((l: string) => `<p>${escapeHtml(l.trim())}</p>`).join("\n");
         })
         .join("\n");
+
+      const titleMatch = raw.match(/\/Title\s*\(([^)]+)\)/);
+      if (titleMatch && titleMatch[1].trim()) suggestedTitle = titleMatch[1].trim();
 
       if (!suggestedTitle && paragraphs.length > 0) {
         const firstLine = paragraphs[0].split("\n")[0].trim();
