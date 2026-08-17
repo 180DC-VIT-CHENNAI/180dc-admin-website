@@ -26,6 +26,11 @@ binding = "BLOG_IMAGES"
 bucket_name = "180dc-blog-images"
 preview_bucket_name = "preview-180dc-blog-images"
 
+[[r2_buckets]]
+binding = "CASE_STUDIES"
+bucket_name = "180dc-case-studies"
+preview_bucket_name = "preview-180dc-case-studies"
+
 [[queues.producers]]
 binding = "QUEUE"
 queue = "jobs-queue"

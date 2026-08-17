@@ -7,6 +7,7 @@ type Bindings = {
   DB: any;
   CLUB_FILES: R2Bucket;
   BLOG_IMAGES: R2Bucket;
+  CASE_STUDIES: R2Bucket;
   AUTH_SESSIONS: any;
   ENVIRONMENT?: string;
   RESEND_API_KEY?: string;
@@ -3673,9 +3674,9 @@ app.post("/api/case-studies/upload-image", async (c) => {
     }
 
     const ext = typedFile.name.split(".").pop() || "jpg";
-    const key = `case-studies/${crypto.randomUUID()}.${ext}`;
+    const key = `images/${crypto.randomUUID()}.${ext}`;
     const arrayBuffer = await typedFile.arrayBuffer();
-    await c.env.BLOG_IMAGES.put(key, arrayBuffer, {
+    await c.env.CASE_STUDIES.put(key, arrayBuffer, {
       httpMetadata: { contentType: typedFile.type },
     });
 
@@ -3703,7 +3704,7 @@ app.get("/api/case-studies/images/*", async (c) => {
 
     if (!key || key.includes("..")) return c.json({ error: "Invalid key" }, 400);
 
-    const obj = await c.env.BLOG_IMAGES.get(key);
+    const obj = await c.env.CASE_STUDIES.get(key);
     if (!obj) return c.json({ error: "Image not found" }, 404);
 
     const headers = new Headers();
@@ -3726,9 +3727,9 @@ app.delete("/api/case-studies/delete-image", async (c) => {
 
     const { key } = await c.req.json();
     if (!key || typeof key !== "string") return c.json({ error: "Image key is required" }, 400);
-    if (!key.startsWith("case-studies/")) return c.json({ error: "Invalid image key" }, 400);
+    if (!key.startsWith("images/") && !key.startsWith("source/")) return c.json({ error: "Invalid image key" }, 400);
 
-    await c.env.BLOG_IMAGES.delete(key);
+    await c.env.CASE_STUDIES.delete(key);
     return c.json({ success: true, message: "Image deleted" });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -3850,9 +3851,9 @@ app.post("/api/case-studies/upload-source", async (c) => {
       return c.json({ error: "File too large. Max 20 MB" }, 400);
     }
 
-    const key = `case-studies/source/${crypto.randomUUID()}.${ext}`;
+    const key = `source/${crypto.randomUUID()}.${ext}`;
     const arrayBuffer = await typedFile.arrayBuffer();
-    await c.env.BLOG_IMAGES.put(key, arrayBuffer, {
+    await c.env.CASE_STUDIES.put(key, arrayBuffer, {
       httpMetadata: { contentType: typedFile.type },
     });
 
@@ -4153,13 +4154,13 @@ app.delete("/api/case-studies/:id", async (c) => {
     if (row.image_url) {
       try {
         const imgKey = row.image_url.replace(/^\/api\/case-studies\/images\//, "");
-        if (imgKey.startsWith("case-studies/")) await c.env.BLOG_IMAGES.delete(imgKey);
+        if (imgKey.startsWith("images/")) await c.env.CASE_STUDIES.delete(imgKey);
       } catch {}
     }
     if (row.source_file_url) {
       try {
         const srcKey = row.source_file_url.replace(/^\/api\/case-studies\/images\//, "");
-        if (srcKey.startsWith("case-studies/")) await c.env.BLOG_IMAGES.delete(srcKey);
+        if (srcKey.startsWith("source/")) await c.env.CASE_STUDIES.delete(srcKey);
       } catch {}
     }
 
