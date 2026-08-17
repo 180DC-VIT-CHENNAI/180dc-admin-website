@@ -50,6 +50,10 @@ export async function onRequest(context: any) {
     });
     const respHeaders = new Headers(apiResponse.headers);
     addSecurityHeaders(respHeaders);
+    if (path.startsWith("/api/case-studies/images/")) {
+      respHeaders.set("X-Frame-Options", "SAMEORIGIN");
+      respHeaders.delete("Content-Security-Policy");
+    }
     respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
     return new Response(apiResponse.body, {
       status: apiResponse.status,

@@ -24,6 +24,8 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
   const [sourceFileKey, setSourceFileKey] = useState("");
   const [sourceFileName, setSourceFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [suggestedTitle, setSuggestedTitle] = useState("");
+  const [suggestedDescription, setSuggestedDescription] = useState("");
 
   async function load() {
     try {
@@ -113,8 +115,8 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
       }
 
       setExtractedContent(html);
-      if (suggestedTitle && !title) setTitle(suggestedTitle);
-      if (suggestedDescription && !description) setDescription(suggestedDescription);
+      setSuggestedTitle(suggestedTitle);
+      setSuggestedDescription(suggestedDescription);
 
       const srcFd = new FormData();
       srcFd.append("file", file);
@@ -166,6 +168,9 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
   const handleSubmit = async () => {
     if (!extractedContent && !sourceFileUrl) { setError("Upload a document first"); return; }
 
+    const finalTitle = title.trim() || suggestedTitle;
+    const finalDescription = description.trim() || suggestedDescription;
+
     setSubmitting(true);
     setError("");
     try {
@@ -176,8 +181,8 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({
           tag: tag.trim() || undefined,
-          title: title.trim() || undefined,
-          description: description.trim() || undefined,
+          title: finalTitle || undefined,
+          description: finalDescription || undefined,
           content: extractedContent,
           sourceFileUrl: sourceFileUrl || undefined,
         }),
@@ -218,6 +223,8 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
     setSourceFileUrl("");
     setSourceFileKey("");
     setSourceFileName("");
+    setSuggestedTitle("");
+    setSuggestedDescription("");
     setError("");
     setMode("list");
   }, []);

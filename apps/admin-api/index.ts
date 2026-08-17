@@ -771,7 +771,12 @@ async function seedData(db: any, env?: any) {
 app.use("*", async (c, next) => {
   await next();
   c.res.headers.set("X-Content-Type-Options", "nosniff");
-  c.res.headers.set("X-Frame-Options", "DENY");
+  const path = new URL(c.req.url).pathname;
+  if (path.startsWith("/api/case-studies/images/")) {
+    c.res.headers.set("X-Frame-Options", "SAMEORIGIN");
+  } else {
+    c.res.headers.set("X-Frame-Options", "DENY");
+  }
   c.res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   c.res.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
 });
