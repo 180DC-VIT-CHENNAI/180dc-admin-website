@@ -1075,77 +1075,9 @@ a:hover {
   font-weight: 400;
 }
 
-/* ═══ BLOG ═══════════════════════════════════════════════════════════════ */
+/* ═══ HOVER LIFT ═════════════════════════════════════════════════════════ */
 
-.blog-section {
-  min-height: 80vh;
-  display: flex;
-  align-items: center;
-  background: var(--surface-canvas);
-  padding: var(--section-py) 0;
-}
-
-.blog-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
-  gap: var(--space-6);
-}
-
-.blog-card {
-  position: relative;
-}
-
-.blog-date {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-tertiary);
-  margin-bottom: var(--space-2);
-  letter-spacing: 0.02em;
-}
-
-.blog-card h3 {
-  font-size: 1.125rem;
-  font-weight: 500;
-  margin-bottom: var(--space-2);
-}
-
-.blog-card p {
-  font-size: 0.875rem;
-  margin-bottom: var(--space-4);
-  line-height: 1.6;
-}
-
-.read-more-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-5);
-  background: var(--accent-soft);
-  border: 1px solid var(--border-green);
-  border-radius: var(--radius-full);
-  font-family: var(--font-sans);
-  font-weight: 500;
-  font-size: 0.8125rem;
-  color: var(--accent-primary);
-  transition: all 250ms var(--ease-premium);
-  cursor: pointer;
-}
-
-[data-theme="dark"] .read-more-btn {
-  color: var(--green-300);
-}
-
-.read-more-btn:hover {
-  background: var(--accent-primary);
-  color: #ffffff;
-  border-color: var(--accent-primary);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-default);
-}
-
-/* ═══ PARTNERS ═══════════════════════════════════════════════════════════ */
-
-.partners-section {
+.hover-lift {
   min-height: 60vh;
   display: flex;
   align-items: center;
@@ -1396,15 +1328,6 @@ a:hover {
   margin: 0;
 }
 
-/* ═══ POST BLOG BUTTON ═══════════════════════════════════════════════════ */
-
-.post-blog-btn {
-  border: 1px solid var(--border-green);
-  font-family: var(--font-sans);
-  font-size: 0.875rem;
-  padding: var(--space-2) var(--space-5);
-}
-
 /* ═══ HOVER LIFT ═════════════════════════════════════════════════════════ */
 
 .hover-lift {
@@ -1421,7 +1344,6 @@ a:hover {
 /* Ensure cards are always visible */
 .case-card,
 .team-card,
-.blog-card,
 .about-card,
 .stat-item {
   opacity: 1 !important;
@@ -1457,8 +1379,7 @@ a:hover {
 
 /* Remove legacy doodle hover effects — replaced by premium hover */
 .case-card::after,
-.team-card::after,
-.blog-card::after {
+.team-card::after {
   content: none;
 }
 
@@ -1716,10 +1637,6 @@ html.lenis body {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .blog-grid {
-    grid-template-columns: 1fr;
-  }
-
   .footer-content {
     flex-direction: column;
   }
@@ -1732,7 +1649,6 @@ html.lenis body {
   .about-section,
   .cases-section,
   .leadership-section,
-  .blog-section,
   .partners-section,
   .global-network-section,
   .projects-section {
@@ -1788,7 +1704,6 @@ html.lenis body {
   .about-section,
   .cases-section,
   .leadership-section,
-  .blog-section,
   .partners-section,
   .global-network-section,
   .projects-section {

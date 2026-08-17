@@ -21,7 +21,6 @@ const AboutSection = lazy(() => import("./sections/AboutSection"));
 const CompletedProjectsSection = lazy(() => import("./sections/CompletedProjectsSection"));
 const CaseStudiesSection = lazy(() => import("./sections/CaseStudiesSection"));
 const LeadershipSection = lazy(() => import("./sections/LeadershipSection"));
-const BlogSection = lazy(() => import("./sections/BlogSection"));
 const PartnersSection = lazy(() => import("./sections/PartnersSection"));
 const FooterSection = lazy(() => import("./sections/FooterSection"));
 
@@ -38,8 +37,6 @@ function App() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [caseStudies, setCaseStudies] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [blogPosts, setBlogPosts] = useState<any[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [completedProjects, setCompletedProjects] = useState<any[]>([]);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
@@ -48,14 +45,12 @@ function App() {
   useEffect(() => {
     async function loadContent() {
       try {
-        const [csRes, _tmRes, bpRes, completedRes] = await Promise.all([
+        const [csRes, _tmRes, completedRes] = await Promise.all([
           fetch(apiUrl("/api/content/case-studies")).then((r) => r.json()),
           fetch(apiUrl("/api/content/team-members")).then((r) => r.json()),
-          fetch(apiUrl("/api/content/blog-posts")).then((r) => r.json()),
           fetch(apiUrl("/api/projects/completed")).then((r) => r.json()),
         ]);
         if (csRes.success) setCaseStudies(csRes.data);
-        if (bpRes.success) setBlogPosts(bpRes.data);
         if (completedRes.success) setCompletedProjects(completedRes.data);
       } catch (e) {
         console.error("Failed to load content", e);
@@ -70,7 +65,7 @@ function App() {
   // mounted later by LazyReveal still get their reveal animations and
   // card hover effects attached correctly.
   useEffect(() => {
-    const NAV_IDS = ["about", "case-studies", "leadership", "blog", "partners"];
+    const NAV_IDS = ["about", "case-studies", "leadership", "partners"];
     const observedNavEls = new Set<Element>();
 
     const navObserver = new IntersectionObserver(
@@ -138,10 +133,8 @@ function App() {
     { label: "About", href: "#about" },
     { label: "Case Studies", href: "#case-studies" },
     { label: "Leadership", href: "#leadership" },
-    { label: "Blog", href: "#blog" },
     { label: "Partners", href: "#partners" },
     { label: "Recruitments", href: "/recruitments" },
-    { label: "Post a Blog", href: "/post-blog" },
   ];
 
   return (
@@ -198,14 +191,6 @@ function App() {
         <ErrorBoundary>
           <Suspense fallback={null}>
             <LeadershipSection />
-          </Suspense>
-        </ErrorBoundary>
-      </LazyReveal>
-
-      <LazyReveal>
-        <ErrorBoundary>
-          <Suspense fallback={null}>
-            <BlogSection blogPosts={blogPosts} />
           </Suspense>
         </ErrorBoundary>
       </LazyReveal>

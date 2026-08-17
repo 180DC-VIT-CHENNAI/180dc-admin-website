@@ -40,8 +40,6 @@ function isPublicRoute(pathname: string, method: string): boolean {
     ["/api/recruitment/register"],
     ["/api/recruitment/login"],
     ["/api/recruitment/open-domains"],
-    ["/api/blogs"],
-    ["/api/blogs/upload-image", "POST"],
     ["/api/chat", "POST"],
   ];
   for (const [route, requiredMethod] of PUBLIC_ROUTES) {
@@ -49,7 +47,6 @@ function isPublicRoute(pathname: string, method: string): boolean {
   }
 
   if (pathname.startsWith("/api/content") && method === "GET") return true;
-  if (pathname.startsWith("/api/blogs/") && method === "GET" && !pathname.startsWith("/api/blogs/admin")) return true;
   if (pathname.startsWith("/api/case-studies/images/") && method === "GET") return true;
   if (pathname === "/api/admin/maintenance" && method === "GET") return true;
 
@@ -625,7 +622,6 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS inter_dept_meets (id TEXT PRIMARY KEY, title TEXT NOT NULL, meet_link TEXT, description TEXT, scheduled_at DATETIME NOT NULL, departments TEXT NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS case_studies (id TEXT PRIMARY KEY, tag TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS team_members (id TEXT PRIMARY KEY, initials TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
-    CREATE TABLE IF NOT EXISTS blog_posts (id TEXT PRIMARY KEY, date TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS partners (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS announcements (id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS role_transfers (id TEXT PRIMARY KEY, from_user_id TEXT NOT NULL, to_user_id TEXT NOT NULL, role_id TEXT NOT NULL, status TEXT DEFAULT 'pending', created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (from_user_id) REFERENCES users(id), FOREIGN KEY (to_user_id) REFERENCES users(id), FOREIGN KEY (role_id) REFERENCES roles(id));
@@ -645,7 +641,6 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS pending_emails (id TEXT PRIMARY KEY, meet_id TEXT NOT NULL, meet_type TEXT NOT NULL, recipient_email TEXT NOT NULL, recipient_name TEXT NOT NULL, meet_title TEXT NOT NULL, meet_description TEXT, meet_link TEXT, scheduled_at TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
-    CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, title TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, content TEXT NOT NULL, excerpt TEXT, image_url TEXT, author_id TEXT NOT NULL, author_name TEXT NOT NULL, status TEXT DEFAULT 'pending', is_published INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME);
     CREATE TABLE IF NOT EXISTS maintenance_mode (id INTEGER PRIMARY KEY DEFAULT 1, enabled INTEGER DEFAULT 0, message TEXT DEFAULT 'Site is under maintenance. Please check back later.', updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     `);
   await runMigrations(db);
@@ -663,12 +658,6 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE recruitment_sessions ADD COLUMN token_hash TEXT"); } catch { console.warn("Migration: token_hash may already exist"); }
   try { await db.exec("ALTER TABLE recruitment_sessions RENAME COLUMN token TO token_old"); } catch { console.warn("Migration: token column rename"); }
   try { await db.exec("UPDATE recruitment_sessions SET token_hash = token_old WHERE token_hash IS NULL"); } catch { console.warn("Migration: token_hash backfill"); }
-  try { await db.exec("ALTER TABLE posts ADD COLUMN author_name TEXT DEFAULT 'Anonymous'"); } catch { console.warn("Migration: author_name may already exist"); }
-  try { await db.exec("ALTER TABLE posts ADD COLUMN author_association TEXT DEFAULT ''"); } catch { console.warn("Migration: author_association may already exist"); }
-  try { await db.exec("ALTER TABLE posts ADD COLUMN excerpt TEXT"); } catch { console.warn("Migration: excerpt may already exist"); }
-  try { await db.exec("ALTER TABLE posts ADD COLUMN status TEXT DEFAULT 'pending'"); } catch { console.warn("Migration: status may already exist"); }
-  try { await db.exec("ALTER TABLE posts ADD COLUMN is_published INTEGER DEFAULT 0"); } catch { console.warn("Migration: is_published may already exist"); }
-  try { await db.exec("ALTER TABLE posts ADD COLUMN updated_at DATETIME"); } catch { console.warn("Migration: updated_at may already exist"); }
   try { await db.exec("ALTER TABLE case_studies ADD COLUMN content TEXT DEFAULT ''"); } catch { console.warn("Migration: case_studies.content may already exist"); }
   try { await db.exec("ALTER TABLE case_studies ADD COLUMN image_url TEXT"); } catch { console.warn("Migration: case_studies.image_url may already exist"); }
   try { await db.exec("ALTER TABLE case_studies ADD COLUMN author_name TEXT DEFAULT 'Anonymous'"); } catch { console.warn("Migration: case_studies.author_name may already exist"); }
@@ -746,15 +735,6 @@ async function seedData(db: any, env?: any) {
       await db.prepare(tm).bind("tm4", "EC", "Emily Chen", "Director of L&D").run();
       await db.prepare(tm).bind("tm5", "MR", "Michael Ross", "VP of Projects").run();
       await db.prepare(tm).bind("tm6", "SL", "Sarah Lee", "Head of Marketing").run();
-    }
-
-    const bpCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM blog_posts").first();
-    if (bpCount && bpCount.cnt === 0) {
-      const bp = "INSERT OR IGNORE INTO blog_posts (id, date, title, description) VALUES (?, ?, ?, ?)";
-      await db.prepare(bp).bind("bp1", "Jan 15, 2026", "The Future of Social Impact", "How Gen-Z consultants are changing the non-profit landscape with innovative strategies and digital-first approaches.").run();
-      await db.prepare(bp).bind("bp2", "Jan 10, 2026", "Strategy Frameworks 101", "A deep dive into MECE and creating effective structures for problem-solving in consulting engagements.").run();
-      await db.prepare(bp).bind("bp3", "Jan 5, 2026", "Building Sustainable NGOs", "Key insights from our 20+ projects on what makes non-profits thrive in the long term.").run();
-      await db.prepare(bp).bind("bp4", "Dec 28, 2025", "Student Leadership Guide", "How to lead high-performing student teams and deliver real impact for social organizations.").run();
     }
 
     const pCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM partners").first();
@@ -983,21 +963,6 @@ app.get("/api/content/team-members", async (c) => {
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare("SELECT * FROM team_members ORDER BY created_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-app.get("/api/content/blog-posts", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    await seedData(c.env.DB, c.env);
-    const rl = await checkRateLimit(c, "content_blog_posts", 100, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-    const approvedRows = await c.env.DB.prepare(
-      "SELECT id, created_at, title, excerpt, image_url, author_name, author_association, slug FROM posts WHERE status = 'approved' AND is_published = 1 ORDER BY created_at DESC",
-    ).all();
-    return c.json({ success: true, data: approvedRows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -3618,86 +3583,8 @@ app.get("/api/recruitment/open-domains", async (c) => {
   }
 });
 
-// ---------------------------------------------------------
-// BLOG POSTS (with R2 image upload)
-// ---------------------------------------------------------
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/[\s_]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 100) || "post";
-}
-
 const ALLOWED_IMG_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_IMG_SIZE = 10 * 1024 * 1024; // 10 MB
-
-// 1. Upload image to R2 (anonymous, rate-limited)
-app.post("/api/blogs/upload-image", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "blog_upload_image", 20, 3600);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-
-    const fd = await c.req.formData();
-    const file = fd.get("image");
-    if (!file || typeof file === "string") return c.json({ error: "No image file provided" }, 400);
-
-    const typedFile = file as File;
-    if (!ALLOWED_IMG_TYPES.includes(typedFile.type)) {
-      return c.json({ error: "Invalid file type. Allowed: JPEG, PNG, WebP, GIF" }, 400);
-    }
-    if (typedFile.size > MAX_IMG_SIZE) {
-      return c.json({ error: "File too large. Max 10 MB" }, 400);
-    }
-
-    const ext = typedFile.name.split(".").pop() || "jpg";
-    const key = `blogs/${crypto.randomUUID()}.${ext}`;
-    const arrayBuffer = await typedFile.arrayBuffer();
-    await c.env.BLOG_IMAGES.put(key, arrayBuffer, {
-      httpMetadata: { contentType: typedFile.type },
-    });
-
-    const url = `/api/blogs/images/${key}`;
-
-    return c.json({ success: true, url, key });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// 1b. Serve blog image from R2 (public)
-app.get("/api/blogs/images/*", async (c) => {
-  try {
-    const rl = await checkRateLimit(c, "blog_image_serve", 200, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-    const url = new URL(c.req.url);
-    const prefix = "/api/blogs/images/";
-    let key = decodeURIComponent(url.pathname);
-
-    if (key.startsWith(prefix)) {
-      key = key.slice(prefix.length);
-    } else {
-      key = key.replace(/^\/+/, "");
-    }
-
-    if (!key || key.includes("..")) return c.json({ error: "Invalid key" }, 400);
-
-    const obj = await c.env.BLOG_IMAGES.get(key);
-    if (!obj) return c.json({ error: "Image not found" }, 404);
-
-    const headers = new Headers();
-    headers.set("Content-Type", obj.httpMetadata?.contentType || "image/jpeg");
-    headers.set("Cache-Control", "public, max-age=86400");
-    headers.set("X-Content-Type-Options", "nosniff");
-
-    return new Response(obj.body, { headers });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
 
 // ─────────────────────────────────────────────
 // CASE STUDY IMAGE UPLOAD & SERVE (uses same R2 bucket, separate folder)
@@ -3781,266 +3668,6 @@ app.delete("/api/case-studies/delete-image", async (c) => {
 
     await c.env.BLOG_IMAGES.delete(key);
     return c.json({ success: true, message: "Image deleted" });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// 2. Create a blog post (anonymous, rate-limited)
-app.post("/api/blogs", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "create_blog", 1, 86400);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded. You can only post one blog per day.", retryAfter: rl.retryAfter }, 429);
-
-    const body = await c.req.json();
-    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
-
-    const title = sanitizeStr(body.title);
-    const rawContent = body.content;
-    const excerpt = sanitizeStr(body.excerpt);
-    const imageUrl = sanitizeStr(body.imageUrl);
-    const rawSlug = sanitizeStr(body.slug) || slugify(title || "");
-    const authorName = sanitizeStr(body.authorName) || "Anonymous";
-    const authorAssociation = sanitizeStr(body.authorAssociation) || "";
-
-    if (!title || typeof title !== "string" || title.length < 3) {
-      return c.json({ error: "Title must be at least 3 characters" }, 400);
-    }
-    if (!rawContent || typeof rawContent !== "string" || rawContent.length < 10) {
-      return c.json({ error: "Content must be at least 10 characters" }, 400);
-    }
-    if (rawContent.length > 100000) {
-      return c.json({ error: "Content too long (max 100,000 chars)" }, 400);
-    }
-
-    const content = sanitizeBlogHtml(rawContent);
-    const textOnly = content.replace(/<[^>]*>/g, "").trim();
-    if (textOnly.length < 10) {
-      return c.json({ error: "Content must contain at least 10 visible characters after sanitization" }, 400);
-    }
-
-    // Generate unique slug
-    let slug = rawSlug;
-    let slugSuffix = 0;
-    while (true) {
-      const existing: any = await c.env.DB.prepare("SELECT id FROM posts WHERE slug = ?").bind(slug).first();
-      if (!existing) break;
-      slugSuffix++;
-      slug = `${rawSlug}-${slugSuffix}`;
-    }
-
-    const id = crypto.randomUUID().replace(/-/g, "");
-    await c.env.DB.prepare(
-      "INSERT INTO posts (id, title, slug, content, excerpt, image_url, author_id, author_name, author_association, status, is_published) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)",
-    ).bind(id, title, slug, content, excerpt || null, imageUrl || null, "anonymous", authorName, authorAssociation).run();
-
-    return c.json({ success: true, message: "Blog post submitted for review", id, slug, status: "pending" });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// 3. Get approved/published blogs (public)
-app.get("/api/blogs", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "public_blogs", 100, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-    const rows = await c.env.DB.prepare(
-      "SELECT id, title, slug, excerpt, image_url, author_name, author_association, created_at FROM posts WHERE status = 'approved' AND is_published = 1 ORDER BY created_at DESC LIMIT 50",
-    ).all();
-    return c.json({ success: true, data: rows.results || [] });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// 4. Get all blogs for admin (power >= 50)
-app.get("/api/blogs/admin", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const user: any = c.get("user");
-    if (!user || user.power_level < 50) return c.json({ error: "Forbidden: Lead or above only" }, 403);
-
-    const rows = await c.env.DB.prepare(
-      "SELECT p.id, p.title, p.slug, p.content, p.excerpt, p.image_url, p.author_name, p.author_association, p.status, p.is_published, p.created_at, p.updated_at FROM posts p ORDER BY p.created_at DESC LIMIT 100",
-    ).all();
-    return c.json({ success: true, data: rows.results || [] });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// 5. Get single blog by slug (public)
-app.get("/api/blogs/:slug", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "public_blog_single", 100, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-    const slug = c.req.param("slug");
-    const row: any = await c.env.DB.prepare(
-      "SELECT id, title, slug, content, excerpt, image_url, author_name, author_association, created_at FROM posts WHERE (slug = ? OR id = ?) AND status = 'approved' AND is_published = 1",
-    ).bind(slug, slug).first();
-
-    if (!row) return c.json({ error: "Blog not found" }, 404);
-    return c.json({ success: true, data: row });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// 6. Approve a blog post (power >= 100)
-app.put("/api/blogs/:id/approve", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "blog_approve", 20, 60);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
-    const user: any = c.get("user");
-    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
-
-    const id = c.req.param("id");
-    const row: any = await c.env.DB.prepare("SELECT id, status, title FROM posts WHERE id = ?").bind(id).first();
-    if (!row) return c.json({ error: "Blog not found" }, 404);
-    if (row.status !== "pending") return c.json({ error: "Blog already processed (current: " + row.status + ")" }, 400);
-
-    await c.env.DB.prepare("UPDATE posts SET status = 'approved', is_published = 1, updated_at = datetime('now') WHERE id = ?").bind(id).run();
-    await addAuditLog(c, "blog_approved", "post", id, "Blog approved: " + row.title);
-
-    return c.json({ success: true, message: "Blog approved and published" });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
-
-// 7. Reject a blog post (power >= 100) — also deletes associated images from R2
-app.put("/api/blogs/:id/reject", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "blog_reject", 20, 60);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
-    const user: any = c.get("user");
-    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
-
-    const id = c.req.param("id");
-    const row: any = await c.env.DB.prepare("SELECT id, status, title, content, image_url FROM posts WHERE id = ?").bind(id).first();
-    if (!row) return c.json({ error: "Blog not found" }, 404);
-    if (row.status !== "pending") return c.json({ error: "Blog already processed (current: " + row.status + ")" }, 400);
-
-    await c.env.DB.prepare("UPDATE posts SET status = 'rejected', is_published = 0, updated_at = datetime('now') WHERE id = ?").bind(id).run();
-    await addAuditLog(c, "blog_rejected", "post", id, "Blog rejected: " + row.title);
-
-    // Delete associated images from R2
-    try {
-      const keys = new Set<string>();
-      // Featured image
-      if (row.image_url) {
-        const m = row.image_url.match(/\/api\/blogs\/images\/(blogs\/[^"'\s?]+)/);
-        if (m) keys.add(m[1]);
-      }
-      // Images in content
-      if (row.content) {
-        const imgRe = /<img[^>]+src="\/api\/blogs\/images\/(blogs\/[^"']+?)"/gi;
-        let match;
-        while ((match = imgRe.exec(row.content)) !== null) {
-          keys.add(match[1]);
-        }
-      }
-      for (const key of keys) {
-        await c.env.BLOG_IMAGES.delete(key).catch(() => {});
-      }
-    } catch {}
-
-    return c.json({ success: true, message: "Blog rejected" });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
-
-// 7a. Edit any blog post (power >= 100)
-app.put("/api/blogs/:id/edit", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "blog_edit", 20, 60);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
-    const user: any = c.get("user");
-    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
-
-    const id = c.req.param("id");
-    const existing: any = await c.env.DB.prepare("SELECT id FROM posts WHERE id = ?").bind(id).first();
-    if (!existing) return c.json({ error: "Blog not found" }, 404);
-
-    const body = await c.req.json();
-    const title = sanitizeStr(body.title);
-    const rawContent = body.content;
-    const excerpt = sanitizeStr(body.excerpt);
-    const imageUrl = sanitizeStr(body.imageUrl);
-    const authorName = sanitizeStr(body.authorName);
-    const authorAssociation = sanitizeStr(body.authorAssociation);
-    const rawSlug = sanitizeStr(body.slug);
-
-    if (!title || typeof title !== "string" || title.length < 3) {
-      return c.json({ error: "Title must be at least 3 characters" }, 400);
-    }
-    if (!rawContent || typeof rawContent !== "string" || rawContent.length < 10) {
-      return c.json({ error: "Content must be at least 10 characters" }, 400);
-    }
-    if (rawContent.length > 100000) {
-      return c.json({ error: "Content too long (max 100,000 chars)" }, 400);
-    }
-
-    const content = sanitizeBlogHtml(rawContent);
-    const slug = rawSlug ? slugify(rawSlug) : slugify(title);
-    const updatedAt = new Date().toISOString();
-
-    await c.env.DB.prepare(
-      "UPDATE posts SET title = ?, content = ?, excerpt = ?, image_url = ?, author_name = ?, author_association = ?, slug = ?, updated_at = ? WHERE id = ?",
-    ).bind(title, content, excerpt || null, imageUrl || null, authorName, authorAssociation, slug, updatedAt, id).run();
-
-    await addAuditLog(c, "blog_updated", "post", id, "Blog updated: " + title);
-
-    return c.json({ success: true, message: "Blog updated", slug });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// 7b. Delete a blog post permanently (power >= 100)
-app.delete("/api/blogs/:id", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "blog_delete", 20, 60);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
-    const user: any = c.get("user");
-    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
-
-    const id = c.req.param("id");
-    const row: any = await c.env.DB.prepare("SELECT id, title, content, image_url FROM posts WHERE id = ?").bind(id).first();
-    if (!row) return c.json({ error: "Blog not found" }, 404);
-
-    // Delete associated images from R2
-    try {
-      const keys = new Set<string>();
-      if (row.image_url) {
-        const m = row.image_url.match(/\/api\/blogs\/images\/(blogs\/[^"'\s?]+)/);
-        if (m) keys.add(m[1]);
-      }
-      if (row.content) {
-        const imgRe = /<img[^>]+src="\/api\/blogs\/images\/(blogs\/[^"']+?)"/gi;
-        let match;
-        while ((match = imgRe.exec(row.content)) !== null) {
-          keys.add(match[1]);
-        }
-      }
-      for (const key of keys) {
-        await c.env.BLOG_IMAGES.delete(key).catch(() => {});
-      }
-    } catch {}
-
-    await c.env.DB.prepare("DELETE FROM posts WHERE id = ?").bind(id).run();
-    await addAuditLog(c, "blog_deleted", "post", id, "Blog deleted: " + row.title);
-
-    return c.json({ success: true, message: "Blog permanently deleted" });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }

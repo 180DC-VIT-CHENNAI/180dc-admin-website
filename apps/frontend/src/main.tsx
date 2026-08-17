@@ -6,8 +6,6 @@ import "./index.css";
 import App from "./App.tsx";
 import RecruitmentsPage from "./pages/RecruitmentsPage.tsx";
 import RequestAccount from "./pages/RequestAccount.tsx";
-import PostBlog from "./pages/PostBlog.tsx";
-import BlogView from "./pages/BlogView.tsx";
 import { ThemeProvider } from "./context/ThemeContext.tsx";
 import ErrorBoundary from "./components/ErrorBoundary";
 
@@ -32,8 +30,6 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/" element={<App />} />
           <Route path="/recruitments" element={<RecruitmentsPage />} />
           <Route path="/request-account" element={<RequestAccount />} />
-          <Route path="/post-blog" element={<PostBlog />} />
-          <Route path="/blog/:slug" element={<BlogView />} />
           <Route path="/members" element={
             CLERK_PUBLISHABLE_KEY ? (
               <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} afterSignOutUrl="/members">

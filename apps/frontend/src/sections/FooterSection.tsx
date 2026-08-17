@@ -48,7 +48,6 @@ export default function FooterSection() {
           <h4>Quick Links</h4>
           <a href="#about">About</a>
           <a href="#case-studies">Case Studies</a>
-          <a href="#blog">Blog</a>
           <a href="#partners">Partners</a>
         </div>
       </div>
