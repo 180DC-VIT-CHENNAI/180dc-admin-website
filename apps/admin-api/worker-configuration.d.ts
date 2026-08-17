@@ -5,9 +5,7 @@ interface Env {
 	RESEND_API_KEY: string;
 	GEMINI_API_KEY: string;
 	GROQ_API_KEY: string;
-	CHAT_ROOM: DurableObjectNamespace<import("./index").ChatRoomDO>;
 	DB: D1Database;
-	ARCHIVE_DB: D1Database;
 	CLUB_FILES: R2Bucket;
 	BLOG_IMAGES: R2Bucket;
 	QUEUE: Queue;

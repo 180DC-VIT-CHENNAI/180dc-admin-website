@@ -5,7 +5,6 @@ import MembersLogin from "./MembersLogin";
 import DepartmentPanel from "./DepartmentPanel";
 import RecruitmentsPanel from "./RecruitmentsPanel";
 import ProfileSection from "./ProfileSection";
-import ChatSection from "./ChatSection";
 import ClubFilesPanel from "./ClubFilesPanel";
 import MembersSection from "./MembersSection";
 import ClubMeetsSection from "./ClubMeetsSection";
@@ -15,7 +14,6 @@ import ProjectsSection from "./ProjectsSection";
 import InstructionsSection from "./InstructionsSection";
 import ConsultingRequestsSection from "./ConsultingRequestsSection";
 import SendMailSection from "./SendMailSection";
-import RoomSettingsPanel from "./RoomSettingsPanel";
 import BlogSection from "./BlogSection";
 import CaseStudySection from "./CaseStudySection";
 import TransfersSection from "./TransfersSection";
@@ -101,9 +99,8 @@ export default function MembersLayout() {
   const [dangerAdvExTitle, setDangerAdvExTitle] = useState("");
   const [dangerAdvBusy, setDangerAdvBusy] = useState(false);
 
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["General", "Chats", "Departments", "Management", "Admin"]));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["General", "Departments", "Management", "Admin"]));
   const [mobileSheetSection, setMobileSheetSection] = useState<string | null>(null);
-  const [roomSettings, setRoomSettings] = useState<Record<string, boolean>>({});
   const [oauthEnabled, setOauthEnabled] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [oauthStatusMsg, setOauthStatusMsg] = useState<string | null>(null);
@@ -153,20 +150,6 @@ export default function MembersLayout() {
       return next;
     });
   }
-
-  useEffect(() => {
-    if (!authToken) return;
-    fetch(apiUrl("/api/chat/rooms"), { headers: { Authorization: `Bearer ${authToken}` } })
-      .then(r => r.json())
-      .then(d => {
-        if (d.success) {
-          const map: Record<string, boolean> = {};
-          (d.data || []).forEach((r: any) => { map[r.room] = !!r.enabled; });
-          setRoomSettings(map);
-        }
-      })
-      .catch((err) => console.error("Failed to fetch room settings:", err));
-  }, [authToken]);
 
   useEffect(() => {
     fetch(apiUrl("/api/admin/maintenance"))
@@ -358,7 +341,6 @@ export default function MembersLayout() {
       items: [
         { id: "dashboard", label: "Dashboard", minPower: 0, icon: "dashboard" },
         { id: "profile", label: "Profile", minPower: 0, icon: "person" },
-        { id: "chat", label: "Advisory Chat", minPower: 30, icon: "chat" },
       ],
     });
   } else {
@@ -371,37 +353,6 @@ export default function MembersLayout() {
         { id: "profile", label: "Profile", minPower: 0, icon: "person" },
         { id: "club-files", label: "Club Files", minPower: 10, icon: "folder_open" },
       ],
-    });
-
-    // Chats
-    const chatItems: NavItem[] = [
-      { id: "chat_general", label: "General Chat", minPower: 10, icon: "forum" },
-      { id: "chat_advisory", label: "Advisory Chat", minPower: 50, icon: "admin_panel_settings" },
-      { id: "chat_board", label: "Board Chat", minPower: 100, icon: "shield_person" },
-    ];
-    // Department chats — any member with a department sees their department's chat
-    if (powerLevel >= 100) {
-      departments.forEach((d: any) => {
-        chatItems.push({ id: `chat_dept_${d.id}`, label: `${d.name} Chat`, minPower: 10, icon: "chat_bubble" });
-      });
-    } else {
-      const chatDeptIds = multiDeptRoles || (hasDepartment ? [departmentId!] : []);
-      departments
-        .filter((d: any) => chatDeptIds.includes(d.id))
-        .forEach((d: any) => {
-          chatItems.push({ id: `chat_dept_${d.id}`, label: `${d.name} Chat`, minPower: 10, icon: "chat_bubble" });
-        });
-    }
-    navSections.push({
-      label: "Chats",
-      items: chatItems.filter(item => {
-        const room = item.id === "chat_general" ? "general"
-          : item.id === "chat_advisory" ? "advisory"
-          : item.id === "chat_board" ? "board"
-          : item.id.startsWith("chat_dept_") ? "dept-" + item.id.slice(10)
-          : "";
-        return roomSettings[room] !== false;
-      }),
     });
 
     // Departments (management panels)
@@ -431,10 +382,6 @@ export default function MembersLayout() {
       { id: "announcements", label: "Announcements", minPower: 0, icon: "campaign" },
       { id: "case-studies", label: "Case Studies", minPower: 0, icon: "description" },
     ];
-    // Room Settings for power >= 50
-    if (powerLevel >= 50) {
-      managementItems.push({ id: "room_settings", label: "Room Settings", minPower: 50, icon: "settings" });
-    }
     navSections.push({ label: "Management", items: managementItems });
 
     // Admin
@@ -757,24 +704,6 @@ export default function MembersLayout() {
             <ClubFilesPanel authToken={authToken!} powerLevel={powerLevel} />
           )}
 
-          {activePanel.startsWith("chat") && (() => {
-            let room: string;
-            if (activePanel === "chat") room = "advisory";
-            else if (activePanel.startsWith("chat_dept_")) room = "dept-" + activePanel.slice(10);
-            else room = activePanel.replace("chat_", "");
-
-            let roomName: string;
-            if (room === "advisory") roomName = "Advisory Chat Room";
-            else if (room === "general") roomName = "General Chat";
-            else if (room === "board") roomName = "Board Chat Room";
-            else if (room.startsWith("dept-")) {
-              const deptId = room.slice(5);
-              roomName = `${DEPT_NAMES[deptId] || departments.find((d: any) => d.id === deptId)?.name || deptId} Department Chat`;
-            } else roomName = room;
-
-            return <ChatSection authToken={authToken!} room={room} roomName={roomName} />;
-          })()}
-
           {activePanel === "department" && (() => {
             const deptId = activeDeptId || departmentId;
             const deptName = deptId ? (DEPT_NAMES[deptId] || departments.find((d: any) => d.id === deptId)?.name || deptId) : "";
@@ -916,10 +845,6 @@ export default function MembersLayout() {
                 </div>
               ))}
             </div>
-          )}
-
-          {activePanel === "room_settings" && (
-            <RoomSettingsPanel authToken={authToken!} powerLevel={powerLevel} departmentId={departmentId} roleId={roleId} departments={departments} />
           )}
 
           {activePanel === "admin" && powerLevel >= 100 && (
