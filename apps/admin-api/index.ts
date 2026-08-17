@@ -663,6 +663,7 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE case_studies ADD COLUMN author_name TEXT DEFAULT 'Anonymous'"); } catch { console.warn("Migration: case_studies.author_name may already exist"); }
   try { await db.exec("ALTER TABLE case_studies ADD COLUMN created_by TEXT"); } catch { console.warn("Migration: case_studies.created_by may already exist"); }
   try { await db.exec("DELETE FROM case_studies WHERE id LIKE 'cs%' AND content IS NULL"); } catch { console.warn("Migration: could not remove seed case studies"); }
+  try { await db.exec("ALTER TABLE case_studies ADD COLUMN source_file_url TEXT"); } catch { console.warn("Migration: case_studies.source_file_url may already exist"); }
   try {
     await db.exec(`CREATE TABLE IF NOT EXISTS recruitment_sessions (
       id TEXT PRIMARY KEY, applicant_id TEXT NOT NULL, token_hash TEXT NOT NULL,
@@ -3673,6 +3674,108 @@ app.delete("/api/case-studies/delete-image", async (c) => {
   }
 });
 
+// ─────────────────────────────────────────────
+// CASE STUDY DOCUMENT UPLOAD (PDF / DOCX → HTML)
+// ─────────────────────────────────────────────
+
+const ALLOWED_DOC_TYPES = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+const MAX_DOC_SIZE = 20 * 1024 * 1024; // 20 MB
+
+app.post("/api/case-studies/upload-document", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
+    const rl = await checkRateLimit(c, "case_study_upload_doc", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+
+    const fd = await c.req.formData();
+    const file = fd.get("document");
+    if (!file || typeof file === "string") return c.json({ error: "No document file provided" }, 400);
+
+    const typedFile = file as File;
+    if (!ALLOWED_DOC_TYPES.includes(typedFile.type)) {
+      return c.json({ error: "Invalid file type. Allowed: PDF, DOCX" }, 400);
+    }
+    if (typedFile.size > MAX_DOC_SIZE) {
+      return c.json({ error: "File too large. Max 20 MB" }, 400);
+    }
+
+    const arrayBuffer = await typedFile.arrayBuffer();
+    const uint8 = new Uint8Array(arrayBuffer);
+    let html = "";
+
+    if (typedFile.type === "application/pdf") {
+      const { extractText } = await import("unpdf");
+      const result = await extractText(uint8, { mergePages: true });
+      const text = typeof result.text === "string" ? result.text : result.text.join("\n\n");
+      const paragraphs = text.split(/\n{2,}/).filter((p: string) => p.trim());
+      html = paragraphs
+        .map((p: string) => {
+          const trimmed = p.trim();
+          const lines = trimmed.split("\n");
+          if (lines.length === 1) {
+            return `<p>${escapeHtml(lines[0].trim())}</p>`;
+          }
+          return lines.map((l: string) => `<p>${escapeHtml(l.trim())}</p>`).join("\n");
+        })
+        .join("\n");
+    } else {
+      const mammoth = await import("mammoth");
+      const result = await mammoth.convertToHtml({ arrayBuffer });
+      html = result.value;
+    }
+
+    const content = sanitizeBlogHtml(html);
+    const textOnly = content.replace(/<[^>]*>/g, "").trim();
+    if (textOnly.length < 10) {
+      return c.json({ error: "Document appears empty or contains less than 10 visible characters" }, 400);
+    }
+
+    return c.json({ success: true, content, charCount: textOnly.length });
+  } catch (e: any) {
+    return errorResponse(c, "Failed to parse document: " + e.message, 500);
+  }
+});
+
+// Upload source PDF/DOCX to R2 for download link
+app.post("/api/case-studies/upload-source", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
+    const rl = await checkRateLimit(c, "case_study_upload_source", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+
+    const fd = await c.req.formData();
+    const file = fd.get("file");
+    if (!file || typeof file === "string") return c.json({ error: "No file provided" }, 400);
+
+    const typedFile = file as File;
+    const ext = typedFile.name.split(".").pop()?.toLowerCase();
+    if (ext !== "pdf" && ext !== "docx") {
+      return c.json({ error: "Invalid file type. Allowed: pdf, docx" }, 400);
+    }
+    if (typedFile.size > MAX_DOC_SIZE) {
+      return c.json({ error: "File too large. Max 20 MB" }, 400);
+    }
+
+    const key = `case-studies/source/${crypto.randomUUID()}.${ext}`;
+    const arrayBuffer = await typedFile.arrayBuffer();
+    await c.env.BLOG_IMAGES.put(key, arrayBuffer, {
+      httpMetadata: { contentType: typedFile.type },
+    });
+
+    const url = `/api/case-studies/images/${key}`;
+    return c.json({ success: true, url, key });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
 // ---------------------------------------------------------
 // CONSULTING REQUESTS
 // ---------------------------------------------------------
@@ -3906,6 +4009,7 @@ app.post("/api/case-studies", async (c) => {
     const description = sanitizeStr(body.description);
     const rawContent = body.content;
     const imageUrl = sanitizeStr(body.imageUrl);
+    const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
 
     if (!tag) return c.json({ error: "Tag is required (e.g. Strategy, Operations)" }, 400);
     if (!title || title.length < 3) return c.json({ error: "Title must be at least 3 characters" }, 400);
@@ -3924,8 +4028,8 @@ app.post("/api/case-studies", async (c) => {
     const authorName = user.name || "Member";
 
     await c.env.DB.prepare(
-      "INSERT INTO case_studies (id, tag, title, description, content, image_url, author_name, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    ).bind(id, tag, title, description || "", content, imageUrl || null, authorName, user.id).run();
+      "INSERT INTO case_studies (id, tag, title, description, content, image_url, author_name, created_by, source_file_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(id, tag, title, description || "", content, imageUrl || null, authorName, user.id, sourceFileUrl || null).run();
 
     await addAuditLog(c, "case_study_created", "case_study", id, "Case study created: " + title);
 
@@ -3957,10 +4061,24 @@ app.delete("/api/case-studies/:id", async (c) => {
     if (!user || user.power_level < 50) return c.json({ error: "Forbidden: Lead or above only" }, 403);
 
     const id = c.req.param("id");
-    const row: any = await c.env.DB.prepare("SELECT id, title FROM case_studies WHERE id = ?").bind(id).first();
+    const row: any = await c.env.DB.prepare("SELECT id, title, image_url, source_file_url FROM case_studies WHERE id = ?").bind(id).first();
     if (!row) return c.json({ error: "Case study not found" }, 404);
 
     await c.env.DB.prepare("DELETE FROM case_studies WHERE id = ?").bind(id).run();
+
+    if (row.image_url) {
+      try {
+        const imgKey = row.image_url.replace(/^\/api\/case-studies\/images\//, "");
+        if (imgKey.startsWith("case-studies/")) await c.env.BLOG_IMAGES.delete(imgKey);
+      } catch {}
+    }
+    if (row.source_file_url) {
+      try {
+        const srcKey = row.source_file_url.replace(/^\/api\/case-studies\/images\//, "");
+        if (srcKey.startsWith("case-studies/")) await c.env.BLOG_IMAGES.delete(srcKey);
+      } catch {}
+    }
+
     await addAuditLog(c, "case_study_deleted", "case_study", id, "Case study deleted: " + row.title);
 
     return c.json({ success: true, message: "Case study deleted" });
@@ -3988,6 +4106,7 @@ app.put("/api/case-studies/:id", async (c) => {
     const description = sanitizeStr(body.description);
     const rawContent = body.content;
     const imageUrl = sanitizeStr(body.imageUrl);
+    const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
 
     if (!tag) return c.json({ error: "Tag is required" }, 400);
     if (!title || title.length < 3) return c.json({ error: "Title must be at least 3 characters" }, 400);
@@ -4003,8 +4122,8 @@ app.put("/api/case-studies/:id", async (c) => {
     }
 
     await c.env.DB.prepare(
-      "UPDATE case_studies SET tag = ?, title = ?, description = ?, content = ?, image_url = ? WHERE id = ?",
-    ).bind(tag, title, description || "", content, imageUrl || null, id).run();
+      "UPDATE case_studies SET tag = ?, title = ?, description = ?, content = ?, image_url = ?, source_file_url = ? WHERE id = ?",
+    ).bind(tag, title, description || "", content, imageUrl || null, sourceFileUrl || null, id).run();
 
     await addAuditLog(c, "case_study_updated", "case_study", id, "Case study updated: " + title);
 

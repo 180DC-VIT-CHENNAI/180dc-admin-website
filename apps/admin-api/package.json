@@ -8,7 +8,9 @@
   },
   "dependencies": {
     "@clerk/backend": "^3.5.0",
-    "hono": "^4.6.1"
+    "hono": "^4.6.1",
+    "mammoth": "^1.12.1",
+    "unpdf": "^1.8.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20230419.0",

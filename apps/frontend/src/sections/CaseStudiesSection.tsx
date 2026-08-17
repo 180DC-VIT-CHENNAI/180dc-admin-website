@@ -61,6 +61,20 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
               : undefined
           }
         >
+          {caseStudies.length === 0 && (
+            <div
+              style={{
+                gridColumn: "1 / -1",
+                textAlign: "center",
+                padding: "48px 20px",
+                color: "var(--text-secondary)",
+                fontSize: "0.9375rem",
+              }}
+            >
+              <p style={{ margin: "0 0 4px", fontSize: "1.5rem", opacity: 0.3 }}>&#128203;</p>
+              <p style={{ margin: 0 }}>No case studies published yet. Check back soon!</p>
+            </div>
+          )}
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
           {caseStudies.map((cs: any, i: number) => (
             <div
@@ -105,6 +119,29 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
                   }}
                   dangerouslySetInnerHTML={{ __html: sanitizeHtml(cs.content) }}
                 />
+              )}
+              {expandedCard === i && cs.source_file_url && (
+                <a
+                  href={apiUrl(cs.source_file_url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginTop: 8,
+                    padding: "6px 12px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "var(--accent-primary)",
+                    background: "var(--accent-bg, rgba(0,0,0,0.04))",
+                    borderRadius: 6,
+                    textDecoration: "none",
+                  }}
+                >
+                  &#128196; Download Source Document
+                </a>
               )}
               <span className="read-more">
                 {expandedCard === i ? "Show less" : "Click to expand"}

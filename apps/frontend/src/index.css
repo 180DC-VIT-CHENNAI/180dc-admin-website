@@ -991,6 +991,80 @@ a:hover {
   gap: var(--space-2);
 }
 
+/* ── Document upload & preview ─────────────────────────────────────────── */
+
+.doc-upload-zone {
+  transition: background 0.2s, border-color 0.2s;
+}
+.doc-upload-zone.drag-over {
+  border-color: var(--accent-primary) !important;
+  background: var(--accent-soft) !important;
+}
+
+.doc-preview {
+  font-family: var(--font-sans);
+}
+.doc-preview h1,
+.doc-preview h2,
+.doc-preview h3 {
+  margin: 0.8em 0 0.4em;
+  font-weight: 700;
+}
+.doc-preview h1 { font-size: 1.3em; }
+.doc-preview h2 { font-size: 1.15em; }
+.doc-preview h3 { font-size: 1.05em; }
+.doc-preview p {
+  margin: 0 0 0.6em;
+  line-height: 1.7;
+}
+.doc-preview ul,
+.doc-preview ol {
+  margin: 0.4em 0 0.8em 1.2em;
+  padding: 0;
+}
+.doc-preview li {
+  margin-bottom: 0.3em;
+  line-height: 1.6;
+}
+.doc-preview blockquote {
+  margin: 0.6em 0;
+  padding: 0.4em 1em;
+  border-left: 3px solid var(--accent-primary);
+  background: var(--accent-soft);
+  border-radius: 0 6px 6px 0;
+  font-style: italic;
+  color: var(--text-secondary);
+}
+.doc-preview a {
+  color: var(--accent-primary);
+  text-decoration: underline;
+}
+.doc-preview img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 0.5em 0;
+}
+.doc-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.6em 0;
+  font-size: 0.875em;
+}
+.doc-preview th,
+.doc-preview td {
+  border: 1px solid var(--border-light);
+  padding: 6px 10px;
+  text-align: left;
+}
+.doc-preview th {
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ═══ COMPLETED PROJECTS ══════════════════════════════════════════════════ */
 
 .projects-section {

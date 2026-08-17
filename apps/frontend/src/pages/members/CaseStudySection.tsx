@@ -1,14 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { apiUrl } from "../../lib/api";
 
 export default function CaseStudySection({ authToken, powerLevel }: { authToken: string; powerLevel: number }) {
   const [caseStudies, setCaseStudies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
-  const savedRangeRef = useRef<Range | null>(null);
 
-  // Create/Edit form
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tag, setTag] = useState("");
   const [title, setTitle] = useState("");
@@ -19,6 +16,13 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"list" | "create">("list");
+
+  const [extractedContent, setExtractedContent] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const [sourceFileUrl, setSourceFileUrl] = useState("");
+  const [sourceFileKey, setSourceFileKey] = useState("");
+  const [sourceFileName, setSourceFileName] = useState("");
+  const [dragOver, setDragOver] = useState(false);
 
   async function load() {
     try {
@@ -32,18 +36,71 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
 
   useEffect(() => { load(); }, [authToken]);
 
-  const insertAtCursor = useCallback((html: string) => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    editor.focus();
-    const sel = window.getSelection();
-    if (sel && savedRangeRef.current) {
-      sel.removeAllRanges();
-      sel.addRange(savedRangeRef.current);
+  const handleDocumentUpload = useCallback(async (file: File) => {
+    setExtracting(true);
+    setError("");
+    setExtractedContent("");
+    try {
+      const fd = new FormData();
+      fd.append("document", file);
+      const res = await fetch(apiUrl("/api/case-studies/upload-document"), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setExtractedContent(data.content);
+        setSourceFileName(file.name);
+
+        const srcFd = new FormData();
+        srcFd.append("file", file);
+        const srcRes = await fetch(apiUrl("/api/case-studies/upload-source"), {
+          method: "POST",
+          headers: { Authorization: `Bearer ${authToken}` },
+          body: srcFd,
+        });
+        const srcData = await srcRes.json();
+        if (srcData.success) {
+          setSourceFileUrl(srcData.url);
+          setSourceFileKey(srcData.key);
+        }
+      } else {
+        setError(data.error || "Failed to extract document content");
+      }
+    } catch {
+      setError("Failed to upload document. Try again.");
     }
-    document.execCommand("insertHTML", false, html);
-    savedRangeRef.current = null;
-  }, []);
+    setExtracting(false);
+  }, [authToken]);
+
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleDocumentUpload(file);
+  }, [handleDocumentUpload]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleDocumentUpload(file);
+  }, [handleDocumentUpload]);
+
+  const handleRemoveDocument = useCallback(async () => {
+    if (sourceFileKey) {
+      try {
+        await fetch(apiUrl("/api/case-studies/delete-image"), {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ key: sourceFileKey }),
+        });
+      } catch {}
+    }
+    setExtractedContent("");
+    setSourceFileUrl("");
+    setSourceFileKey("");
+    setSourceFileName("");
+  }, [sourceFileKey, authToken]);
 
   const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -62,7 +119,6 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
       if (data.success) {
         setImageUrl(data.url);
         setImageKey(data.key);
-        insertAtCursor(`<p><br></p><img src="${data.url}" alt="case study image" style="max-width:100%;border-radius:8px;" /><p><br></p>`);
       } else {
         setError(data.error || "Upload failed");
       }
@@ -70,7 +126,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
       setError("Upload failed. Try again.");
     }
     setImageUploading(false);
-  }, [insertAtCursor, authToken]);
+  }, [authToken]);
 
   const handleRemoveImage = useCallback(async () => {
     if (imageKey) {
@@ -82,26 +138,15 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
         });
       } catch {}
     }
-    if (editorRef.current && imageUrl) {
-      const escapedUrl = imageUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const regex = new RegExp(`<p><br></p><img[^>]*src="[^"]*${escapedUrl}"[^>]*><p><br></p>|<img[^>]*src="[^"]*${escapedUrl}"[^>]*>`, "gi");
-      editorRef.current.innerHTML = editorRef.current.innerHTML.replace(regex, "");
-    }
     setImageUrl("");
     setImageKey("");
-  }, [imageKey, imageUrl, authToken]);
-
-  const exec = useCallback((cmd: string, val?: string) => {
-    document.execCommand(cmd, false, val);
-    editorRef.current?.focus();
-  }, []);
+  }, [imageKey, authToken]);
 
   const handleSubmit = async () => {
-    const content = editorRef.current?.innerHTML || "";
-    const textContent = editorRef.current?.textContent || "";
+    const textOnly = extractedContent.replace(/<[^>]*>/g, "").trim();
     if (!tag.trim()) { setError("Tag is required"); return; }
     if (!title.trim() || title.trim().length < 3) { setError("Title must be at least 3 characters"); return; }
-    if (!textContent.trim() || textContent.trim().length < 10) { setError("Content must be at least 10 characters"); return; }
+    if (!textOnly || textOnly.length < 10) { setError("Document content must contain at least 10 visible characters"); return; }
 
     setSubmitting(true);
     setError("");
@@ -115,8 +160,9 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
           tag: tag.trim(),
           title: title.trim(),
           description: description.trim() || undefined,
-          content,
+          content: extractedContent,
           imageUrl: imageUrl || undefined,
+          sourceFileUrl: sourceFileUrl || undefined,
         }),
       });
       const data = await res.json();
@@ -140,13 +186,12 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
     setDescription(cs.description || "");
     setImageUrl(cs.image_url || "");
     setImageKey("");
+    setExtractedContent(cs.content || "");
+    setSourceFileUrl(cs.source_file_url || "");
+    setSourceFileKey("");
+    setSourceFileName(cs.source_file_url ? "Source document" : "");
     setError("");
     setMode("create");
-    setTimeout(() => {
-      if (editorRef.current) {
-        editorRef.current.innerHTML = cs.content || "";
-      }
-    }, 0);
   }, []);
 
   const cancelForm = useCallback(() => {
@@ -156,8 +201,11 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
     setDescription("");
     setImageUrl("");
     setImageKey("");
+    setExtractedContent("");
+    setSourceFileUrl("");
+    setSourceFileKey("");
+    setSourceFileName("");
     setError("");
-    if (editorRef.current) editorRef.current.innerHTML = "";
     setMode("list");
   }, []);
 
@@ -182,16 +230,13 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
   const canEdit = powerLevel >= 10;
 
   if (mode === "create") {
-    const contentLen = editorRef.current?.textContent?.length || 0;
-    const isOverLimit = contentLen > 100000;
-
     return (
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: "1.4rem" }}>{editingId ? "Edit Case Study" : "Create Case Study"}</h2>
             <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: 13 }}>
-              {editingId ? "Update your case study." : "Publish a new case study (visible immediately)."}
+              {editingId ? "Update your case study." : "Upload a PDF or DOCX file to create a case study."}
             </p>
           </div>
           <button className="btn outline" style={{ padding: "6px 16px", fontSize: 12 }} onClick={cancelForm}>
@@ -259,57 +304,77 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Content *</label>
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 4, padding: "6px", border: "2px solid var(--border-light)", borderRadius: "8px 8px 0 0", borderBottom: "none" }}>
-              <button onClick={() => exec("bold")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}><b>B</b></button>
-              <button onClick={() => exec("italic")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}><i>I</i></button>
-              <button onClick={() => exec("underline")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}><u>U</u></button>
-              <button onClick={() => exec("formatBlock", "<h2>")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>H2</button>
-              <button onClick={() => exec("formatBlock", "<h3>")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>H3</button>
-              <button onClick={() => exec("insertUnorderedList")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>&#x2022; List</button>
-              <button onClick={() => exec("insertOrderedList")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>1. List</button>
-              <button onClick={() => exec("formatBlock", "<blockquote>")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>&ldquo; Quote</button>
-              <button onClick={() => { const url = prompt("Enter link URL:"); if (url) exec("createLink", url); }} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>&#x1F517;</button>
-              <button onClick={() => exec("formatBlock", "<p>")} style={{ padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, background: "#f5f5f5", cursor: "pointer", fontSize: 13 }}>&#xb6;</button>
-            </div>
-            <div
-              ref={editorRef}
-              contentEditable
-              suppressContentEditableWarning
-              data-placeholder="Write your case study content here..."
-              style={{ minHeight: 250, padding: 12, border: "2px solid var(--border-light)", borderRadius: "0 0 8px 8px", fontSize: 14, lineHeight: 1.6, fontFamily: "var(--font-sans)" }}
-              onSelect={() => {
-                const sel = window.getSelection();
-                if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
-                  savedRangeRef.current = sel.getRangeAt(0).cloneRange();
-                }
-              }}
-              onKeyUp={() => {
-                const sel = window.getSelection();
-                if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
-                  savedRangeRef.current = sel.getRangeAt(0).cloneRange();
-                }
-              }}
-              onMouseUp={() => {
-                const sel = window.getSelection();
-                if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
-                  savedRangeRef.current = sel.getRangeAt(0).cloneRange();
-                }
-              }}
-              onPaste={(e) => {
-                e.preventDefault();
-                const html = e.clipboardData.getData("text/html");
-                if (html) {
-                  document.execCommand("insertHTML", false, html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<[^>]*on\w+\s*=[^>]*>/gi, ""));
-                } else {
-                  const text = e.clipboardData.getData("text/plain");
-                  document.execCommand("insertText", false, text);
-                }
-              }}
-            />
-            <div style={{ fontSize: 11, color: isOverLimit ? "#dc3545" : "var(--text-secondary)", textAlign: "right", marginTop: 4 }}>
-              {contentLen.toLocaleString()} / 100,000 characters
-            </div>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Document Content *</label>
+            {!extractedContent && !extracting && (
+              <div
+                className={`doc-upload-zone ${dragOver ? "drag-over" : ""}`}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
+                style={{
+                  padding: "32px 20px",
+                  border: "2px dashed var(--border-light)",
+                  borderRadius: 10,
+                  textAlign: "center",
+                  cursor: "pointer",
+                  background: dragOver ? "var(--bg-secondary, #f5f5f5)" : "transparent",
+                  transition: "background 0.2s",
+                }}
+              >
+                <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.4 }}>&#128196;</div>
+                <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Drop a PDF or DOCX file here</p>
+                <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--text-secondary)" }}>or click to browse</p>
+                <label style={{ display: "inline-block", padding: "8px 20px", background: "var(--accent-primary)", color: "#fff", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                  Choose File
+                  <input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleFileInput} style={{ display: "none" }} />
+                </label>
+                <p style={{ margin: "12px 0 0", fontSize: 11, color: "var(--text-secondary)" }}>Supported: PDF, DOCX (max 20 MB)</p>
+              </div>
+            )}
+            {extracting && (
+              <div style={{ padding: "32px 20px", border: "2px solid var(--border-light)", borderRadius: 10, textAlign: "center" }}>
+                <div className="spinner" style={{ width: 24, height: 24, border: "3px solid var(--border-light)", borderTopColor: "var(--accent-primary)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
+                <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)" }}>Extracting content from document...</p>
+              </div>
+            )}
+            {extractedContent && !extracting && (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                    {sourceFileName && `Source: ${sourceFileName}`}
+                    {` \u00B7 ${extractedContent.replace(/<[^>]*>/g, "").length.toLocaleString()} characters`}
+                  </span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <label style={{ padding: "4px 10px", fontSize: 11, background: "var(--accent-primary)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>
+                      Replace
+                      <input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleFileInput} style={{ display: "none" }} />
+                    </label>
+                    <button
+                      type="button"
+                      style={{ padding: "4px 10px", fontSize: 11, background: "#dc3545", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
+                      onClick={handleRemoveDocument}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                <div
+                  className="doc-preview"
+                  style={{
+                    maxHeight: 300,
+                    overflowY: "auto",
+                    padding: 16,
+                    border: "2px solid var(--border-light)",
+                    borderRadius: 10,
+                    fontSize: 14,
+                    lineHeight: 1.7,
+                    fontFamily: "var(--font-sans)",
+                    background: "var(--bg-primary, #fff)",
+                  }}
+                  dangerouslySetInnerHTML={{ __html: extractedContent }}
+                />
+              </div>
+            )}
           </div>
 
           {error && (
@@ -320,7 +385,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
 
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button className="btn outline" onClick={cancelForm}>Cancel</button>
-            <button className="btn" onClick={handleSubmit} disabled={submitting || isOverLimit}>
+            <button className="btn" onClick={handleSubmit} disabled={submitting || !extractedContent}>
               {submitting ? "Saving..." : editingId ? "Update Case Study" : "Publish Case Study"}
             </button>
           </div>
