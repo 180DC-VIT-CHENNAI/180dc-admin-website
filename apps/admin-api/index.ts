@@ -80,9 +80,6 @@ function logError(context: string, err: any, c?: any) {
 }
 
 function errorResponse(c: any, message: string, status: number) {
-  if (isProduction(c)) {
-    return c.json({ error: "An error occurred" }, status);
-  }
   return c.json({ error: message }, status);
 }
 
@@ -3825,6 +3822,7 @@ app.post("/api/case-studies/upload-document", async (c) => {
 
     return c.json({ success: true, content, charCount: textOnly.length, suggestedTitle, suggestedDescription });
   } catch (e: any) {
+    console.error("upload-document error:", e?.message, e?.stack);
     return errorResponse(c, "Failed to parse document: " + e.message, 500);
   }
 });
