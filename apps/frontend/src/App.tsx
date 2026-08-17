@@ -40,8 +40,8 @@ function App() {
   const [completedProjects, setCompletedProjects] = useState<any[]>([]);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
-  // Partners removed — logos are now static files in public/partners/
-  // managed by src/data/partners.ts, no API call needed
+  // Completed projects load from R2-backed endpoint (fast, auto-updated).
+  // No DB query per request — backend writes JSON to R2 on every status change.
   useEffect(() => {
     async function loadContent() {
       try {

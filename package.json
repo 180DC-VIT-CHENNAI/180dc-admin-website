@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "packageManager": "pnpm@11.8.0",
   "scripts": {
+    "generate:completed-projects": "node scripts/generate-completed-projects.mjs",
     "build": "pnpm --filter frontend run build",
     "build:frontend": "pnpm --filter frontend run build",
     "deploy:backend": "pnpm --filter admin-api exec wrangler deploy",

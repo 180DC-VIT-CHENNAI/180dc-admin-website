@@ -2892,10 +2892,14 @@ app.delete("/api/projects/:id", async (c) => {
       return c.json({ error: "Forbidden: President or VP only" }, 403);
     }
     const id = c.req.param("id");
+    const proj: any = await c.env.DB.prepare("SELECT status FROM projects WHERE id = ?").bind(id).first();
     await c.env.DB.prepare("DELETE FROM project_departments WHERE project_id = ?").bind(id).run();
     await c.env.DB.prepare("DELETE FROM project_roles WHERE project_id = ?").bind(id).run();
     await c.env.DB.prepare("DELETE FROM project_tasks WHERE project_id = ?").bind(id).run();
     await c.env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(id).run();
+    if (proj?.status === "completed") {
+      try { await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES); } catch {}
+    }
     return c.json({ success: true, message: "Project removed" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3060,6 +3064,39 @@ app.post("/api/projects/:id/tasks/complete-all", async (c) => {
   }
 });
 
+// ── Completed projects static JSON generation (XSS-safe) ────────────────
+// When a project is completed or reopened, we regenerate a static JSON
+// blob with all HTML-escaped text fields and write it to R2 so the
+// frontend can load it without querying the database.
+
+function escapeForJson(val: unknown): string {
+  if (typeof val !== "string") return "";
+  return val
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+async function regenerateCompletedProjectsJson(db: any, r2: R2Bucket): Promise<void> {
+  const rows = await db.prepare(
+    "SELECT id, name, description, company_org, deadline, created_at FROM projects WHERE status = 'completed' ORDER BY created_at DESC",
+  ).all();
+  const data = (rows.results || []).map((p: any) => ({
+    id: p.id,
+    name: escapeForJson(p.name),
+    description: escapeForJson(p.description || ""),
+    company_org: escapeForJson(p.company_org || ""),
+    deadline: p.deadline || null,
+    created_at: p.created_at,
+  }));
+  const json = JSON.stringify(data);
+  await r2.put("static/completedProjects.json", json, {
+    httpMetadata: { contentType: "application/json", cacheControl: "public, max-age=300" },
+  });
+}
+
 app.post("/api/projects/:id/complete", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -3069,6 +3106,7 @@ app.post("/api/projects/:id/complete", async (c) => {
       return c.json({ error: "Forbidden: President or VP only" }, 403);
     }
     await c.env.DB.prepare("UPDATE projects SET status = 'completed' WHERE id = ?").bind(projectId).run();
+    try { await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES); } catch {}
     return c.json({ success: true, message: "Project marked as complete" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3084,6 +3122,7 @@ app.post("/api/projects/:id/reopen", async (c) => {
       return c.json({ error: "Forbidden: President or VP only" }, 403);
     }
     await c.env.DB.prepare("UPDATE projects SET status = 'upcoming' WHERE id = ?").bind(projectId).run();
+    try { await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES); } catch {}
     return c.json({ success: true, message: "Project reopened" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3091,16 +3130,38 @@ app.post("/api/projects/:id/reopen", async (c) => {
 });
 
 // Public endpoint — returns completed projects (no auth required)
+// Reads from R2 static JSON for fast loading; falls back to DB if R2 misses.
 app.get("/api/projects/completed", async (c) => {
   try {
     await ensureTables(c.env.DB);
     const rl = await checkRateLimit(c, "public_completed_projects", 100, 60);
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+
+    const obj = await c.env.BLOG_IMAGES.get("static/completedProjects.json");
+    if (obj) {
+      const text = await obj.text();
+      c.header("Cache-Control", "public, max-age=300");
+      return c.json({ success: true, data: JSON.parse(text) });
+    }
+
     const projects = await c.env.DB.prepare(
       "SELECT id, name, description, company_org, deadline, created_at FROM projects WHERE status = 'completed' ORDER BY created_at DESC",
     ).all();
     c.header("Cache-Control", "no-cache, no-store, must-revalidate");
     return c.json({ success: true, data: projects.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Manual trigger — regenerate static JSON (board only)
+app.post("/api/projects/regenerate-completed", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (user.power_level < 100) return c.json({ error: "Forbidden" }, 403);
+    await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES);
+    return c.json({ success: true, message: "Completed projects JSON regenerated" });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
