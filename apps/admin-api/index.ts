@@ -640,6 +640,8 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
     CREATE TABLE IF NOT EXISTS maintenance_mode (id INTEGER PRIMARY KEY DEFAULT 1, enabled INTEGER DEFAULT 0, message TEXT DEFAULT 'Site is under maintenance. Please check back later.', updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS newsletter_subscribers (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, active INTEGER DEFAULT 1, subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP, unsubscribed_at DATETIME);
+    CREATE TABLE IF NOT EXISTS newsletters (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '', content TEXT DEFAULT '', source_file_url TEXT, image_url TEXT, sent_at DATETIME, recipient_count INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     `);
   await runMigrations(db);
 }
@@ -677,6 +679,8 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE users ADD COLUMN oauth_enabled INTEGER DEFAULT 0"); } catch { console.warn("Migration: oauth_enabled may already exist"); }
 
   try { await db.exec("INSERT OR IGNORE INTO maintenance_mode (id, enabled, message) VALUES (1, 0, 'Site is under maintenance. Please check back later.')"); } catch { console.warn("Migration: maintenance_mode seed"); }
+  try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletter_subscribers (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, active INTEGER DEFAULT 1, subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP, unsubscribed_at DATETIME)`); } catch { console.warn("Migration: newsletter_subscribers table"); }
+  try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletters (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '', content TEXT DEFAULT '', source_file_url TEXT, image_url TEXT, sent_at DATETIME, recipient_count INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`); } catch { console.warn("Migration: newsletters table"); }
 }
 
 let currentEnv: any = null;
@@ -980,6 +984,276 @@ app.get("/api/content/partners", async (c) => {
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare("SELECT * FROM partners ORDER BY created_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// NEWSLETTER ENDPOINTS
+// ---------------------------------------------------------
+
+function newsletterEmailHtml(title: string, description: string, siteUrl: string): string {
+  const safeTitle = escapeHtml(title);
+  const safeDesc = escapeHtml(description);
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#8dc63f;padding:28px 24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dcvitc.org/images/180DC.png" alt="180DC" width="56" style="margin-bottom:8px">
+<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:28px;margin:0;font-weight:600;text-shadow:2px 2px 0 rgba(0,0,0,0.15)">180 Degrees Consulting</h1>
+<p style="color:#1a1a1a;font-size:13px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
+</td></tr>
+<tr><td style="padding:28px 28px 20px">
+<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Hey there!</p>
+<p style="font-size:13px;color:#8dc63f;margin:0 0 4px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">New Newsletter</p>
+<h2 style="font-size:22px;color:#1a1a1a;margin:0 0 16px;line-height:1.4;font-weight:800">${safeTitle}</h2>
+${safeDesc ? `<p style="font-size:14px;color:#555555;margin:0 0 20px;line-height:1.7">${safeDesc}</p>` : ""}
+<table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto 20px">
+<tr><td style="padding:10px 28px;text-align:center">
+<a href="${escapeHtml(siteUrl)}" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Read on Website</a>
+</td></tr>
+</table>
+</td></tr>
+<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:16px 28px;text-align:center">
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai<br><span style="color:#777777;font-weight:400">You received this because you subscribed to our newsletter.</span></p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`;
+}
+
+// Public: Subscribe to newsletter
+app.post("/api/newsletter/subscribe", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const rl = await checkRateLimit(c, "newsletter_subscribe", 5, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    const body = await c.req.json();
+    const email = validateEmail(body?.email);
+    if (!email) return c.json({ error: "Valid email address required" }, 400);
+
+    const existing = await c.env.DB.prepare("SELECT id, active FROM newsletter_subscribers WHERE email = ?").bind(email).first();
+    if (existing) {
+      if (existing.active === 1) return c.json({ success: true, message: "You are already subscribed!" });
+      await c.env.DB.prepare("UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL WHERE id = ?").bind(existing.id).run();
+      return c.json({ success: true, message: "Welcome back! You have been re-subscribed." });
+    }
+
+    await c.env.DB.prepare("INSERT INTO newsletter_subscribers (id, email, active) VALUES (?, ?, 1)").bind(crypto.randomUUID(), email).run();
+    return c.json({ success: true, message: "Successfully subscribed to the newsletter!" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Public: Unsubscribe
+app.get("/api/newsletter/unsubscribe", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const email = c.req.query("email");
+    if (!email || !validateEmail(email)) return c.text("Invalid email address.", 400);
+
+    const sub = await c.env.DB.prepare("SELECT id, active FROM newsletter_subscribers WHERE email = ?").bind(email).first();
+    if (!sub || sub.active === 0) return c.text("You are not currently subscribed.", 200);
+
+    await c.env.DB.prepare("UPDATE newsletter_subscribers SET active = 0, unsubscribed_at = CURRENT_TIMESTAMP WHERE id = ?").bind(sub.id).run();
+    return c.text("You have been unsubscribed from the 180DC newsletter.", 200);
+  } catch (e: any) {
+    return c.text("Something went wrong.", 500);
+  }
+});
+
+// Public: List published newsletters (landing page)
+app.get("/api/newsletter", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    await seedData(c.env.DB, c.env);
+    const rl = await checkRateLimit(c, "content_newsletter", 100, 60);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+    const rows = await c.env.DB.prepare("SELECT id, title, description, image_url, source_file_url, created_at FROM newsletters ORDER BY created_at DESC LIMIT 10").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Public: Get subscriber count
+app.get("/api/newsletter/subscribers/count", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const row = await c.env.DB.prepare("SELECT COUNT(*) as count FROM newsletter_subscribers WHERE active = 1").first();
+    return c.json({ success: true, count: row?.count || 0 });
+  } catch (e: any) {
+    return c.json({ count: 0 });
+  }
+});
+
+// Admin: List all newsletters
+app.get("/api/newsletter/admin", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const rows = await c.env.DB.prepare("SELECT * FROM newsletters ORDER BY created_at DESC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Admin: List subscribers
+app.get("/api/newsletter/admin/subscribers", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    requireBoard(c);
+    const rows = await c.env.DB.prepare("SELECT id, email, active, subscribed_at, unsubscribed_at FROM newsletter_subscribers ORDER BY subscribed_at DESC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Admin: Upload newsletter source PDF
+app.post("/api/newsletter/upload-source", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
+    const rl = await checkRateLimit(c, "newsletter_upload", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+
+    const fd = await c.req.formData();
+    const file = fd.get("file");
+    if (!file || typeof file === "string") return c.json({ error: "No file provided" }, 400);
+
+    const typedFile = file as File;
+    const ext = typedFile.name.split(".").pop()?.toLowerCase();
+    if (ext !== "pdf" && ext !== "docx") {
+      return c.json({ error: "Invalid file type. Allowed: pdf, docx" }, 400);
+    }
+    if (typedFile.size > MAX_DOC_SIZE) {
+      return c.json({ error: "File too large. Max 20 MB" }, 400);
+    }
+
+    const key = `source/${crypto.randomUUID()}.${ext}`;
+    const arrayBuffer = await typedFile.arrayBuffer();
+    await c.env.CASE_STUDIES.put(key, arrayBuffer, {
+      httpMetadata: { contentType: typedFile.type },
+    });
+
+    const url = `/api/case-studies/images/${key}`;
+    return c.json({ success: true, url, key });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Admin: Create / update newsletter
+app.post("/api/newsletter", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
+    const body = await c.req.json();
+    const title = sanitizeStr(body.title);
+    if (!title) return c.json({ error: "Title is required" }, 400);
+
+    const id = body.id || crypto.randomUUID();
+    const description = sanitizeStr(body.description, 1000);
+    const content = sanitizeStr(body.content, 50000);
+    const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
+    const imageUrl = sanitizeStr(body.imageUrl);
+
+    const existing = await c.env.DB.prepare("SELECT id FROM newsletters WHERE id = ?").bind(id).first();
+    if (existing) {
+      await c.env.DB.prepare("UPDATE newsletters SET title = ?, description = ?, content = ?, source_file_url = COALESCE(?, source_file_url), image_url = COALESCE(?, image_url) WHERE id = ?")
+        .bind(title, description, content, sourceFileUrl || null, imageUrl || null, id).run();
+    } else {
+      await c.env.DB.prepare("INSERT INTO newsletters (id, title, description, content, source_file_url, image_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(id, title, description, content, sourceFileUrl || null, imageUrl || null, user.email).run();
+    }
+
+    return c.json({ success: true, id });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Admin: Delete newsletter
+app.delete("/api/newsletter/:id", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
+    const id = c.req.param("id");
+    await c.env.DB.prepare("DELETE FROM newsletters WHERE id = ?").bind(id).run();
+    return c.json({ success: true });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Admin: Send newsletter to all active subscribers
+app.post("/api/newsletter/send", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
+    const rl = await checkRateLimit(c, "newsletter_send", 5, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+
+    const apiKey = c.env.RESEND_API_KEY;
+    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
+
+    const body = await c.req.json();
+    const newsletterId = body.newsletterId;
+    if (!newsletterId) return c.json({ error: "newsletterId required" }, 400);
+
+    const newsletter = await c.env.DB.prepare("SELECT * FROM newsletters WHERE id = ?").bind(newsletterId).first();
+    if (!newsletter) return c.json({ error: "Newsletter not found" }, 404);
+
+    const currentCount = await getTodayEmailCount(c.env.DB);
+    if (currentCount >= 100) {
+      return c.json({ error: "Daily email quota reached (100). Try again after 24 hours." }, 429);
+    }
+
+    const subscribers = await c.env.DB.prepare("SELECT email FROM newsletter_subscribers WHERE active = 1").all();
+    const recipients = (subscribers.results || []).map((s: any) => s.email);
+    if (recipients.length === 0) return c.json({ error: "No active subscribers" }, 400);
+
+    let sentCount = 0;
+    const siteUrl = "https://180dcvitc.org/#newsletter";
+    const html = newsletterEmailHtml(newsletter.title, newsletter.description || "", siteUrl);
+
+    for (const email of recipients) {
+      if (currentCount + sentCount >= 100) break;
+      try {
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: "180DC Newsletter <team@180dcvitc.org>",
+            to: email,
+            subject: newsletter.title,
+            html,
+          }),
+        });
+        if (res.ok) sentCount++;
+        await new Promise((r) => setTimeout(r, 550));
+      } catch (err: any) {
+        console.error("[newsletter] Failed to send to " + email + ": " + err.message);
+      }
+    }
+
+    for (let i = 0; i < sentCount; i++) await incrementEmailCount(c.env.DB);
+
+    await c.env.DB.prepare("UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?")
+      .bind(sentCount, newsletterId).run();
+
+    return c.json({ success: true, sentCount, total: recipients.length });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }

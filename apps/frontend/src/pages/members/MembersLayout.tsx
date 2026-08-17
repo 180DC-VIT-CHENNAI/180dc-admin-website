@@ -15,6 +15,7 @@ import InstructionsSection from "./InstructionsSection";
 import ConsultingRequestsSection from "./ConsultingRequestsSection";
 import SendMailSection from "./SendMailSection";
 import CaseStudySection from "./CaseStudySection";
+import AdminNewsletterSection from "./NewsletterSection";
 import TransfersSection from "./TransfersSection";
 import AdminConsole from "./AdminConsole";
 import { apiUrl } from "../../lib/api";
@@ -389,6 +390,7 @@ export default function MembersLayout() {
       items: [
         { id: "consulting", label: "Consulting", minPower: 100, icon: "business_center" },
         { id: "sendmail", label: "Send Mail", minPower: 100, icon: "alternate_email" },
+        { id: "newsletter", label: "Newsletter", minPower: 100, icon: "mail" },
         { id: "admin", label: "Admin Console", minPower: 100, icon: "terminal" },
       ],
     });
@@ -781,6 +783,10 @@ export default function MembersLayout() {
               const data = await res.json();
               if (data.stats) setStats(data.stats);
             }} />
+          )}
+
+          {activePanel === "newsletter" && powerLevel >= 100 && (
+            <AdminNewsletterSection authToken={authToken!} />
           )}
 
           {activePanel === "announcements" && (

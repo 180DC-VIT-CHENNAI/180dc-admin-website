@@ -21,6 +21,7 @@ const AboutSection = lazy(() => import("./sections/AboutSection"));
 const CompletedProjectsSection = lazy(() => import("./sections/CompletedProjectsSection"));
 const CaseStudiesSection = lazy(() => import("./sections/CaseStudiesSection"));
 const LeadershipSection = lazy(() => import("./sections/LeadershipSection"));
+const NewsletterSection = lazy(() => import("./sections/NewsletterSection"));
 const PartnersSection = lazy(() => import("./sections/PartnersSection"));
 const FooterSection = lazy(() => import("./sections/FooterSection"));
 
@@ -65,7 +66,7 @@ function App() {
   // mounted later by LazyReveal still get their reveal animations and
   // card hover effects attached correctly.
   useEffect(() => {
-    const NAV_IDS = ["about", "case-studies", "leadership", "partners"];
+    const NAV_IDS = ["about", "case-studies", "leadership", "newsletter", "partners"];
     const observedNavEls = new Set<Element>();
 
     const navObserver = new IntersectionObserver(
@@ -133,6 +134,7 @@ function App() {
     { label: "About", href: "#about" },
     { label: "Case Studies", href: "#case-studies" },
     { label: "Leadership", href: "#leadership" },
+    { label: "Newsletter", href: "#newsletter" },
     { label: "Partners", href: "#partners" },
     { label: "Recruitments", href: "/recruitments" },
   ];
@@ -191,6 +193,14 @@ function App() {
         <ErrorBoundary>
           <Suspense fallback={null}>
             <LeadershipSection />
+          </Suspense>
+        </ErrorBoundary>
+      </LazyReveal>
+
+      <LazyReveal>
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <NewsletterSection />
           </Suspense>
         </ErrorBoundary>
       </LazyReveal>
