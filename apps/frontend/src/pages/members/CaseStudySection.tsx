@@ -10,9 +10,6 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
   const [tag, setTag] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [imageKey, setImageKey] = useState("");
-  const [imageUploading, setImageUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"list" | "create">("list");
@@ -52,6 +49,8 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
       if (data.success) {
         setExtractedContent(data.content);
         setSourceFileName(file.name);
+        if (data.suggestedTitle && !title) setTitle(data.suggestedTitle);
+        if (data.suggestedDescription && !description) setDescription(data.suggestedDescription);
 
         const srcFd = new FormData();
         srcFd.append("file", file);
@@ -72,7 +71,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
       setError("Failed to upload document. Try again.");
     }
     setExtracting(false);
-  }, [authToken]);
+  }, [authToken, title, description]);
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -102,51 +101,9 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
     setSourceFileName("");
   }, [sourceFileKey, authToken]);
 
-  const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImageUploading(true);
-    setError("");
-    try {
-      const fd = new FormData();
-      fd.append("image", file);
-      const res = await fetch(apiUrl("/api/case-studies/upload-image"), {
-        method: "POST",
-        headers: { Authorization: `Bearer ${authToken}` },
-        body: fd,
-      });
-      const data = await res.json();
-      if (data.success) {
-        setImageUrl(data.url);
-        setImageKey(data.key);
-      } else {
-        setError(data.error || "Upload failed");
-      }
-    } catch {
-      setError("Upload failed. Try again.");
-    }
-    setImageUploading(false);
-  }, [authToken]);
-
-  const handleRemoveImage = useCallback(async () => {
-    if (imageKey) {
-      try {
-        await fetch(apiUrl("/api/case-studies/delete-image"), {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-          body: JSON.stringify({ key: imageKey }),
-        });
-      } catch {}
-    }
-    setImageUrl("");
-    setImageKey("");
-  }, [imageKey, authToken]);
-
   const handleSubmit = async () => {
     const textOnly = extractedContent.replace(/<[^>]*>/g, "").trim();
-    if (!tag.trim()) { setError("Tag is required"); return; }
-    if (!title.trim() || title.trim().length < 3) { setError("Title must be at least 3 characters"); return; }
-    if (!textOnly || textOnly.length < 10) { setError("Document content must contain at least 10 visible characters"); return; }
+    if (!textOnly || textOnly.length < 10) { setError("Upload a document with at least 10 visible characters"); return; }
 
     setSubmitting(true);
     setError("");
@@ -157,11 +114,10 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
         method,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({
-          tag: tag.trim(),
-          title: title.trim(),
+          tag: tag.trim() || undefined,
+          title: title.trim() || undefined,
           description: description.trim() || undefined,
           content: extractedContent,
-          imageUrl: imageUrl || undefined,
           sourceFileUrl: sourceFileUrl || undefined,
         }),
       });
@@ -181,11 +137,9 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
 
   const startEdit = useCallback((cs: any) => {
     setEditingId(cs.id);
-    setTag(cs.tag || "");
-    setTitle(cs.title || "");
+    setTag(cs.tag === "Uncategorized" ? "" : (cs.tag || ""));
+    setTitle(cs.title === "Untitled" ? "" : (cs.title || ""));
     setDescription(cs.description || "");
-    setImageUrl(cs.image_url || "");
-    setImageKey("");
     setExtractedContent(cs.content || "");
     setSourceFileUrl(cs.source_file_url || "");
     setSourceFileKey("");
@@ -199,8 +153,6 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
     setTag("");
     setTitle("");
     setDescription("");
-    setImageUrl("");
-    setImageKey("");
     setExtractedContent("");
     setSourceFileUrl("");
     setSourceFileKey("");
@@ -236,7 +188,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
           <div>
             <h2 style={{ margin: 0, fontSize: "1.4rem" }}>{editingId ? "Edit Case Study" : "Create Case Study"}</h2>
             <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: 13 }}>
-              {editingId ? "Update your case study." : "Upload a PDF or DOCX file to create a case study."}
+              {editingId ? "Update your case study." : "Upload a PDF or DOCX to create a case study."}
             </p>
           </div>
           <button className="btn outline" style={{ padding: "6px 16px", fontSize: 12 }} onClick={cancelForm}>
@@ -246,65 +198,9 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
 
         <div className="card-doodle" style={{ padding: 24 }}>
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Tag *</label>
-            <input
-              type="text"
-              placeholder="e.g. Strategy, Operations, Marketing"
-              value={tag}
-              onChange={e => setTag(e.target.value)}
-              style={{ width: "100%", padding: "8px 12px", border: "2px solid var(--border-light)", borderRadius: 8, fontSize: 14 }}
-              maxLength={50}
-            />
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Title *</label>
-            <input
-              type="text"
-              placeholder="Enter a compelling title..."
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              style={{ width: "100%", padding: "8px 12px", border: "2px solid var(--border-light)", borderRadius: 8, fontSize: 14 }}
-              maxLength={200}
-            />
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Summary / Description</label>
-            <textarea
-              placeholder="A short summary (optional, max 500 chars)"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              style={{ width: "100%", padding: "8px 12px", border: "2px solid var(--border-light)", borderRadius: 8, fontSize: 14, minHeight: 60, resize: "vertical" }}
-              maxLength={500}
-            />
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Featured Image</label>
-            <div>
-              {imageUrl ? (
-                <div style={{ position: "relative", display: "inline-block" }}>
-                  <img src={apiUrl(imageUrl)} alt="preview" style={{ maxHeight: 120, borderRadius: 8, border: "2px solid var(--border-light)" }} />
-                  <button
-                    type="button"
-                    style={{ position: "absolute", top: -8, right: -8, width: 24, height: 24, borderRadius: "50%", border: "2px solid #dc3545", background: "#fff", color: "#dc3545", cursor: "pointer", fontSize: 14, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }}
-                    onClick={handleRemoveImage}
-                  >
-                    &times;
-                  </button>
-                </div>
-              ) : (
-                <label style={{ display: "inline-block", padding: "8px 16px", border: "2px dashed var(--border-light)", borderRadius: 8, cursor: "pointer", fontSize: 13 }}>
-                  {imageUploading ? "Uploading..." : "Choose Image"}
-                  <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleImageUpload} disabled={imageUploading} style={{ display: "none" }} />
-                </label>
-              )}
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Document Content *</label>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
+              Document <span style={{ color: "#dc3545" }}>*</span>
+            </label>
             {!extractedContent && !extracting && (
               <div
                 className={`doc-upload-zone ${dragOver ? "drag-over" : ""}`}
@@ -321,28 +217,34 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
                   transition: "background 0.2s",
                 }}
               >
-                <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.4 }}>&#128196;</div>
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 8px", opacity: 0.35 }}>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                  <polyline points="10 9 9 9 8 9"/>
+                </svg>
                 <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Drop a PDF or DOCX file here</p>
                 <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--text-secondary)" }}>or click to browse</p>
                 <label style={{ display: "inline-block", padding: "8px 20px", background: "var(--accent-primary)", color: "#fff", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
                   Choose File
                   <input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleFileInput} style={{ display: "none" }} />
                 </label>
-                <p style={{ margin: "12px 0 0", fontSize: 11, color: "var(--text-secondary)" }}>Supported: PDF, DOCX (max 20 MB)</p>
+                <p style={{ margin: "12px 0 0", fontSize: 11, color: "var(--text-secondary)" }}>PDF, DOCX (max 20 MB)</p>
               </div>
             )}
             {extracting && (
               <div style={{ padding: "32px 20px", border: "2px solid var(--border-light)", borderRadius: 10, textAlign: "center" }}>
                 <div className="spinner" style={{ width: 24, height: 24, border: "3px solid var(--border-light)", borderTopColor: "var(--accent-primary)", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
-                <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)" }}>Extracting content from document...</p>
+                <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)" }}>Extracting content...</p>
               </div>
             )}
             {extractedContent && !extracting && (
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                    {sourceFileName && `Source: ${sourceFileName}`}
-                    {` \u00B7 ${extractedContent.replace(/<[^>]*>/g, "").length.toLocaleString()} characters`}
+                    {sourceFileName && `${sourceFileName} `}
+                    {extractedContent.replace(/<[^>]*>/g, "").length.toLocaleString()} characters
                   </span>
                   <div style={{ display: "flex", gap: 6 }}>
                     <label style={{ padding: "4px 10px", fontSize: 11, background: "var(--accent-primary)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>
@@ -375,6 +277,43 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
                 />
               </div>
             )}
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Title</label>
+            <input
+              type="text"
+              placeholder="Auto-filled from document, or enter manually"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              style={{ width: "100%", padding: "8px 12px", border: "2px solid var(--border-light)", borderRadius: 8, fontSize: 14 }}
+              maxLength={200}
+            />
+          </div>
+
+          <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Tag</label>
+              <input
+                type="text"
+                placeholder="e.g. Strategy, Operations"
+                value={tag}
+                onChange={e => setTag(e.target.value)}
+                style={{ width: "100%", padding: "8px 12px", border: "2px solid var(--border-light)", borderRadius: 8, fontSize: 14 }}
+                maxLength={50}
+              />
+            </div>
+            <div style={{ flex: 2 }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Summary</label>
+              <input
+                type="text"
+                placeholder="Short summary (optional)"
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                style={{ width: "100%", padding: "8px 12px", border: "2px solid var(--border-light)", borderRadius: 8, fontSize: 14 }}
+                maxLength={500}
+              />
+            </div>
           </div>
 
           {error && (
@@ -417,15 +356,16 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
         <div style={{ textAlign: "center", padding: 40, color: "var(--text-secondary)" }}>Loading case studies...</div>
       ) : caseStudies.length === 0 ? (
         <div className="card-doodle" style={{ padding: 32, textAlign: "center" }}>
-          <p style={{ margin: 0, color: "var(--text-secondary)" }}>No case studies yet. Create your first one!</p>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 12px", opacity: 0.25 }}>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <p style={{ margin: 0, color: "var(--text-secondary)" }}>No case studies yet. Upload a document to create your first one.</p>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {caseStudies.map((cs) => (
             <div key={cs.id} className="card-doodle" style={{ padding: 16, display: "flex", gap: 14, alignItems: "flex-start" }}>
-              {cs.image_url && (
-                <img src={apiUrl(cs.image_url)} alt="" style={{ width: 80, height: 60, borderRadius: 8, objectFit: "cover", border: "2px solid var(--border-light)", flexShrink: 0 }} />
-              )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                   <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: "var(--accent-primary)", color: "#fff" }}>{cs.tag}</span>
@@ -434,7 +374,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>
                   By {cs.author_name || "Anonymous"} &middot; {new Date(cs.created_at).toLocaleDateString()}
                 </div>
-                <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>{cs.description}</p>
+                {cs.description && <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>{cs.description}</p>}
                 <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                   {canEdit && (
                     <button

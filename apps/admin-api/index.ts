@@ -3707,10 +3707,17 @@ app.post("/api/case-studies/upload-document", async (c) => {
     const arrayBuffer = await typedFile.arrayBuffer();
     const uint8 = new Uint8Array(arrayBuffer);
     let html = "";
+    let suggestedTitle = "";
+    let suggestedDescription = "";
 
     if (typedFile.type === "application/pdf") {
-      const { extractText } = await import("unpdf");
-      const result = await extractText(uint8, { mergePages: true });
+      const { getDocumentProxy, extractText } = await import("unpdf");
+      const pdf = await getDocumentProxy(uint8);
+      const metadata = await pdf.getMetadata();
+      const info = metadata?.info as Record<string, string> | undefined;
+      if (info?.Title && info.Title.trim()) suggestedTitle = info.Title.trim();
+
+      const result = await extractText(pdf, { mergePages: true });
       const text = typeof result.text === "string" ? result.text : result.text.join("\n\n");
       const paragraphs = text.split(/\n{2,}/).filter((p: string) => p.trim());
       html = paragraphs
@@ -3723,10 +3730,29 @@ app.post("/api/case-studies/upload-document", async (c) => {
           return lines.map((l: string) => `<p>${escapeHtml(l.trim())}</p>`).join("\n");
         })
         .join("\n");
+
+      if (!suggestedTitle && paragraphs.length > 0) {
+        const firstLine = paragraphs[0].split("\n")[0].trim();
+        if (firstLine.length >= 3 && firstLine.length <= 200) suggestedTitle = firstLine;
+      }
+      if (paragraphs.length > 1) {
+        const desc = paragraphs[1].replace(/\n/g, " ").trim();
+        suggestedDescription = desc.length > 500 ? desc.slice(0, 497) + "..." : desc;
+      }
     } else {
       const mammoth = await import("mammoth");
       const result = await mammoth.convertToHtml({ arrayBuffer });
       html = result.value;
+
+      const tempDiv = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      const firstSentence = tempDiv.split(/[.!?]\s/)[0];
+      if (firstSentence && firstSentence.length >= 3 && firstSentence.length <= 200) {
+        suggestedTitle = firstSentence.trim();
+      }
+      const rest = tempDiv.slice(suggestedTitle.length).trim();
+      if (rest) {
+        suggestedDescription = rest.length > 500 ? rest.slice(0, 497) + "..." : rest;
+      }
     }
 
     const content = sanitizeBlogHtml(html);
@@ -3735,7 +3761,7 @@ app.post("/api/case-studies/upload-document", async (c) => {
       return c.json({ error: "Document appears empty or contains less than 10 visible characters" }, 400);
     }
 
-    return c.json({ success: true, content, charCount: textOnly.length });
+    return c.json({ success: true, content, charCount: textOnly.length, suggestedTitle, suggestedDescription });
   } catch (e: any) {
     return errorResponse(c, "Failed to parse document: " + e.message, 500);
   }
@@ -4004,15 +4030,12 @@ app.post("/api/case-studies", async (c) => {
     if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
 
     const body = await c.req.json();
-    const tag = sanitizeStr(body.tag);
-    const title = sanitizeStr(body.title);
-    const description = sanitizeStr(body.description);
+    const tag = sanitizeStr(body.tag) || "Uncategorized";
+    const title = sanitizeStr(body.title) || "Untitled";
+    const description = sanitizeStr(body.description) || "";
     const rawContent = body.content;
-    const imageUrl = sanitizeStr(body.imageUrl);
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
 
-    if (!tag) return c.json({ error: "Tag is required (e.g. Strategy, Operations)" }, 400);
-    if (!title || title.length < 3) return c.json({ error: "Title must be at least 3 characters" }, 400);
     if (!rawContent || typeof rawContent !== "string" || rawContent.length < 10) {
       return c.json({ error: "Content must be at least 10 characters" }, 400);
     }
@@ -4029,7 +4052,7 @@ app.post("/api/case-studies", async (c) => {
 
     await c.env.DB.prepare(
       "INSERT INTO case_studies (id, tag, title, description, content, image_url, author_name, created_by, source_file_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).bind(id, tag, title, description || "", content, imageUrl || null, authorName, user.id, sourceFileUrl || null).run();
+    ).bind(id, tag, title, description, content, null, authorName, user.id, sourceFileUrl || null).run();
 
     await addAuditLog(c, "case_study_created", "case_study", id, "Case study created: " + title);
 
@@ -4101,15 +4124,12 @@ app.put("/api/case-studies/:id", async (c) => {
     if (!existing) return c.json({ error: "Case study not found" }, 404);
 
     const body = await c.req.json();
-    const tag = sanitizeStr(body.tag);
-    const title = sanitizeStr(body.title);
-    const description = sanitizeStr(body.description);
+    const tag = sanitizeStr(body.tag) || "Uncategorized";
+    const title = sanitizeStr(body.title) || "Untitled";
+    const description = sanitizeStr(body.description) || "";
     const rawContent = body.content;
-    const imageUrl = sanitizeStr(body.imageUrl);
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
 
-    if (!tag) return c.json({ error: "Tag is required" }, 400);
-    if (!title || title.length < 3) return c.json({ error: "Title must be at least 3 characters" }, 400);
     if (!rawContent || typeof rawContent !== "string" || rawContent.length < 10) {
       return c.json({ error: "Content must be at least 10 characters" }, 400);
     }
@@ -4122,8 +4142,8 @@ app.put("/api/case-studies/:id", async (c) => {
     }
 
     await c.env.DB.prepare(
-      "UPDATE case_studies SET tag = ?, title = ?, description = ?, content = ?, image_url = ?, source_file_url = ? WHERE id = ?",
-    ).bind(tag, title, description || "", content, imageUrl || null, sourceFileUrl || null, id).run();
+      "UPDATE case_studies SET tag = ?, title = ?, description = ?, content = ?, image_url = NULL, source_file_url = ? WHERE id = ?",
+    ).bind(tag, title, description, content, sourceFileUrl || null, id).run();
 
     await addAuditLog(c, "case_study_updated", "case_study", id, "Case study updated: " + title);
 

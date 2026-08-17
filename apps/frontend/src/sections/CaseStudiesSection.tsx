@@ -71,8 +71,11 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
                 fontSize: "0.9375rem",
               }}
             >
-              <p style={{ margin: "0 0 4px", fontSize: "1.5rem", opacity: 0.3 }}>&#128203;</p>
-              <p style={{ margin: 0 }}>No case studies published yet. Check back soon!</p>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 12px", opacity: 0.25 }}>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <p style={{ margin: 0 }}>No case studies published yet. Check back soon.</p>
             </div>
           )}
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
@@ -85,21 +88,7 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
             >
               <span className="case-tag">{cs.tag}</span>
               <h3>{cs.title}</h3>
-              <p>{cs.description}</p>
-              {cs.image_url && (
-                <img
-                  src={apiUrl(cs.image_url)}
-                  alt=""
-                  loading="lazy"
-                  style={{
-                    width: "100%",
-                    maxHeight: 160,
-                    objectFit: "cover",
-                    borderRadius: "12px",
-                    marginBottom: "8px",
-                  }}
-                />
-              )}
+              {cs.description && <p>{cs.description}</p>}
               <div
                 style={{
                   fontSize: "0.8125rem",
@@ -140,7 +129,12 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
                     textDecoration: "none",
                   }}
                 >
-                  &#128196; Download Source Document
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  Download Source Document
                 </a>
               )}
               <span className="read-more">
