@@ -76,12 +76,30 @@ const Globe = () => {
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
 
   useEffect(() => {
-    const worldUrl = 'https://raw.githubusercontent.com/vasturiano/three-globe/master/example/country-polygons/ne_110m_admin_0_countries.geojson';
-    const indiaUrl = 'https://gist.githubusercontent.com/jbrobst/56c13bbbf9d97d187fea01ca62ea5112/raw/india_states.geojson';
+    const WORLD_URLS = [
+      '/data/countries.geojson',
+      'https://cdn.jsdelivr.net/gh/vasturiano/three-globe@master/example/country-polygons/ne_110m_admin_0_countries.geojson',
+      'https://raw.githubusercontent.com/vasturiano/three-globe/master/example/country-polygons/ne_110m_admin_0_countries.geojson',
+    ];
+    const INDIA_URLS = [
+      '/data/india_states.geojson',
+      'https://cdn.jsdelivr.net/gh/jbrobst/56c13bbbf9d97d187fea01ca62ea5112@1f01f7e/india_states.geojson',
+      'https://gist.githubusercontent.com/jbrobst/56c13bbbf9d97d187fea01ca62ea5112/raw/india_states.geojson',
+    ];
+
+    async function fetchWithFallback(urls: string[]): Promise<any> {
+      for (const url of urls) {
+        try {
+          const res = await fetch(url);
+          if (res.ok) return await res.json();
+        } catch {}
+      }
+      throw new Error('All fetch attempts failed');
+    }
 
     Promise.all([
-      fetch(worldUrl).then(res => res.json()),
-      fetch(indiaUrl).then(res => res.json())
+      fetchWithFallback(WORLD_URLS),
+      fetchWithFallback(INDIA_URLS),
     ]).then(([worldData, indiaData]) => {
       const otherCountries = worldData.features.filter((f: any) => f.properties.ISO_A3 !== 'IND');
       const indiaFeatures = indiaData.features.map((f: any) => ({
