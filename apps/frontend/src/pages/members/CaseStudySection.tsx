@@ -49,9 +49,10 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
 
       if (file.type === "application/pdf") {
         const pdfjsLib = await import("pdfjs-dist");
-        pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+        const pdfjsVersion = pdfjsLib.version;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
         const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, useWorkerFetch: false, useSystemFonts: true }).promise;
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, useWorkerFetch: true, useSystemFonts: true }).promise;
 
         if (pdf.numPages > 0) {
           const meta = await pdf.getMetadata().catch(() => null);
