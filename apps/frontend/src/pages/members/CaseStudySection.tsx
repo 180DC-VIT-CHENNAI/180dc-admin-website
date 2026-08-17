@@ -164,8 +164,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
   }, [sourceFileKey, authToken]);
 
   const handleSubmit = async () => {
-    const textOnly = extractedContent.replace(/<[^>]*>/g, "").trim();
-    if (!textOnly || textOnly.length < 10) { setError("Upload a document with at least 10 visible characters"); return; }
+    if (!extractedContent && !sourceFileUrl) { setError("Upload a document first"); return; }
 
     setSubmitting(true);
     setError("");
@@ -306,7 +305,6 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
                     {sourceFileName && `${sourceFileName} `}
-                    {extractedContent.replace(/<[^>]*>/g, "").length.toLocaleString()} characters
                   </span>
                   <div style={{ display: "flex", gap: 6 }}>
                     <label style={{ padding: "4px 10px", fontSize: 11, background: "var(--accent-primary)", color: "#fff", borderRadius: 4, cursor: "pointer" }}>
@@ -322,21 +320,35 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
                     </button>
                   </div>
                 </div>
-                <div
-                  className="doc-preview"
-                  style={{
-                    maxHeight: 300,
-                    overflowY: "auto",
-                    padding: 16,
-                    border: "2px solid var(--border-light)",
-                    borderRadius: 10,
-                    fontSize: 14,
-                    lineHeight: 1.7,
-                    fontFamily: "var(--font-sans)",
-                    background: "var(--bg-primary, #fff)",
-                  }}
-                  dangerouslySetInnerHTML={{ __html: extractedContent }}
-                />
+                {sourceFileUrl ? (
+                  <iframe
+                    src={apiUrl(sourceFileUrl)}
+                    title="Document preview"
+                    style={{
+                      width: "100%",
+                      height: 400,
+                      border: "2px solid var(--border-light)",
+                      borderRadius: 10,
+                      background: "#f5f5f5",
+                    }}
+                  />
+                ) : (
+                  <div
+                    className="doc-preview"
+                    style={{
+                      maxHeight: 300,
+                      overflowY: "auto",
+                      padding: 16,
+                      border: "2px solid var(--border-light)",
+                      borderRadius: 10,
+                      fontSize: 14,
+                      lineHeight: 1.7,
+                      fontFamily: "var(--font-sans)",
+                      background: "var(--bg-primary, #fff)",
+                    }}
+                    dangerouslySetInnerHTML={{ __html: extractedContent }}
+                  />
+                )}
               </div>
             )}
           </div>

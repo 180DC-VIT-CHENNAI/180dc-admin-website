@@ -98,7 +98,55 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
               >
                 By {cs.author_name || "Anonymous"}
               </div>
-              {expandedCard === i && cs.content && (
+              {expandedCard === i && cs.source_file_url && (
+                <div
+                  style={{
+                    marginTop: "1rem",
+                    paddingTop: "1rem",
+                    borderTop: "1px solid var(--border-default)",
+                  }}
+                >
+                  <iframe
+                    src={apiUrl(cs.source_file_url)}
+                    title={cs.title || "Case Study PDF"}
+                    style={{
+                      width: "100%",
+                      height: "70vh",
+                      minHeight: 500,
+                      border: "none",
+                      borderRadius: 8,
+                      background: "#f5f5f5",
+                    }}
+                  />
+                  <a
+                    href={apiUrl(cs.source_file_url)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      marginTop: 8,
+                      padding: "6px 12px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "var(--accent-primary)",
+                      background: "var(--accent-bg, rgba(0,0,0,0.04))",
+                      borderRadius: 6,
+                      textDecoration: "none",
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Download Source Document
+                  </a>
+                </div>
+              )}
+              {expandedCard === i && !cs.source_file_url && cs.content && (
                 <div
                   className="card-expanded"
                   style={{
@@ -108,34 +156,6 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
                   }}
                   dangerouslySetInnerHTML={{ __html: sanitizeHtml(cs.content) }}
                 />
-              )}
-              {expandedCard === i && cs.source_file_url && (
-                <a
-                  href={apiUrl(cs.source_file_url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    marginTop: 8,
-                    padding: "6px 12px",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: "var(--accent-primary)",
-                    background: "var(--accent-bg, rgba(0,0,0,0.04))",
-                    borderRadius: 6,
-                    textDecoration: "none",
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                  </svg>
-                  Download Source Document
-                </a>
               )}
               <span className="read-more">
                 {expandedCard === i ? "Show less" : "Click to expand"}
