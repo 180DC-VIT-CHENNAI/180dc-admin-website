@@ -3771,28 +3771,96 @@ app.post("/api/case-studies/upload-document", async (c) => {
 
     if (typedFile.type === "application/pdf") {
       const raw = new TextDecoder("latin1").decode(uint8);
-      const textChunks: string[] = [];
-      const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
-      let match;
-      while ((match = streamRegex.exec(raw)) !== null) {
-        const stream = match[1];
-        const textParts: string[] = [];
-        const tjRegex = /\(([^)]*)\)\s*Tj/g;
-        let tjMatch;
-        while ((tjMatch = tjRegex.exec(stream)) !== null) {
-          textParts.push(tjMatch[1]);
+
+      async function decompressStream(data: Uint8Array): Promise<string> {
+        try {
+          const ds = new DecompressionStream("deflate");
+          const writer = ds.writable.getWriter();
+          writer.write(data);
+          writer.close();
+          const reader = ds.readable.getReader();
+          const chunks: Uint8Array[] = [];
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+          }
+          const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+          const merged = new Uint8Array(totalLen);
+          let offset = 0;
+          for (const c of chunks) { merged.set(c, offset); offset += c.length; }
+          return new TextDecoder("utf-8").decode(merged);
+        } catch {
+          return "";
         }
-        const TJRegex = /\[([^\]]*)\]\s*TJ/g;
-        let TJMatch;
-        while ((TJMatch = TJRegex.exec(stream)) !== null) {
-          const arr = TJMatch[1];
-          const strRegex = /\(([^)]*)\)/g;
-          let sMatch;
-          while ((sMatch = strRegex.exec(arr)) !== null) {
-            textParts.push(sMatch[1]);
+      }
+
+      const textChunks: string[] = [];
+      const objRegex = /(\d+)\s+\d+\s+obj[\s\S]*?(?:\/Filter\s*(?:\[?\s*)?(?:\/FlateDecode|\/LZWDecode)\s*\]?)?[\s\S]*?stream\r?\n([\s\S]*?)\r?\nendstream/g;
+      let objMatch;
+      while ((objMatch = objRegex.exec(raw)) !== null) {
+        const streamBytes = new TextEncoder().encode(objMatch[2]);
+        const decompressed = await decompressStream(streamBytes);
+        if (decompressed) {
+          const tjRe = /\(([^)]*)\)\s*Tj/g;
+          let tjM;
+          while ((tjM = tjRe.exec(decompressed)) !== null) textChunks.push(tjM[1]);
+          const TJRe = /\[([^\]]*)\]\s*TJ/g;
+          let TJM;
+          while ((TJM = TJRe.exec(decompressed)) !== null) {
+            const strRe = /\(([^)]*)\)/g;
+            let sM;
+            while ((sM = strRe.exec(TJM[1])) !== null) textChunks.push(sM[1]);
+          }
+          const hexTjRe = /<([0-9A-Fa-f]+)>\s*Tj/g;
+          let htM;
+          while ((htM = hexTjRe.exec(decompressed)) !== null) {
+            const hex = htM[1];
+            let decoded = "";
+            for (let i = 0; i < hex.length; i += 4) {
+              decoded += String.fromCharCode(parseInt(hex.substring(i, i + 4), 16));
+            }
+            textChunks.push(decoded);
+          }
+          const hexTJRe = /\[\s*<([0-9A-Fa-f]+)>\s*\]\s*TJ/g;
+          let hTJM;
+          while ((hTJM = hexTJRe.exec(decompressed)) !== null) {
+            const hex = hTJM[1];
+            let decoded = "";
+            for (let i = 0; i < hex.length; i += 4) {
+              decoded += String.fromCharCode(parseInt(hex.substring(i, i + 4), 16));
+            }
+            textChunks.push(decoded);
           }
         }
-        if (textParts.length > 0) textChunks.push(textParts.join(" "));
+      }
+
+      if (textChunks.length === 0) {
+        const plainStreams = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+        let pm;
+        while ((pm = plainStreams.exec(raw)) !== null) {
+          const s = pm[1];
+          const tjRe = /\(([^)]*)\)\s*Tj/g;
+          let tjM;
+          while ((tjM = tjRe.exec(s)) !== null) textChunks.push(tjM[1]);
+          const TJRe = /\[([^\]]*)\]\s*TJ/g;
+          let TJM;
+          while ((TJM = TJRe.exec(s)) !== null) {
+            const strRe = /\(([^)]*)\)/g;
+            let sM;
+            while ((sM = strRe.exec(TJM[1])) !== null) textChunks.push(sM[1]);
+          }
+          const hexTjRe = /<([0-9A-Fa-f]+)>\s*Tj/g;
+          let htM;
+          while ((htM = hexTjRe.exec(s)) !== null) {
+            const hex = htM[1];
+            let decoded = "";
+            for (let i = 0; i < hex.length; i += 4) {
+              decoded += String.fromCharCode(parseInt(hex.substring(i, i + 4), 16));
+            }
+            textChunks.push(decoded);
+          }
+        }
       }
 
       const decodedChunks = textChunks.map(chunk =>

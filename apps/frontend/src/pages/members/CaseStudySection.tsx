@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiUrl } from "../../lib/api";
 
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 export default function CaseStudySection({ authToken, powerLevel }: { authToken: string; powerLevel: number }) {
   const [caseStudies, setCaseStudies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,38 +41,95 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
     setExtracting(true);
     setError("");
     setExtractedContent("");
+    setSourceFileName(file.name);
     try {
-      const fd = new FormData();
-      fd.append("document", file);
-      const res = await fetch(apiUrl("/api/case-studies/upload-document"), {
+      let html = "";
+      let suggestedTitle = "";
+      let suggestedDescription = "";
+
+      if (file.type === "application/pdf") {
+        const pdfjsLib = await import("pdfjs-dist");
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, useWorkerFetch: false, useSystemFonts: true }).promise;
+
+        if (pdf.numPages > 0) {
+          const meta = await pdf.getMetadata().catch(() => null);
+          const info = meta?.info as Record<string, string> | undefined;
+          if (info?.Title && info.Title.trim()) suggestedTitle = info.Title.trim();
+        }
+
+        const textParts: string[] = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items.map((item: any) => item.str).join(" ");
+          textParts.push(pageText);
+        }
+        const text = textParts.join("\n\n");
+        const paragraphs = text.split(/\n{2,}/).filter((p: string) => p.trim().length > 0);
+        html = paragraphs
+          .map((p: string) => {
+            const trimmed = p.trim();
+            const lines = trimmed.split("\n");
+            if (lines.length === 1) return `<p>${escapeHtml(lines[0].trim())}</p>`;
+            return lines.map((l: string) => `<p>${escapeHtml(l.trim())}</p>`).join("\n");
+          })
+          .join("\n");
+
+        if (!suggestedTitle && paragraphs.length > 0) {
+          const firstLine = paragraphs[0].split("\n")[0].trim();
+          if (firstLine.length >= 3 && firstLine.length <= 200) suggestedTitle = firstLine;
+        }
+        if (paragraphs.length > 1) {
+          const desc = paragraphs[1].replace(/\n/g, " ").trim();
+          suggestedDescription = desc.length > 500 ? desc.slice(0, 497) + "..." : desc;
+        }
+      } else if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+        const mammoth = await import("mammoth");
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        html = result.value;
+
+        const tempDiv = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+        const firstSentence = tempDiv.split(/[.!?]\s/)[0];
+        if (firstSentence && firstSentence.length >= 3 && firstSentence.length <= 200) {
+          suggestedTitle = firstSentence.trim();
+        }
+        const rest = tempDiv.slice(suggestedTitle.length).trim();
+        if (rest) suggestedDescription = rest.length > 500 ? rest.slice(0, 497) + "..." : rest;
+      } else {
+        setError("Unsupported file type. Please upload a PDF or DOCX file.");
+        setExtracting(false);
+        return;
+      }
+
+      const textOnly = html.replace(/<[^>]*>/g, "").trim();
+      if (textOnly.length < 10) {
+        setError("Document appears empty or contains less than 10 visible characters.");
+        setExtracting(false);
+        return;
+      }
+
+      setExtractedContent(html);
+      if (suggestedTitle && !title) setTitle(suggestedTitle);
+      if (suggestedDescription && !description) setDescription(suggestedDescription);
+
+      const srcFd = new FormData();
+      srcFd.append("file", file);
+      const srcRes = await fetch(apiUrl("/api/case-studies/upload-source"), {
         method: "POST",
         headers: { Authorization: `Bearer ${authToken}` },
-        body: fd,
+        body: srcFd,
       });
-      const data = await res.json();
-      if (data.success) {
-        setExtractedContent(data.content);
-        setSourceFileName(file.name);
-        if (data.suggestedTitle && !title) setTitle(data.suggestedTitle);
-        if (data.suggestedDescription && !description) setDescription(data.suggestedDescription);
-
-        const srcFd = new FormData();
-        srcFd.append("file", file);
-        const srcRes = await fetch(apiUrl("/api/case-studies/upload-source"), {
-          method: "POST",
-          headers: { Authorization: `Bearer ${authToken}` },
-          body: srcFd,
-        });
-        const srcData = await srcRes.json();
-        if (srcData.success) {
-          setSourceFileUrl(srcData.url);
-          setSourceFileKey(srcData.key);
-        }
-      } else {
-        setError(data.error || "Failed to extract document content");
+      const srcData = await srcRes.json();
+      if (srcData.success) {
+        setSourceFileUrl(srcData.url);
+        setSourceFileKey(srcData.key);
       }
-    } catch {
-      setError("Failed to upload document. Try again.");
+    } catch (err: any) {
+      console.error("Document parsing error:", err);
+      setError("Failed to parse document: " + (err?.message || "Unknown error"));
     }
     setExtracting(false);
   }, [authToken, title, description]);
