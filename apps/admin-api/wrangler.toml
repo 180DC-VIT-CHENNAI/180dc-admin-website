@@ -36,6 +36,3 @@ preview_bucket_name = "preview-180dc-case-studies"
 binding = "QUEUE"
 queue = "jobs-queue"
 
-[[migrations]]
-tag = "remove-chatroom-v2"
-deleted_classes = ["ChatRoomDO"]
