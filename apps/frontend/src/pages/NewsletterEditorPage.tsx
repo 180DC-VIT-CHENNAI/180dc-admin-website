@@ -16,6 +16,7 @@ interface Newsletter {
 }
 
 type View = "login" | "otp" | "editor";
+type EditorTab = "newsletters" | "events";
 
 export default function NewsletterEditorPage() {
   const { isDark, toggle: toggleTheme } = useTheme();
@@ -44,6 +45,16 @@ export default function NewsletterEditorPage() {
   const [dragOver, setDragOver] = useState(false);
   const [suggestedTitle, setSuggestedTitle] = useState("");
   const [suggestedDescription, setSuggestedDescription] = useState("");
+
+  const [editorTab, setEditorTab] = useState<EditorTab>("newsletters");
+  const [eventSubject, setEventSubject] = useState("");
+  const [eventDescription, setEventDescription] = useState("");
+  const [_eventExtractedContent, setEventExtractedContent] = useState("");
+  const [_eventSourceFileUrl, setEventSourceFileUrl] = useState("");
+  const [eventSourceFileName, setEventSourceFileName] = useState("");
+  const [eventExtracting, setEventExtracting] = useState(false);
+  const [eventSending, setEventSending] = useState(false);
+  const [eventDragOver, setEventDragOver] = useState(false);
 
   const authHeaders: Record<string, string> = sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {};
 
@@ -265,6 +276,110 @@ export default function NewsletterEditorPage() {
     setSuccess("");
   }, []);
 
+  const resetEventForm = useCallback(() => {
+    setEventSubject("");
+    setEventDescription("");
+    setEventExtractedContent("");
+    setEventSourceFileUrl("");
+    setEventSourceFileName("");
+    setError("");
+    setSuccess("");
+  }, []);
+
+  const handleEventDocumentUpload = useCallback(async (file: File) => {
+    setEventExtracting(true);
+    setError("");
+    setEventExtractedContent("");
+    setEventSourceFileName(file.name);
+    try {
+      let html = "";
+      if (file.type === "application/pdf") {
+        const pdfjsLib = await import("pdfjs-dist");
+        const pdfjsVersion = pdfjsLib.version;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, useWorkerFetch: true, useSystemFonts: true }).promise;
+        const textParts: string[] = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          textParts.push(content.items.map((item: any) => item.str).join(" "));
+        }
+        const text = textParts.join("\n\n");
+        const paragraphs = text.split(/\n{2,}/).filter((p: string) => p.trim().length > 0);
+        html = paragraphs.map((p: string) => {
+          const lines = p.trim().split("\n");
+          if (lines.length === 1) return `<p>${escapeHtml(lines[0].trim())}</p>`;
+          return lines.map((l: string) => `<p>${escapeHtml(l.trim())}</p>`).join("\n");
+        }).join("\n");
+      } else if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+        const mammoth = await import("mammoth");
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        html = result.value;
+      } else {
+        setError("Unsupported file type. Upload a PDF or DOCX.");
+        setEventExtracting(false);
+        return;
+      }
+      const textOnly = html.replace(/<[^>]*>/g, "").trim();
+      if (textOnly.length < 10) {
+        setError("Document appears empty.");
+        setEventExtracting(false);
+        return;
+      }
+      setEventExtractedContent(html);
+      const srcFd = new FormData();
+      srcFd.append("file", file);
+      const srcRes = await fetch(apiUrl("/api/newsletter-editor/upload-source"), {
+        method: "POST",
+        headers: authHeaders,
+        body: srcFd,
+      });
+      const srcData = await srcRes.json();
+      if (srcData.success) setEventSourceFileUrl(srcData.url);
+    } catch (err: any) {
+      setError("Failed to parse document: " + (err?.message || "Unknown error"));
+    }
+    setEventExtracting(false);
+  }, [authHeaders]);
+
+  const handleEventFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleEventDocumentUpload(file);
+  }, [handleEventDocumentUpload]);
+
+  const handleEventDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setEventDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleEventDocumentUpload(file);
+  }, [handleEventDocumentUpload]);
+
+  const handleEventSend = async () => {
+    if (!eventSubject.trim()) { setError("Subject is required"); return; }
+    setEventSending(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(apiUrl("/api/newsletter-editor/send-event"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ subject: eventSubject, description: eventDescription }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSuccess(`Event mail sent to ${data.sentCount} of ${data.total} subscribers!`);
+        resetEventForm();
+      } else {
+        setError(data.error || "Failed to send");
+      }
+    } catch {
+      setError("Network error");
+    }
+    setEventSending(false);
+  };
+
   const handleSubmit = async () => {
     if (!extractedContent && !sourceFileUrl) { setError("Upload a document first"); return; }
     const finalTitle = title.trim() || suggestedTitle;
@@ -443,7 +558,35 @@ export default function NewsletterEditorPage() {
           </div>
         )}
 
-        {mode === "create" ? (
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          <button
+            onClick={() => { setEditorTab("newsletters"); resetForm(); setMode("list"); }}
+            style={{
+              ...btnBase, padding: "8px 20px",
+              background: editorTab === "newsletters" ? "var(--accent)" : "transparent",
+              color: editorTab === "newsletters" ? "#fff" : "var(--text-secondary)",
+              border: editorTab === "newsletters" ? "none" : "1px solid var(--border-light)",
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>mail</span>
+            Newsletters
+          </button>
+          <button
+            onClick={() => { setEditorTab("events"); resetEventForm(); }}
+            style={{
+              ...btnBase, padding: "8px 20px",
+              background: editorTab === "events" ? "#e85d2c" : "transparent",
+              color: editorTab === "events" ? "#fff" : "var(--text-secondary)",
+              border: editorTab === "events" ? "none" : "1px solid var(--border-light)",
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>event</span>
+            Event Mail
+          </button>
+        </div>
+
+        {editorTab === "newsletters" ? (
+        mode === "create" ? (
           <div style={{ background: cardBg, padding: "1.5rem", borderRadius: 20, border: "1px solid var(--border-light)", boxShadow: "var(--shadow-md)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "var(--text-primary)" }}>{editingId ? "Edit Newsletter" : "New Newsletter"}</h2>
@@ -556,6 +699,68 @@ export default function NewsletterEditorPage() {
                 ))}
               </div>
             )}
+          </div>
+        )) : (
+          <div style={{ background: cardBg, padding: "1.5rem", borderRadius: 20, border: "1px solid var(--border-light)", boxShadow: "var(--shadow-md)" }}>
+            <h2 style={{ margin: "0 0 16px", fontSize: 20, fontWeight: 800, color: "var(--text-primary)" }}>Send Event Mail</h2>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-secondary)" }}>
+              Send an event announcement to all active subscribers. This uses the event email template.
+            </p>
+
+            <input
+              placeholder="Event subject (e.g. Workshop on Design Thinking)"
+              value={eventSubject}
+              onChange={(e) => setEventSubject(e.target.value)}
+              style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: 12, border: "1px solid var(--border-light)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, marginBottom: 12, boxSizing: "border-box" }}
+            />
+            <textarea
+              placeholder="Event description (optional)"
+              rows={3}
+              value={eventDescription}
+              onChange={(e) => setEventDescription(e.target.value)}
+              style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: 12, border: "1px solid var(--border-light)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, marginBottom: 12, boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
+            />
+
+            <div
+              onDragOver={(e) => { e.preventDefault(); setEventDragOver(true); }}
+              onDragLeave={() => setEventDragOver(false)}
+              onDrop={handleEventDrop}
+              onClick={() => document.getElementById("event-file-input")?.click()}
+              style={{
+                border: `2px dashed ${eventDragOver ? "#e85d2c" : "var(--border-light)"}`,
+                borderRadius: 12, padding: "24px 16px", textAlign: "center", cursor: "pointer",
+                background: eventDragOver ? "rgba(232,93,44,0.05)" : "transparent", transition: "all 0.2s", marginBottom: 16,
+              }}
+            >
+              <input id="event-file-input" type="file" accept=".pdf,.docx" style={{ display: "none" }} onChange={handleEventFileInput} />
+              {eventExtracting ? (
+                <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)" }}>Extracting text...</p>
+              ) : eventSourceFileName ? (
+                <div>
+                  <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{eventSourceFileName}</p>
+                  <button onClick={(e) => { e.stopPropagation(); setEventExtractedContent(""); setEventSourceFileUrl(""); setEventSourceFileName(""); }} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, color: "#ef4444", background: "transparent" }}>Remove</button>
+                </div>
+              ) : (
+                <div>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 8px", opacity: 0.4, color: "var(--text-secondary)" }}>
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><polyline points="14 2 14 8 20 8" />
+                  </svg>
+                  <p style={{ margin: "0 0 4px", fontSize: 14, color: "var(--text-secondary)" }}>Drop a PDF or DOCX (optional attachment)</p>
+                  <p style={{ margin: 0, fontSize: 12, color: "var(--text-tertiary)" }}>Max 20 MB</p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={resetEventForm} style={{ ...btnBase, padding: "8px 20px", background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-light)" }}>Clear</button>
+              <button
+                onClick={handleEventSend}
+                disabled={eventSending || !eventSubject.trim()}
+                style={{ ...btnBase, padding: "8px 20px", background: eventSending || !eventSubject.trim() ? "var(--text-tertiary)" : "#e85d2c", color: "#fff" }}
+              >
+                {eventSending ? "Sending..." : "Send Event Mail"}
+              </button>
+            </div>
           </div>
         )}
       </div>

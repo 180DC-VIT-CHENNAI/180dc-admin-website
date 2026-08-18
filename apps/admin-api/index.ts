@@ -278,7 +278,7 @@ function tokenEmailHtml(token: string, name: string): string {
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">This is the only time this token will be shown in full. Keep it safe and don't share it with anyone.</p>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:16px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai<br><span style="color:#777777;font-weight:400">Didn't request this? Contact your club admin immediately.</span></p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai<br><span style="color:#777777;font-weight:400">Didn't request this? Contact your club admin immediately.</span></p>
 </td></tr>
 </table>
 </td></tr></table>
@@ -289,7 +289,7 @@ function tokenEmailHtml(token: string, name: string): string {
 async function sendTokenEmail(c: any, email: string, token: string, name: string): Promise<{ ok: boolean; status?: number; error?: string }> {
   const apiKey = c.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn("RESEND_API_KEY not configured — skipping email to " + email);
+    console.warn("RESEND_API_KEY not configured Ã¢â‚¬â€ skipping email to " + email);
     return { ok: false, error: "RESEND_API_KEY not configured" };
   }
   const from = "180DC Admin <team@180dcvitc.org>";
@@ -347,7 +347,7 @@ ${safeDescription ? `<p style="font-size:14px;color:#555555;margin:0 0 16px;line
 ${safeMeetLink ? `<table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto 16px"><tr><td style="padding:10px 24px;text-align:center"><a href="${safeMeetLink}" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Join Meet</a></td></tr></table>` : `<p style="font-size:13px;color:#777777;margin:0 0 16px;text-align:center;font-style:italic">Venue to be announced</p>`}
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
 </td></tr>
 </table>
 </td></tr></table>
@@ -370,7 +370,7 @@ async function incrementEmailCount(db: any) {
 
 async function sendMeetEmail(c: any, to: string, name: string, title: string, description: string | null, meetLink: string | null, scheduledAt: string, meetType: string): Promise<boolean> {
   const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) { console.warn("[email] RESEND_API_KEY not configured — skipping meet email to " + to); return false; }
+  if (!apiKey) { console.warn("[email] RESEND_API_KEY not configured Ã¢â‚¬â€ skipping meet email to " + to); return false; }
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -399,7 +399,7 @@ function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
 async function queueOrSendMeetEmails(c: any, recipients: { email: string; name: string }[], meetId: string, meetType: string, title: string, description: string | null, meetLink: string | null, scheduledAt: string) {
   const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) { console.warn("[email] RESEND_API_KEY not configured — skipping meet emails"); return { sent: 0, queued: 0 }; }
+  if (!apiKey) { console.warn("[email] RESEND_API_KEY not configured Ã¢â‚¬â€ skipping meet emails"); return { sent: 0, queued: 0 }; }
 
   let count = await getTodayEmailCount(c.env.DB);
   const MAX_DAILY = 100;
@@ -479,7 +479,7 @@ async function sendProjectAssignmentEmail(c: any, projectName: string, departmen
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Check the 180DC Admin Portal for more information.</p>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
@@ -525,7 +525,7 @@ async function sendRoleAssignmentEmail(c: any, email: string, name: string, role
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Log in to the 180DC Admin Portal to view your project dashboard and tasks.</p>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
@@ -568,7 +568,7 @@ async function sendRoleChangeEmail(c: any, email: string, name: string, roleName
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Log in to the 180DC Admin Portal to view your updated access and responsibilities.</p>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
@@ -783,7 +783,7 @@ async function seedData(db: any, env?: any) {
  * Middleware: Verify Authentication & Inject User Context
  * (In production, this decodes the Google/Clerk JWT token mapped to the VIT email)
  */
-// CORS — runs first, handles preflight OPTIONS automatically
+// CORS Ã¢â‚¬â€ runs first, handles preflight OPTIONS automatically
 app.use("*", async (c, next) => {
   await next();
   c.res.headers.set("X-Content-Type-Options", "nosniff");
@@ -966,7 +966,7 @@ async function sha256Hex(input: string): Promise<string> {
 }
 
 // ---------------------------------------------------------
-// CONTENT ENDPOINTS (Public — landing page data)
+// CONTENT ENDPOINTS (Public Ã¢â‚¬â€ landing page data)
 // ---------------------------------------------------------
 app.get("/api/content/case-studies", async (c) => {
   try {
@@ -1011,9 +1011,12 @@ app.get("/api/content/partners", async (c) => {
 // NEWSLETTER ENDPOINTS
 // ---------------------------------------------------------
 
-function newsletterEmailHtml(title: string, description: string, siteUrl: string): string {
+function newsletterEmailHtml(title: string, description: string, siteUrl: string, subscriberEmail?: string): string {
   const safeTitle = escapeHtml(title);
   const safeDesc = escapeHtml(description);
+  const unsubUrl = subscriberEmail
+    ? `https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(subscriberEmail)}`
+    : "https://180dcvitc.org/unsubscribe";
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
@@ -1038,12 +1041,50 @@ ${safeDesc ? `<p style="font-size:14px;color:#555555;margin:0 0 20px;line-height
 </table>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:16px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai<br><span style="color:#777777;font-weight:400">You received this because you subscribed to our newsletter.</span></p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai<br><span style="color:#777777;font-weight:400">You received this because you subscribed to our newsletter.</span></p>
+<p style="font-size:11px;color:#777777;margin:6px 0 0;line-height:1.5">To stop receiving emails from 180DC, <a href="${escapeHtml(unsubUrl)}" style="color:#8dc63f;text-decoration:underline;font-weight:600">click here to unsubscribe</a>.</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`;
 }
 
+
+function eventMailEmailHtml(title: string, description: string, siteUrl: string, subscriberEmail?: string): string {
+  const safeTitle = escapeHtml(title);
+  const safeDesc = escapeHtml(description);
+  const unsubUrl = subscriberEmail
+    ? `https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(subscriberEmail)}`
+    : "https://180dcvitc.org/unsubscribe";
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#1a1a1a;padding:28px 24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dcvitc.org/images/180DC.png" alt="180DC" width="56" style="margin-bottom:8px">
+<h1 style="font-family:'Caveat',cursive;color:#8dc63f;font-size:28px;margin:0;font-weight:600;text-shadow:2px 2px 0 rgba(0,0,0,0.15)">180 Degrees Consulting</h1>
+<p style="color:#ffffff;font-size:13px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
+</td></tr>
+<tr><td style="padding:28px 28px 20px">
+<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Hey there!</p>
+<p style="font-size:13px;color:#e85d2c;margin:0 0 4px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">Upcoming Event</p>
+<h2 style="font-size:22px;color:#1a1a1a;margin:0 0 16px;line-height:1.4;font-weight:800">${safeTitle}</h2>
+${safeDesc ? `<p style="font-size:14px;color:#555555;margin:0 0 20px;line-height:1.7">${safeDesc}</p>` : ""}
+<table cellpadding="0" cellspacing="0" style="background:#e85d2c;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto 20px">
+<tr><td style="padding:10px 28px;text-align:center">
+<a href="${escapeHtml(siteUrl)}" style="color:#ffffff;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Learn More</a>
+</td></tr>
+</table>
+</td></tr>
+<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:16px 28px;text-align:center">
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting â€” VIT Chennai<br><span style="color:#777777;font-weight:400">You received this because you subscribed to 180DC updates.</span></p>
+<p style="font-size:11px;color:#777777;margin:6px 0 0;line-height:1.5">To stop receiving emails from 180DC, <a href="${escapeHtml(unsubUrl)}" style="color:#8dc63f;text-decoration:underline;font-weight:600">click here to unsubscribe</a>.</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`;
+}
 // Public: Subscribe to newsletter
 app.post("/api/newsletter/subscribe", async (c) => {
   try {
@@ -1063,7 +1104,7 @@ app.post("/api/newsletter/subscribe", async (c) => {
         fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ from: "180DC Newsletter <team@180dcvitc.org>", to: email, subject: "Welcome back to the 180DC Newsletter!", html: `<p style="font-family:'Nunito',sans-serif;font-size:15px;color:#1a1a1a;line-height:1.6">Welcome back! You have been re-subscribed to the 180DC newsletter. You will continue receiving our latest updates in your inbox.</p>` }),
+          body: JSON.stringify({ from: "180DC Newsletter <team@180dcvitc.org>", to: email, subject: "Welcome back to the 180DC Newsletter!", html: `<p style="font-family:'Nunito',sans-serif;font-size:15px;color:#1a1a1a;line-height:1.6">Welcome back! You have been re-subscribed to the 180DC newsletter. You will continue receiving our latest updates in your inbox.</p><p style="font-family:'Nunito',sans-serif;font-size:12px;color:#777777;margin-top:16px;line-height:1.5">To stop receiving emails from 180DC, <a href="https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(email)}" style="color:#8dc63f;text-decoration:underline;font-weight:600">click here to unsubscribe</a>.</p>` }),
         }).catch(() => {});
       }
       return c.json({ success: true, message: "Welcome back! You have been re-subscribed." });
@@ -1088,7 +1129,7 @@ app.post("/api/newsletter/subscribe", async (c) => {
 <tr><td style="padding:28px 28px 20px">
 <p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Welcome aboard!</p>
 <p style="font-size:14px;color:#555555;margin:0 0 20px;line-height:1.6">Thank you for subscribing to the 180DC newsletter. You will now receive our latest updates, insights, and event announcements directly in your inbox.</p>
-<p style="font-size:14px;color:#555555;margin:0 0 20px;line-height:1.6">Should you wish to unsubscribe at any time, simply click the link provided in any of our newsletters.</p>
+<p style="font-size:14px;color:#555555;margin:0 0 20px;line-height:1.6">Should you wish to unsubscribe at any time, simply click the link provided in any of our newsletters or visit <a href="https://180dcvitc.org/unsubscribe" style="color:#8dc63f;text-decoration:underline">180dcvitc.org/unsubscribe</a>.</p>
 <table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto 20px">
 <tr><td style="padding:10px 28px;text-align:center">
 <a href="https://180dcvitc.org" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Visit Our Website</a>
@@ -1096,7 +1137,8 @@ app.post("/api/newsletter/subscribe", async (c) => {
 </table>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:16px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai<br><span style="color:#777777;font-weight:400">You received this because you subscribed to our newsletter.</span></p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai<br><span style="color:#777777;font-weight:400">You received this because you subscribed to our newsletter.</span></p>
+<p style="font-size:11px;color:#777777;margin:6px 0 0;line-height:1.5">To stop receiving emails from 180DC, <a href="https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(email)}" style="color:#8dc63f;text-decoration:underline;font-weight:600">click here to unsubscribe</a>.</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`;
@@ -1121,10 +1163,12 @@ app.get("/api/newsletter/unsubscribe", async (c) => {
     if (!email || !validateEmail(email)) return c.text("Invalid email address.", 400);
 
     const sub = await c.env.DB.prepare("SELECT id, active FROM newsletter_subscribers WHERE email = ?").bind(email).first();
-    if (!sub || sub.active === 0) return c.text("You are not currently subscribed.", 200);
+    if (!sub || sub.active === 0) {
+      return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Already Unsubscribed Ã¢â‚¬â€ 180DC</title><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet"></head><body style="margin:0;padding:0;background:#f5f3ee;font-family:'Nunito',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh"><div style="background:#fff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a;padding:40px 32px;max-width:440px;text-align:center"><div style="width:56px;height:56px;border-radius:50%;background:#8dc63f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px;font-weight:800">180</div><h1 style="font-size:22px;color:#1a1a1a;margin:0 0 8px">Already Unsubscribed</h1><p style="font-size:14px;color:#555;margin:0 0 20px;line-height:1.6">You are not currently subscribed to the 180DC newsletter, or you have already unsubscribed.</p><a href="https://180dcvitc.org" style="display:inline-block;padding:10px 28px;background:#8dc63f;color:#1a1a1a;text-decoration:none;border-radius:50px;border:3px solid #1a1a1a;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Visit Website</a></div></body></html>`, 200);
+    }
 
     await c.env.DB.prepare("UPDATE newsletter_subscribers SET active = 0, unsubscribed_at = CURRENT_TIMESTAMP WHERE id = ?").bind(sub.id).run();
-    return c.text("You have been unsubscribed from the 180DC newsletter.", 200);
+    return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Unsubscribed Ã¢â‚¬â€ 180DC</title><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet"></head><body style="margin:0;padding:0;background:#f5f3ee;font-family:'Nunito',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh"><div style="background:#fff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a;padding:40px 32px;max-width:440px;text-align:center"><div style="width:56px;height:56px;border-radius:50%;background:#8dc63f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px;font-weight:800">180</div><h1 style="font-size:22px;color:#1a1a1a;margin:0 0 8px">Successfully Unsubscribed</h1><p style="font-size:14px;color:#555;margin:0 0 20px;line-height:1.6">You have been unsubscribed from the 180DC newsletter. You will no longer receive newsletter emails from us.</p><a href="https://180dcvitc.org" style="display:inline-block;padding:10px 28px;background:#8dc63f;color:#1a1a1a;text-decoration:none;border-radius:50px;border:3px solid #1a1a1a;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Visit Website</a></div></body></html>`, 200);
   } catch (e: any) {
     return c.text("Something went wrong.", 500);
   }
@@ -1349,7 +1393,7 @@ function otpEmailHtml(otp: string): string {
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Didn't request this? You can safely ignore this email.</p>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:16px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
 </td></tr>
 </table>
 </td></tr></table>
@@ -1602,11 +1646,11 @@ app.post("/api/newsletter-editor/send", async (c) => {
 
     let sentCount = 0;
     const siteUrl = "https://180dcvitc.org/#newsletter";
-    const html = newsletterEmailHtml(newsletter.title, newsletter.description || "", siteUrl);
 
     for (const to of recipients) {
       if (currentCount + sentCount >= 100) break;
       try {
+        const html = newsletterEmailHtml(newsletter.title, newsletter.description || "", siteUrl, to);
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
@@ -1636,6 +1680,60 @@ app.post("/api/newsletter-editor/send", async (c) => {
   }
 });
 
+// OTP Session: Send event mail to all active subscribers
+app.post("/api/newsletter-editor/send-event", async (c) => {
+  try {
+    const email = await verifyNewsletterSession(c);
+    if (!email) return c.json({ error: "Not authenticated" }, 401);
+
+    const rl = await checkRateLimit(c, "newsletter_editor_send_event", 3, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+
+    const apiKey = c.env.RESEND_API_KEY;
+    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
+
+    const body = await c.req.json();
+    const { subject, description } = body;
+    if (!subject || !subject.trim()) return c.json({ error: "Subject is required" }, 400);
+
+    const currentCount = await getTodayEmailCount(c.env.DB);
+    if (currentCount >= 100) return c.json({ error: "Daily email quota reached (100)." }, 429);
+
+    const subscribers = await c.env.DB.prepare("SELECT email FROM newsletter_subscribers WHERE active = 1").all();
+    const recipients = (subscribers.results || []).map((s: any) => s.email);
+    if (recipients.length === 0) return c.json({ error: "No active subscribers" }, 400);
+
+    let sentCount = 0;
+    const siteUrl = "https://180dcvitc.org/#newsletter";
+
+    for (const to of recipients) {
+      if (currentCount + sentCount >= 100) break;
+      try {
+        const html = eventMailEmailHtml(subject, description || "", siteUrl, to);
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: "180DC Events <team@180dcvitc.org>",
+            to,
+            subject: subject,
+            html,
+          }),
+        });
+        if (res.ok) sentCount++;
+        await new Promise((r) => setTimeout(r, 550));
+      } catch (err: any) {
+        console.error("[newsletter-editor] Failed to send event mail to " + to + ": " + err.message);
+      }
+    }
+
+    for (let i = 0; i < sentCount; i++) await incrementEmailCount(c.env.DB);
+
+    return c.json({ success: true, sentCount, total: recipients.length });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
 // Admin: Manage authorized emails for newsletter editor
 app.get("/api/newsletter-editor/admin/authorized-emails", async (c) => {
   try {
@@ -1830,7 +1928,7 @@ app.post("/api/dev-login", async (c) => {
         secondaryRoleName = sr?.name || null;
       }
 
-      // Default or "director" — primary role; clear any active role choice
+      // Default or "director" Ã¢â‚¬â€ primary role; clear any active role choice
       await c.env.DB.prepare(
         "UPDATE admin_tokens SET active_role_id = NULL WHERE token = ?",
       ).bind(token).run();
@@ -1869,7 +1967,7 @@ app.post("/api/dev-login", async (c) => {
 });
 
 // ---------------------------------------------------------
-// FORGOT TOKEN (public — sends token to email if registered)
+// FORGOT TOKEN (public Ã¢â‚¬â€ sends token to email if registered)
 // ---------------------------------------------------------
 app.post("/api/auth/forgot-token", async (c) => {
   try {
@@ -1912,7 +2010,7 @@ app.post("/api/auth/forgot-token", async (c) => {
 });
 
 // ---------------------------------------------------------
-// CLERK LOGIN (public — verifies Clerk JWT, returns session)
+// CLERK LOGIN (public Ã¢â‚¬â€ verifies Clerk JWT, returns session)
 // ---------------------------------------------------------
 app.post("/api/auth/clerk-login", async (c) => {
   try {
@@ -2009,7 +2107,7 @@ app.post("/api/auth/clerk-login", async (c) => {
 });
 
 // ---------------------------------------------------------
-// LINK CLERK (authenticated — links Clerk user ID to member)
+// LINK CLERK (authenticated Ã¢â‚¬â€ links Clerk user ID to member)
 // ---------------------------------------------------------
 app.post("/api/auth/link-clerk", async (c) => {
   try {
@@ -2044,7 +2142,7 @@ app.post("/api/auth/link-clerk", async (c) => {
 });
 
 // ---------------------------------------------------------
-// UNLINK CLERK (authenticated — disconnects Google login)
+// UNLINK CLERK (authenticated Ã¢â‚¬â€ disconnects Google login)
 // ---------------------------------------------------------
 app.post("/api/auth/unlink-clerk", async (c) => {
   try {
@@ -2717,7 +2815,7 @@ app.post("/api/my-role-transfers/:id/accept", async (c) => {
     ).bind(id).first();
 
     if (updated.from_user_accepted && updated.to_user_accepted) {
-      // Both accepted — execute the swap
+      // Both accepted Ã¢â‚¬â€ execute the swap
       const fromPower: any = await c.env.DB.prepare(
         "SELECT power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
       ).bind(row.from_user_id).first();
@@ -2737,10 +2835,10 @@ app.post("/api/my-role-transfers/:id/accept", async (c) => {
       await c.env.DB.prepare("UPDATE users SET role_id = ? WHERE id = ?").bind(row.role_id, row.to_user_id).run();
       await c.env.DB.prepare("UPDATE users SET role_id = 'member' WHERE id = ?").bind(row.from_user_id).run();
       await c.env.DB.prepare("UPDATE role_transfers SET status = 'approved' WHERE id = ?").bind(id).run();
-      return c.json({ success: true, message: "Both accepted — roles swapped" });
+      return c.json({ success: true, message: "Both accepted Ã¢â‚¬â€ roles swapped" });
     }
 
-    return c.json({ success: true, message: "You accepted — waiting for the other party" });
+    return c.json({ success: true, message: "You accepted Ã¢â‚¬â€ waiting for the other party" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -2952,7 +3050,7 @@ async function canAccessDept(c: any, deptId: string) {
   throw new Error("Forbidden: you do not have access to this department");
 }
 
-// GET /api/departments/:id/overview — all department data in one call
+// GET /api/departments/:id/overview Ã¢â‚¬â€ all department data in one call
 app.get("/api/departments/:id/overview", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -3761,7 +3859,7 @@ app.post("/api/projects/:id/tasks/complete-all", async (c) => {
   }
 });
 
-// ── Completed projects static JSON generation (XSS-safe) ────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Completed projects static JSON generation (XSS-safe) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // When a project is completed or reopened, we regenerate a static JSON
 // blob with all HTML-escaped text fields and write it to R2 so the
 // frontend can load it without querying the database.
@@ -3826,7 +3924,7 @@ app.post("/api/projects/:id/reopen", async (c) => {
   }
 });
 
-// Public endpoint — returns completed projects (no auth required)
+// Public endpoint Ã¢â‚¬â€ returns completed projects (no auth required)
 // Reads from R2 static JSON for fast loading; falls back to DB if R2 misses.
 app.get("/api/projects/completed", async (c) => {
   try {
@@ -3851,7 +3949,7 @@ app.get("/api/projects/completed", async (c) => {
   }
 });
 
-// Manual trigger — regenerate static JSON (board only)
+// Manual trigger Ã¢â‚¬â€ regenerate static JSON (board only)
 app.post("/api/projects/regenerate-completed", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -4247,7 +4345,7 @@ app.put("/api/recruitment/admin/applications/:id/status", async (c) => {
   }
 });
 
-// 11. ADMIN: Bulk shortlist — auto-shortlist top N applicants by total score
+// 11. ADMIN: Bulk shortlist Ã¢â‚¬â€ auto-shortlist top N applicants by total score
 app.post("/api/recruitment/admin/bulk-shortlist", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -4345,9 +4443,9 @@ app.get("/api/recruitment/open-domains", async (c) => {
 const ALLOWED_IMG_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_IMG_SIZE = 10 * 1024 * 1024; // 10 MB
 
-// ─────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // CASE STUDY IMAGE UPLOAD & SERVE (uses same R2 bucket, separate folder)
-// ─────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 app.post("/api/case-studies/upload-image", async (c) => {
   try {
@@ -4432,9 +4530,9 @@ app.delete("/api/case-studies/delete-image", async (c) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// CASE STUDY DOCUMENT UPLOAD (PDF / DOCX → HTML)
-// ─────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// CASE STUDY DOCUMENT UPLOAD (PDF / DOCX Ã¢â€ â€™ HTML)
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 const ALLOWED_DOC_TYPES = [
   "application/pdf",
@@ -4763,7 +4861,7 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
 <div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${escapeHtml(emailBody).replace(/\n/g, "<br>")}</div>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
@@ -4833,7 +4931,7 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
 <div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${escapeHtml(emailBody).replace(/\n/g, "<br>")}</div>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
@@ -5071,7 +5169,7 @@ app.post("/api/send-email", async (c) => {
 <div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${escapeHtml(htmlBody).replace(/\n/g, "<br>")}</div>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
@@ -5087,7 +5185,7 @@ app.post("/api/send-email", async (c) => {
 });
 
 // ---------------------------------------------------------
-// CLUB FILES ENDPOINTS (R2 only — metadata stored as custom metadata on objects)
+// CLUB FILES ENDPOINTS (R2 only Ã¢â‚¬â€ metadata stored as custom metadata on objects)
 // ---------------------------------------------------------
 
 function meta(obj: any, key: string): string {
@@ -5303,7 +5401,7 @@ app.post("/api/club-files/upload", async (c) => {
 // MAINTENANCE MODE (President/VP only)
 // ---------------------------------------------------------
 
-// GET /api/admin/maintenance — check maintenance status
+// GET /api/admin/maintenance Ã¢â‚¬â€ check maintenance status
 app.get("/api/admin/maintenance", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -5314,7 +5412,7 @@ app.get("/api/admin/maintenance", async (c) => {
   }
 });
 
-// POST /api/admin/maintenance — toggle maintenance mode (power >= 100)
+// POST /api/admin/maintenance Ã¢â‚¬â€ toggle maintenance mode (power >= 100)
 app.post("/api/admin/maintenance", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -5347,7 +5445,7 @@ app.post("/api/chat", async (c) => {
     const apiKey = c.env.GEMINI_API_KEY;
     const groqKey = c.env.GROQ_API_KEY;
 
-    const systemPrompt = `You are ConsultAI, the highly professional, elite AI consulting assistant for 180 Degrees Consulting (180DC) VIT Chennai. Your tone should mirror that of a top-tier management consultant (e.g., McKinsey, BCG, Bain) — extremely articulate, well-versed, empathetic, and strictly professional. You speak on behalf of 180DC VIT Chennai using "we" and "our".
+    const systemPrompt = `You are ConsultAI, the highly professional, elite AI consulting assistant for 180 Degrees Consulting (180DC) VIT Chennai. Your tone should mirror that of a top-tier management consultant (e.g., McKinsey, BCG, Bain) Ã¢â‚¬â€ extremely articulate, well-versed, empathetic, and strictly professional. You speak on behalf of 180DC VIT Chennai using "we" and "our".
 
 About 180DC VIT Chennai:
 - We are part of the world's largest university-based consultancy.

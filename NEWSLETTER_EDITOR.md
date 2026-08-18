@@ -10,8 +10,9 @@ Separate newsletter creation/sending system at `/subscriber/newsletter`, indepen
 Members Board (/members)                 /subscriber/newsletter
 ─────────────────────────                 ──────────────────────
 Newsletter panel (power >= 100):          OTP login → editor:
-- Add/remove authorized emails            - Create/edit/delete drafts
-- Manages WHO can access the editor       - Upload PDF/Word → extract text
+- Add/remove authorized emails            - Create/edit/delete drafts (Newsletters tab)
+- Manages WHO can access the editor       - Send event announcements (Event Mail tab)
+                                          - Upload PDF/Word → extract text
                                           - Send to all subscribers
 ```
 
@@ -52,6 +53,7 @@ All under `apps/admin-api/index.ts`.
 - `DELETE /api/newsletter-editor/drafts/:id` — delete own draft
 - `POST /api/newsletter-editor/upload-source` — upload PDF/DOCX to R2
 - `POST /api/newsletter-editor/send` — send newsletter to all subscribers
+- `POST /api/newsletter-editor/send-event` — send event mail to all subscribers
 
 ### Admin (requires board power_level >= 100, uses admin token auth)
 - `GET /api/newsletter-editor/admin/authorized-emails` — list authorized emails
@@ -61,23 +63,25 @@ All under `apps/admin-api/index.ts`.
 ### Existing Public Newsletter Endpoints (were broken, now fixed)
 - `GET /api/newsletter` — list published newsletters (landing page)
 - `POST /api/newsletter/subscribe` — subscribe to newsletter
-- `GET /api/newsletter/unsubscribe` — unsubscribe
+- `GET /api/newsletter/unsubscribe?email=...` — unsubscribe (returns styled HTML page)
 - `GET /api/newsletter/subscribers/count` — public count
 
 ## Frontend Files
 
 | File | Purpose |
 |------|---------|
-| `apps/frontend/src/pages/NewsletterEditorPage.tsx` | OTP login + newsletter editor page |
+| `apps/frontend/src/pages/NewsletterEditorPage.tsx` | OTP login + newsletter/event mail editor page |
 | `apps/frontend/src/pages/SubscriberPage.tsx` | Public subscriber page (Clerk Google auth) |
+| `apps/frontend/src/pages/UnsubscribePage.tsx` | Public unsubscribe page (`/unsubscribe?email=...`) |
 | `apps/frontend/src/sections/NewsletterSection.tsx` | Landing page newsletter section |
 | `apps/frontend/src/pages/members/NewsletterSection.tsx` | Members board — authorized email management only |
-| `apps/frontend/src/main.tsx` | Routes: `/subscriber`, `/subscriber/newsletter` |
+| `apps/frontend/src/main.tsx` | Routes: `/subscriber`, `/subscriber/newsletter`, `/unsubscribe` |
 
 ## Routes (main.tsx)
 
-- `/subscriber` — Clerk-based subscriber page (Google sign-in)
-- `/subscriber/newsletter` — OTP-based newsletter editor (no Clerk)
+- `/subscriber` — Clerk-based subscriber page (Google sign-in, Terms & Conditions consent)
+- `/subscriber/newsletter` — OTP-based newsletter/event mail editor (no Clerk)
+- `/unsubscribe?email=...` — Public unsubscribe page (reads email from query param)
 
 ## Key Fixes Applied
 
@@ -109,8 +113,39 @@ All under `apps/admin-api/index.ts`.
 ## Resend Configuration
 
 - Domain: `180dcvitc.org` (verified in Resend)
-- From address: `team@180dcvitc.org`
-- Used for: OTP emails, newsletter sends, admin token emails
+- From addresses: `team@180dcvitc.org` (newsletters), `180DC Events <team@180dcvitc.org>` (event mails)
+- Used for: OTP emails, newsletter sends, event mails, admin token emails
+
+## Email Templates
+
+All outgoing emails include an unsubscribe footer:
+```
+To stop receiving emails from 180DC, click here to unsubscribe.
+→ https://180dcvitc.org/unsubscribe?email={subscriber_email}
+```
+
+### Newsletter Email (`newsletterEmailHtml`)
+- Green header with 180DC branding
+- "New Newsletter" label, title, description
+- "Read on Website" CTA button
+- Unsubscribe footer
+
+### Event Mail (`eventMailEmailHtml`)
+- Dark header with green accent text
+- "Upcoming Event" label (orange accent), title, description
+- "Learn More" CTA button (orange)
+- Unsubscribe footer
+
+### Welcome/Re-subscribe Emails
+- Sent on first subscribe or re-subscribe
+- Include unsubscribe link in footer
+
+## Subscriber Terms & Conditions
+
+The `/subscriber` page displays Terms and Conditions that include:
+1. Consent to receive newsletter communications
+2. Consent to receive event updates (workshops, seminars, promotional events)
+3. Link to unsubscribe at `180dcvitc.org/unsubscribe`
 
 ## Deploy Commands
 

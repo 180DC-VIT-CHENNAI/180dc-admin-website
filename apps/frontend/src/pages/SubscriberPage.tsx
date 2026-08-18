@@ -10,6 +10,7 @@ export default function SubscriberPage() {
   const email = user?.primaryEmailAddress?.emailAddress || "";
 
   const [subscribing, setSubscribing] = useState(false);
+  const [subStep, setSubStep] = useState("");
   const [subMsg, setSubMsg] = useState("");
   const [subscribed, setSubscribed] = useState(false);
 
@@ -25,15 +26,23 @@ export default function SubscriberPage() {
     setSubscribing(true);
     setSubMsg("");
     try {
+      setSubStep("Validating account...");
+      await new Promise((r) => setTimeout(r, 400));
+      setSubStep("Confirming email address...");
+      await new Promise((r) => setTimeout(r, 300));
+      setSubStep("Subscribing to newsletter...");
       const res = await fetch(apiUrl("/api/newsletter/subscribe"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
+      setSubStep("Processing...");
       const data = await res.json();
+      setSubStep("");
       setSubMsg(data.message || (data.success ? "Subscribed!" : "Something went wrong"));
       if (data.success) setSubscribed(true);
     } catch {
+      setSubStep("");
       setSubMsg("Network error. Please try again.");
     }
     setSubscribing(false);
@@ -160,13 +169,28 @@ export default function SubscriberPage() {
                   className="btn"
                   style={{ width: "100%", padding: "0.875rem", borderRadius: 12, justifyContent: "center", fontSize: "15px" }}
                 >
-                  {subscribed ? "Subscribed!" : subscribing ? "Subscribing..." : "Subscribe"}
+                  {subscribed ? "Subscribed!" : subscribing ? subStep || "Processing..." : "Subscribe"}
                 </button>
               </form>
 
-              <p style={{ margin: "12px 0 0", fontSize: 11, color: "var(--text-tertiary)", textAlign: "center", lineHeight: 1.5 }}>
-                By subscribing, you consent to receive newsletter communications from 180 Degrees Consulting via email. You may unsubscribe at any time.
-              </p>
+              {subscribing && subStep && (
+                <div style={{ margin: "10px 0 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  <div style={{ width: 14, height: 14, border: "2px solid var(--border-light)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{subStep}</span>
+                </div>
+              )}
+
+              <div style={{ margin: "12px 0 0", fontSize: 11, color: "var(--text-tertiary)", textAlign: "center", lineHeight: 1.5 }}>
+                <p style={{ fontWeight: 700, color: "var(--text-secondary)", margin: "0 0 6px", fontSize: 12, letterSpacing: 0.5 }}>Terms and Conditions</p>
+                <p style={{ margin: "0 0 4px" }}>
+                  By subscribing, you consent to receive newsletter communications from 180 Degrees Consulting via email.
+                  You also agree to receive updates about events conducted by 180 Degrees Consulting, including but not limited to workshops, seminars, and promotional events.
+                </p>
+                <p style={{ margin: 0 }}>
+                  You may unsubscribe at any time by visiting{" "}
+                  <a href="https://180dcvitc.org/unsubscribe" style={{ color: "var(--accent)", textDecoration: "underline" }}>180dcvitc.org/unsubscribe</a>.
+                </p>
+              </div>
 
               {subMsg && (
                 <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--text-secondary)", textAlign: "center" }}>

@@ -19,6 +19,7 @@ export default function NewsletterSection() {
   const [email, setEmail] = useState("");
   const [subscribing, setSubscribing] = useState(false);
   const [subMsg, setSubMsg] = useState("");
+  const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
