@@ -51,6 +51,20 @@ export default function SubscriberPage() {
         padding: "1.5rem",
       }}
     >
+      <div style={{ position: "absolute", top: 24, left: 24, display: "flex", gap: 10 }}>
+        <a
+          href="https://180dcvitc.org"
+          style={{
+            padding: "10px 16px", border: "1px solid var(--border-light)",
+            background: "var(--bg-card)", color: "var(--text-primary)", cursor: "pointer",
+            borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            boxShadow: "var(--shadow-sm)", textDecoration: "none", fontSize: 14, fontWeight: 600,
+          }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>home</span>
+          Home
+        </a>
+      </div>
       <button
         onClick={toggleTheme}
         style={{
@@ -118,7 +132,7 @@ export default function SubscriberPage() {
                 {user?.imageUrl && (
                   <img src={user.imageUrl} alt="" style={{ width: 28, height: 28, borderRadius: "50%" }} />
                 )}
-                <div style={{ minWidth: 0 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {user?.fullName || email}
                   </div>
@@ -126,6 +140,17 @@ export default function SubscriberPage() {
                     {email}
                   </div>
                 </div>
+                <button
+                  onClick={() => clerk.signOut().then(() => clerk.redirectToSignIn({ signInFallbackRedirectUrl: "/subscriber" }))}
+                  style={{
+                    padding: "4px 10px", fontSize: 12, fontWeight: 600,
+                    background: "transparent", border: "1px solid var(--border-light)",
+                    color: "var(--text-secondary)", borderRadius: 8, cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Switch
+                </button>
               </div>
 
               <form onSubmit={handleSubscribe}>
