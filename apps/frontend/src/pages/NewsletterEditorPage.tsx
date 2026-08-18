@@ -37,7 +37,7 @@ export default function NewsletterEditorPage() {
   const [description, setDescription] = useState("");
   const [extractedContent, setExtractedContent] = useState("");
   const [sourceFileUrl, setSourceFileUrl] = useState("");
-  const [sourceFileKey, setSourceFileKey] = useState("");
+  const [_sourceFileKey, setSourceFileKey] = useState("");
   const [sourceFileName, setSourceFileName] = useState("");
   const [extracting, setExtracting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -45,7 +45,7 @@ export default function NewsletterEditorPage() {
   const [suggestedTitle, setSuggestedTitle] = useState("");
   const [suggestedDescription, setSuggestedDescription] = useState("");
 
-  const authHeaders = sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {};
+  const authHeaders: Record<string, string> = sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {};
 
   const loadDrafts = useCallback(async () => {
     try {

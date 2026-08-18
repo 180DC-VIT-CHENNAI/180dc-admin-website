@@ -37,5 +37,5 @@ binding = "QUEUE"
 queue = "jobs-queue"
 
 [[migrations]]
-tag = "remove-chatroom"
+tag = "remove-chatroom-v2"
 deleted_classes = ["ChatRoomDO"]
