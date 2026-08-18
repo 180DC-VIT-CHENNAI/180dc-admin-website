@@ -42,6 +42,11 @@ function isPublicRoute(pathname: string, method: string): boolean {
     ["/api/recruitment/login"],
     ["/api/recruitment/open-domains"],
     ["/api/chat", "POST"],
+    ["/api/newsletter/subscribe", "POST"],
+    ["/api/newsletter/unsubscribe", "GET"],
+    ["/api/newsletter/subscribers/count", "GET"],
+    ["/api/newsletter-editor/otp/send", "POST"],
+    ["/api/newsletter-editor/otp/verify", "POST"],
   ];
   for (const [route, requiredMethod] of PUBLIC_ROUTES) {
     if (pathname === route && (!requiredMethod || method === requiredMethod)) return true;
@@ -50,6 +55,7 @@ function isPublicRoute(pathname: string, method: string): boolean {
   if (pathname.startsWith("/api/content") && method === "GET") return true;
   if (pathname.startsWith("/api/case-studies/images/") && method === "GET") return true;
   if (pathname === "/api/admin/maintenance" && method === "GET") return true;
+  if (pathname === "/api/newsletter" && method === "GET") return true;
 
   return false;
 }
@@ -642,6 +648,9 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS maintenance_mode (id INTEGER PRIMARY KEY DEFAULT 1, enabled INTEGER DEFAULT 0, message TEXT DEFAULT 'Site is under maintenance. Please check back later.', updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS newsletter_subscribers (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, active INTEGER DEFAULT 1, subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP, unsubscribed_at DATETIME);
     CREATE TABLE IF NOT EXISTS newsletters (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '', content TEXT DEFAULT '', source_file_url TEXT, image_url TEXT, sent_at DATETIME, recipient_count INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS newsletter_authorized_emails (email TEXT PRIMARY KEY, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS newsletter_otp_codes (id TEXT PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, expires_at DATETIME NOT NULL, used INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS newsletter_sessions (id TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     `);
   await runMigrations(db);
 }
@@ -681,6 +690,9 @@ async function runMigrations(db: any) {
   try { await db.exec("INSERT OR IGNORE INTO maintenance_mode (id, enabled, message) VALUES (1, 0, 'Site is under maintenance. Please check back later.')"); } catch { console.warn("Migration: maintenance_mode seed"); }
   try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletter_subscribers (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, active INTEGER DEFAULT 1, subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP, unsubscribed_at DATETIME)`); } catch { console.warn("Migration: newsletter_subscribers table"); }
   try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletters (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '', content TEXT DEFAULT '', source_file_url TEXT, image_url TEXT, sent_at DATETIME, recipient_count INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`); } catch { console.warn("Migration: newsletters table"); }
+  try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletter_authorized_emails (email TEXT PRIMARY KEY, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`); } catch { console.warn("Migration: newsletter_authorized_emails table"); }
+  try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletter_otp_codes (id TEXT PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, expires_at DATETIME NOT NULL, used INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`); } catch { console.warn("Migration: newsletter_otp_codes table"); }
+  try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletter_sessions (id TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`); } catch { console.warn("Migration: newsletter_sessions table"); }
 }
 
 let currentEnv: any = null;
@@ -832,6 +844,12 @@ app.use("*", async (c, next) => {
   // Allow unauthenticated routes
   const url = new URL(c.req.url);
   if (isPublicRoute(url.pathname, c.req.method)) {
+    await next();
+    return;
+  }
+
+  // Newsletter editor routes use their own OTP session auth
+  if (url.pathname.startsWith("/api/newsletter-editor/")) {
     await next();
     return;
   }
@@ -1254,6 +1272,358 @@ app.post("/api/newsletter/send", async (c) => {
       .bind(sentCount, newsletterId).run();
 
     return c.json({ success: true, sentCount, total: recipients.length });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
+// NEWSLETTER EDITOR (OTP-BASED, SEPARATE FROM MEMBERS)
+// ---------------------------------------------------------
+
+function otpEmailHtml(otp: string): string {
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#8dc63f;padding:28px 24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dcvitc.org/images/180DC.png" alt="180DC" width="56" style="margin-bottom:8px">
+<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:28px;margin:0;font-weight:600;text-shadow:2px 2px 0 rgba(0,0,0,0.15)">180 Degrees Consulting</h1>
+<p style="color:#1a1a1a;font-size:13px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
+</td></tr>
+<tr><td style="padding:28px 28px 20px">
+<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Hey!</p>
+<p style="font-size:14px;color:#555555;margin:0 0 20px;line-height:1.6">Your one-time password for the Newsletter Editor. It expires in 5 minutes.</p>
+<div style="background:#f5f3ee;border:3px solid #1a1a1a;border-radius:12px;padding:16px 20px;margin:0 0 20px;text-align:center">
+<p style="font-size:11px;color:#777777;margin:0 0 8px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">Your OTP</p>
+<code style="font-size:28px;font-weight:800;color:#1a1a1a;letter-spacing:6px;font-family:monospace">${escapeHtml(otp)}</code>
+</div>
+<p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Didn't request this? You can safely ignore this email.</p>
+</td></tr>
+<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:16px 28px;text-align:center">
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai</p>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+}
+
+function generateOtp(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+async function verifyNewsletterSession(c: any): Promise<string | null> {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  const token = authHeader.slice(7);
+  const row = await c.env.DB.prepare(
+    "SELECT email, expires_at FROM newsletter_sessions WHERE id = ?"
+  ).bind(token).first();
+  if (!row) return null;
+  if (new Date(row.expires_at as string) < new Date()) {
+    await c.env.DB.prepare("DELETE FROM newsletter_sessions WHERE id = ?").bind(token).run();
+    return null;
+  }
+  return row.email as string;
+}
+
+// OTP: Send code to authorized email
+app.post("/api/newsletter-editor/otp/send", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const body = await c.req.json();
+    const email = validateEmail(body.email);
+    if (!email) return c.json({ error: "Valid email required" }, 400);
+
+    const rl = await checkRateLimit(c, "newsletter_otp_send", 5, 300);
+    if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+
+    const authorized = await c.env.DB.prepare(
+      "SELECT email FROM newsletter_authorized_emails WHERE email = ?"
+    ).bind(email).first();
+    if (!authorized) return c.json({ error: "Email not authorized for newsletter editor" }, 403);
+
+    const code = generateOtp();
+    const id = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
+    await c.env.DB.prepare(
+      "INSERT INTO newsletter_otp_codes (id, email, code, expires_at) VALUES (?, ?, ?, ?)"
+    ).bind(id, email, code, expiresAt).run();
+
+    const apiKey = c.env.RESEND_API_KEY;
+    if (apiKey) {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "180DC Newsletter <team@180dcvitc.org>",
+          to: email,
+          subject: "Your Newsletter Editor OTP",
+          html: otpEmailHtml(code),
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        console.error("[newsletter-editor] OTP email failed:", res.status, errBody);
+        return c.json({ error: "Failed to send OTP email" }, 500);
+      }
+    } else {
+      console.warn("[newsletter-editor] RESEND_API_KEY not set, OTP:", code);
+    }
+
+    return c.json({ success: true, message: "OTP sent to " + email });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// OTP: Verify code and return session token
+app.post("/api/newsletter-editor/otp/verify", async (c) => {
+  try {
+    await ensureTables(c.env.DB);
+    const body = await c.req.json();
+    const email = validateEmail(body.email);
+    const code = sanitizeStr(body.code, 10);
+    if (!email || !code) return c.json({ error: "Email and code required" }, 400);
+
+    const rl = await checkRateLimit(c, "newsletter_otp_verify", 10, 300);
+    if (!rl.allowed) return c.json({ error: "Too many attempts. Try again later.", retryAfter: rl.retryAfter }, 429);
+
+    const row = await c.env.DB.prepare(
+      "SELECT id, code, expires_at, used FROM newsletter_otp_codes WHERE email = ? ORDER BY created_at DESC LIMIT 1"
+    ).bind(email).first();
+    if (!row) return c.json({ error: "No OTP found. Request a new one." }, 400);
+    if (row.used) return c.json({ error: "OTP already used. Request a new one." }, 400);
+    if (new Date(row.expires_at as string) < new Date()) return c.json({ error: "OTP expired. Request a new one." }, 400);
+    if (row.code !== code) return c.json({ error: "Invalid OTP" }, 400);
+
+    await c.env.DB.prepare("UPDATE newsletter_otp_codes SET used = 1 WHERE id = ?").bind(row.id).run();
+
+    const sessionId = crypto.randomUUID();
+    const sessionExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await c.env.DB.prepare(
+      "INSERT INTO newsletter_sessions (id, email, expires_at) VALUES (?, ?, ?)"
+    ).bind(sessionId, email, sessionExpires).run();
+
+    return c.json({ success: true, token: sessionId, email });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Logout
+app.post("/api/newsletter-editor/logout", async (c) => {
+  try {
+    const authHeader = c.req.header("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      await c.env.DB.prepare("DELETE FROM newsletter_sessions WHERE id = ?").bind(authHeader.slice(7)).run();
+    }
+    return c.json({ success: true });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Check session
+app.get("/api/newsletter-editor/me", async (c) => {
+  try {
+    const email = await verifyNewsletterSession(c);
+    if (!email) return c.json({ error: "Not authenticated" }, 401);
+    return c.json({ success: true, email });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Draft: List
+app.get("/api/newsletter-editor/drafts", async (c) => {
+  try {
+    const email = await verifyNewsletterSession(c);
+    if (!email) return c.json({ error: "Not authenticated" }, 401);
+    const rows = await c.env.DB.prepare(
+      "SELECT * FROM newsletters WHERE created_by = ? ORDER BY created_at DESC"
+    ).bind(email).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Draft: Create / Update
+app.post("/api/newsletter-editor/drafts", async (c) => {
+  try {
+    const email = await verifyNewsletterSession(c);
+    if (!email) return c.json({ error: "Not authenticated" }, 401);
+    const body = await c.req.json();
+    const title = sanitizeStr(body.title);
+    if (!title) return c.json({ error: "Title is required" }, 400);
+
+    const id = body.id || crypto.randomUUID();
+    const description = sanitizeStr(body.description, 1000);
+    const content = sanitizeStr(body.content, 50000);
+    const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
+
+    const existing = await c.env.DB.prepare("SELECT id FROM newsletters WHERE id = ?").bind(id).first();
+    if (existing) {
+      await c.env.DB.prepare(
+        "UPDATE newsletters SET title = ?, description = ?, content = ?, source_file_url = COALESCE(?, source_file_url) WHERE id = ?"
+      ).bind(title, description, content, sourceFileUrl || null, id).run();
+    } else {
+      await c.env.DB.prepare(
+        "INSERT INTO newsletters (id, title, description, content, source_file_url, created_by) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(id, title, description, content, sourceFileUrl || null, email).run();
+    }
+    return c.json({ success: true, id });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Draft: Delete
+app.delete("/api/newsletter-editor/drafts/:id", async (c) => {
+  try {
+    const email = await verifyNewsletterSession(c);
+    if (!email) return c.json({ error: "Not authenticated" }, 401);
+    const id = c.req.param("id");
+    await c.env.DB.prepare("DELETE FROM newsletters WHERE id = ? AND created_by = ?").bind(id, email).run();
+    return c.json({ success: true });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Draft: Upload source file (PDF/DOCX) to R2
+app.post("/api/newsletter-editor/upload-source", async (c) => {
+  try {
+    const email = await verifyNewsletterSession(c);
+    if (!email) return c.json({ error: "Not authenticated" }, 401);
+    const rl = await checkRateLimit(c, "newsletter_editor_upload", 20, 3600);
+    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+
+    const fd = await c.req.formData();
+    const file = fd.get("file");
+    if (!file || typeof file === "string") return c.json({ error: "No file provided" }, 400);
+    const typedFile = file as File;
+    const ext = typedFile.name.split(".").pop()?.toLowerCase();
+    if (ext !== "pdf" && ext !== "docx") return c.json({ error: "Invalid file type. Allowed: pdf, docx" }, 400);
+    if (typedFile.size > MAX_DOC_SIZE) return c.json({ error: "File too large. Max 20 MB" }, 400);
+
+    const key = `source/${crypto.randomUUID()}.${ext}`;
+    const arrayBuffer = await typedFile.arrayBuffer();
+    await c.env.CASE_STUDIES.put(key, arrayBuffer, {
+      httpMetadata: { contentType: typedFile.type },
+    });
+    const url = `/api/case-studies/images/${key}`;
+    return c.json({ success: true, url, key });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Draft: Send to all active subscribers
+app.post("/api/newsletter-editor/send", async (c) => {
+  try {
+    const email = await verifyNewsletterSession(c);
+    if (!email) return c.json({ error: "Not authenticated" }, 401);
+
+    const rl = await checkRateLimit(c, "newsletter_editor_send", 3, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+
+    const apiKey = c.env.RESEND_API_KEY;
+    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
+
+    const body = await c.req.json();
+    const newsletterId = body.newsletterId;
+    if (!newsletterId) return c.json({ error: "newsletterId required" }, 400);
+
+    const newsletter = await c.env.DB.prepare("SELECT * FROM newsletters WHERE id = ?").bind(newsletterId).first();
+    if (!newsletter) return c.json({ error: "Newsletter not found" }, 404);
+
+    const currentCount = await getTodayEmailCount(c.env.DB);
+    if (currentCount >= 100) return c.json({ error: "Daily email quota reached (100)." }, 429);
+
+    const subscribers = await c.env.DB.prepare("SELECT email FROM newsletter_subscribers WHERE active = 1").all();
+    const recipients = (subscribers.results || []).map((s: any) => s.email);
+    if (recipients.length === 0) return c.json({ error: "No active subscribers" }, 400);
+
+    let sentCount = 0;
+    const siteUrl = "https://180dcvitc.org/#newsletter";
+    const html = newsletterEmailHtml(newsletter.title, newsletter.description || "", siteUrl);
+
+    for (const to of recipients) {
+      if (currentCount + sentCount >= 100) break;
+      try {
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: "180DC Newsletter <team@180dcvitc.org>",
+            to,
+            subject: newsletter.title,
+            html,
+          }),
+        });
+        if (res.ok) sentCount++;
+        await new Promise((r) => setTimeout(r, 550));
+      } catch (err: any) {
+        console.error("[newsletter-editor] Failed to send to " + to + ": " + err.message);
+      }
+    }
+
+    for (let i = 0; i < sentCount; i++) await incrementEmailCount(c.env.DB);
+
+    await c.env.DB.prepare(
+      "UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?"
+    ).bind(sentCount, newsletterId).run();
+
+    return c.json({ success: true, sentCount, total: recipients.length });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Admin: Manage authorized emails for newsletter editor
+app.get("/api/newsletter-editor/admin/authorized-emails", async (c) => {
+  try {
+    requireBoard(c);
+    const rows = await c.env.DB.prepare("SELECT * FROM newsletter_authorized_emails ORDER BY created_at DESC").all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+app.post("/api/newsletter-editor/admin/authorized-emails", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
+    const body = await c.req.json();
+    const email = validateEmail(body.email);
+    if (!email) return c.json({ error: "Valid email required" }, 400);
+
+    const existing = await c.env.DB.prepare("SELECT email FROM newsletter_authorized_emails WHERE email = ?").bind(email).first();
+    if (existing) return c.json({ error: "Email already authorized" }, 409);
+
+    await c.env.DB.prepare(
+      "INSERT INTO newsletter_authorized_emails (email, added_by) VALUES (?, ?)"
+    ).bind(email, user.email).run();
+    return c.json({ success: true });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+app.delete("/api/newsletter-editor/admin/authorized-emails/:email", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
+    const email = c.req.param("email");
+    await c.env.DB.prepare("DELETE FROM newsletter_authorized_emails WHERE email = ?").bind(email).run();
+    return c.json({ success: true });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
