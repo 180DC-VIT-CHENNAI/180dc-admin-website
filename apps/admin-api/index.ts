@@ -1344,7 +1344,12 @@ app.post("/api/newsletter-editor/otp/send", async (c) => {
     const authorized = await c.env.DB.prepare(
       "SELECT email FROM newsletter_authorized_emails WHERE email = ?"
     ).bind(email).first();
-    if (!authorized) return c.json({ error: "Email not authorized for newsletter editor" }, 403);
+    if (!authorized) {
+      const member = await c.env.DB.prepare(
+        "SELECT email FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ? AND r.power_level != 30"
+      ).bind(email).first();
+      if (!member) return c.json({ error: "Email not authorized for newsletter editor" }, 403);
+    }
 
     const code = generateOtp();
     const id = crypto.randomUUID();
