@@ -6,6 +6,7 @@ interface Newsletter {
   id: string;
   title: string;
   description: string;
+  email_subject: string | null;
   content: string;
   source_file_url: string | null;
   image_url: string | null;
@@ -36,21 +37,19 @@ export default function NewsletterEditorPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [extractedContent, setExtractedContent] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
   const [sourceFileUrl, setSourceFileUrl] = useState("");
   const [_sourceFileKey, setSourceFileKey] = useState("");
   const [sourceFileName, setSourceFileName] = useState("");
-  const [extracting, setExtracting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [suggestedTitle, setSuggestedTitle] = useState("");
-  const [suggestedDescription, setSuggestedDescription] = useState("");
 
   const [editorTab, setEditorTab] = useState<EditorTab>("newsletters");
   const [eventSubject, setEventSubject] = useState("");
   const [eventDescription, setEventDescription] = useState("");
   const [_eventExtractedContent, setEventExtractedContent] = useState("");
-  const [_eventSourceFileUrl, setEventSourceFileUrl] = useState("");
+  const [eventSourceFileUrl, setEventSourceFileUrl] = useState("");
   const [eventSourceFileName, setEventSourceFileName] = useState("");
   const [eventExtracting, setEventExtracting] = useState(false);
   const [eventSending, setEventSending] = useState(false);
@@ -152,76 +151,15 @@ export default function NewsletterEditorPage() {
   const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
   const handleDocumentUpload = useCallback(async (file: File) => {
-    setExtracting(true);
+    setUploading(true);
     setError("");
-    setExtractedContent("");
     setSourceFileName(file.name);
     try {
-      let html = "";
-      let sTitle = "";
-      let sDesc = "";
-
-      if (file.type === "application/pdf") {
-        const pdfjsLib = await import("pdfjs-dist");
-        const pdfjsVersion = pdfjsLib.version;
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, useWorkerFetch: true, useSystemFonts: true }).promise;
-
-        if (pdf.numPages > 0) {
-          const meta = await pdf.getMetadata().catch(() => null);
-          const info = meta?.info as Record<string, string> | undefined;
-          if (info?.Title && info.Title.trim()) sTitle = info.Title.trim();
-        }
-
-        const textParts: string[] = [];
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          textParts.push(content.items.map((item: any) => item.str).join(" "));
-        }
-        const text = textParts.join("\n\n");
-        const paragraphs = text.split(/\n{2,}/).filter((p: string) => p.trim().length > 0);
-        html = paragraphs.map((p: string) => {
-          const lines = p.trim().split("\n");
-          if (lines.length === 1) return `<p>${escapeHtml(lines[0].trim())}</p>`;
-          return lines.map((l: string) => `<p>${escapeHtml(l.trim())}</p>`).join("\n");
-        }).join("\n");
-
-        if (!sTitle && paragraphs.length > 0) {
-          const firstLine = paragraphs[0].split("\n")[0].trim();
-          if (firstLine.length >= 3 && firstLine.length <= 200) sTitle = firstLine;
-        }
-        if (paragraphs.length > 1) {
-          const desc = paragraphs[1].replace(/\n/g, " ").trim();
-          sDesc = desc.length > 500 ? desc.slice(0, 497) + "..." : desc;
-        }
-      } else if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-        const mammoth = await import("mammoth");
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer });
-        html = result.value;
-        const tempDiv = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-        const firstSentence = tempDiv.split(/[.!?]\s/)[0];
-        if (firstSentence && firstSentence.length >= 3 && firstSentence.length <= 200) sTitle = firstSentence.trim();
-        const rest = tempDiv.slice(sTitle.length).trim();
-        if (rest) sDesc = rest.length > 500 ? rest.slice(0, 497) + "..." : rest;
-      } else {
+      if (file.type !== "application/pdf" && file.type !== "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
         setError("Unsupported file type. Upload a PDF or DOCX.");
-        setExtracting(false);
+        setUploading(false);
         return;
       }
-
-      const textOnly = html.replace(/<[^>]*>/g, "").trim();
-      if (textOnly.length < 10) {
-        setError("Document appears empty.");
-        setExtracting(false);
-        return;
-      }
-
-      setExtractedContent(html);
-      setSuggestedTitle(sTitle);
-      setSuggestedDescription(sDesc);
 
       const srcFd = new FormData();
       srcFd.append("file", file);
@@ -234,11 +172,13 @@ export default function NewsletterEditorPage() {
       if (srcData.success) {
         setSourceFileUrl(srcData.url);
         setSourceFileKey(srcData.key);
+      } else {
+        setError(srcData.error || "Upload failed");
       }
     } catch (err: any) {
-      setError("Failed to parse document: " + (err?.message || "Unknown error"));
+      setError("Upload failed: " + (err?.message || "Unknown error"));
     }
-    setExtracting(false);
+    setUploading(false);
   }, [authHeaders]);
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -254,24 +194,19 @@ export default function NewsletterEditorPage() {
   }, [handleDocumentUpload]);
 
   const handleRemoveDocument = useCallback(() => {
-    setExtractedContent("");
     setSourceFileUrl("");
     setSourceFileKey("");
     setSourceFileName("");
-    setSuggestedTitle("");
-    setSuggestedDescription("");
   }, []);
 
   const resetForm = useCallback(() => {
     setEditingId(null);
     setTitle("");
     setDescription("");
-    setExtractedContent("");
+    setEmailSubject("");
     setSourceFileUrl("");
     setSourceFileKey("");
     setSourceFileName("");
-    setSuggestedTitle("");
-    setSuggestedDescription("");
     setError("");
     setSuccess("");
   }, []);
@@ -365,7 +300,7 @@ export default function NewsletterEditorPage() {
       const res = await fetch(apiUrl("/api/newsletter-editor/send-event"), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
-        body: JSON.stringify({ subject: eventSubject, description: eventDescription }),
+        body: JSON.stringify({ subject: eventSubject, description: eventDescription, sourceFileUrl: eventSourceFileUrl || undefined }),
       });
       const data = await res.json();
       if (data.success) {
@@ -381,9 +316,8 @@ export default function NewsletterEditorPage() {
   };
 
   const handleSubmit = async () => {
-    if (!extractedContent && !sourceFileUrl) { setError("Upload a document first"); return; }
-    const finalTitle = title.trim() || suggestedTitle;
-    const finalDescription = description.trim() || suggestedDescription;
+    if (!sourceFileUrl) { setError("Upload a PDF or DOCX first"); return; }
+    const finalTitle = title.trim();
     if (!finalTitle) { setError("Title is required"); return; }
 
     setSubmitting(true);
@@ -396,8 +330,8 @@ export default function NewsletterEditorPage() {
         body: JSON.stringify({
           id: editingId || undefined,
           title: finalTitle,
-          description: finalDescription,
-          content: extractedContent,
+          description: description.trim(),
+          emailSubject: emailSubject.trim() || finalTitle,
           sourceFileUrl: sourceFileUrl || undefined,
         }),
       });
@@ -599,6 +533,12 @@ export default function NewsletterEditorPage() {
               onChange={(e) => setTitle(e.target.value)}
               style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: 12, border: "1px solid var(--border-light)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, marginBottom: 12, boxSizing: "border-box" }}
             />
+            <input
+              placeholder="Email subject (what subscribers see in their inbox)"
+              value={emailSubject}
+              onChange={(e) => setEmailSubject(e.target.value)}
+              style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: 12, border: "1px solid var(--border-light)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, marginBottom: 12, boxSizing: "border-box" }}
+            />
             <textarea
               placeholder="Short description (optional)"
               rows={2}
@@ -619,8 +559,8 @@ export default function NewsletterEditorPage() {
               }}
             >
               <input id="nl-editor-file-input" type="file" accept=".pdf,.docx" style={{ display: "none" }} onChange={handleFileInput} />
-              {extracting ? (
-                <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)" }}>Extracting text...</p>
+              {uploading ? (
+                <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)" }}>Uploading...</p>
               ) : sourceFileName ? (
                 <div>
                   <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{sourceFileName}</p>
@@ -637,7 +577,7 @@ export default function NewsletterEditorPage() {
               )}
             </div>
 
-            {extractedContent && sourceFileUrl && (
+            {sourceFileUrl && (
               <div style={{ marginBottom: 12 }}>
                 <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-secondary)" }}>Preview:</p>
                 <iframe src={apiUrl(sourceFileUrl)} title="Preview" style={{ width: "100%", height: 400, border: "none", borderRadius: 8, background: "#f5f5f5" }} />
@@ -648,8 +588,8 @@ export default function NewsletterEditorPage() {
               <button onClick={() => { resetForm(); setMode("list"); }} style={{ ...btnBase, padding: "8px 20px", background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-light)" }}>Cancel</button>
               <button
                 onClick={handleSubmit}
-                disabled={submitting || (!extractedContent && !sourceFileUrl)}
-                style={{ ...btnBase, padding: "8px 20px", background: submitting ? "var(--text-tertiary)" : "var(--accent)", color: "#fff" }}
+                disabled={submitting || !sourceFileUrl}
+                style={{ ...btnBase, padding: "8px 20px", background: submitting || !sourceFileUrl ? "var(--text-tertiary)" : "var(--accent)", color: "#fff" }}
               >
                 {submitting ? "Saving..." : editingId ? "Update" : "Create"}
               </button>
@@ -686,7 +626,7 @@ export default function NewsletterEditorPage() {
                             setEditingId(nl.id);
                             setTitle(nl.title);
                             setDescription(nl.description);
-                            setExtractedContent(nl.content);
+                            setEmailSubject(nl.email_subject || nl.title);
                             setSourceFileUrl(nl.source_file_url || "");
                             setMode("create");
                           }}

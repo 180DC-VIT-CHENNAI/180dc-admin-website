@@ -686,6 +686,7 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE users ADD COLUMN ex_title TEXT"); } catch { console.warn("Migration: ex_title may already exist"); }
   try { await db.exec("ALTER TABLE users ADD COLUMN clerk_user_id TEXT"); } catch { console.warn("Migration: clerk_user_id may already exist"); }
   try { await db.exec("ALTER TABLE users ADD COLUMN oauth_enabled INTEGER DEFAULT 0"); } catch { console.warn("Migration: oauth_enabled may already exist"); }
+  try { await db.exec("ALTER TABLE newsletters ADD COLUMN email_subject TEXT"); } catch { console.warn("Migration: newsletters.email_subject may already exist"); }
 
   try { await db.exec("INSERT OR IGNORE INTO maintenance_mode (id, enabled, message) VALUES (1, 0, 'Site is under maintenance. Please check back later.')"); } catch { console.warn("Migration: maintenance_mode seed"); }
   try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletter_subscribers (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, active INTEGER DEFAULT 1, subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP, unsubscribed_at DATETIME)`); } catch { console.warn("Migration: newsletter_subscribers table"); }
@@ -1558,18 +1559,18 @@ app.post("/api/newsletter-editor/drafts", async (c) => {
 
     const id = body.id || crypto.randomUUID();
     const description = sanitizeStr(body.description, 1000);
-    const content = sanitizeStr(body.content, 50000);
+    const emailSubject = sanitizeStr(body.emailSubject, 200) || title;
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
 
     const existing = await c.env.DB.prepare("SELECT id FROM newsletters WHERE id = ?").bind(id).first();
     if (existing) {
       await c.env.DB.prepare(
-        "UPDATE newsletters SET title = ?, description = ?, content = ?, source_file_url = COALESCE(?, source_file_url) WHERE id = ?"
-      ).bind(title, description, content, sourceFileUrl || null, id).run();
+        "UPDATE newsletters SET title = ?, description = ?, email_subject = ?, source_file_url = COALESCE(?, source_file_url) WHERE id = ?"
+      ).bind(title, description, emailSubject, sourceFileUrl || null, id).run();
     } else {
       await c.env.DB.prepare(
-        "INSERT INTO newsletters (id, title, description, content, source_file_url, created_by) VALUES (?, ?, ?, ?, ?, ?)"
-      ).bind(id, title, description, content, sourceFileUrl || null, email).run();
+        "INSERT INTO newsletters (id, title, description, email_subject, source_file_url, created_by) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(id, title, description, emailSubject, sourceFileUrl || null, email).run();
     }
     return c.json({ success: true, id });
   } catch (e: any) {
@@ -1647,19 +1648,34 @@ app.post("/api/newsletter-editor/send", async (c) => {
     let sentCount = 0;
     const siteUrl = "https://180dcvitc.org/#newsletter";
 
+    const subject = newsletter.email_subject || newsletter.title;
+
+    let pdfAttachment: any = null;
+    if (newsletter.source_file_url) {
+      const r2Key = newsletter.source_file_url.replace(/^\/api\/case-studies\/images\//, "");
+      const r2Obj = await c.env.CASE_STUDIES.get(r2Key);
+      if (r2Obj) {
+        const buf = await r2Obj.arrayBuffer();
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        pdfAttachment = { filename: r2Key.split("/").pop() || "newsletter.pdf", content: b64 };
+      }
+    }
+
     for (const to of recipients) {
       if (currentCount + sentCount >= 100) break;
       try {
         const html = newsletterEmailHtml(newsletter.title, newsletter.description || "", siteUrl, to);
+        const payload: any = {
+          from: "180DC Newsletter <team@180dcvitc.org>",
+          to,
+          subject,
+          html,
+        };
+        if (pdfAttachment) payload.attachments = [pdfAttachment];
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            from: "180DC Newsletter <team@180dcvitc.org>",
-            to,
-            subject: newsletter.title,
-            html,
-          }),
+          body: JSON.stringify(payload),
         });
         if (res.ok) sentCount++;
         await new Promise((r) => setTimeout(r, 550));
@@ -1694,6 +1710,7 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
 
     const body = await c.req.json();
     const { subject, description } = body;
+    const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
     if (!subject || !subject.trim()) return c.json({ error: "Subject is required" }, 400);
 
     const currentCount = await getTodayEmailCount(c.env.DB);
@@ -1706,19 +1723,32 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
     let sentCount = 0;
     const siteUrl = "https://180dcvitc.org/#newsletter";
 
+    let pdfAttachment: any = null;
+    if (sourceFileUrl) {
+      const r2Key = sourceFileUrl.replace(/^\/api\/case-studies\/images\//, "");
+      const r2Obj = await c.env.CASE_STUDIES.get(r2Key);
+      if (r2Obj) {
+        const buf = await r2Obj.arrayBuffer();
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        pdfAttachment = { filename: r2Key.split("/").pop() || "event.pdf", content: b64 };
+      }
+    }
+
     for (const to of recipients) {
       if (currentCount + sentCount >= 100) break;
       try {
         const html = eventMailEmailHtml(subject, description || "", siteUrl, to);
+        const payload: any = {
+          from: "180DC Events <team@180dcvitc.org>",
+          to,
+          subject: subject,
+          html,
+        };
+        if (pdfAttachment) payload.attachments = [pdfAttachment];
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            from: "180DC Events <team@180dcvitc.org>",
-            to,
-            subject: subject,
-            html,
-          }),
+          body: JSON.stringify(payload),
         });
         if (res.ok) sentCount++;
         await new Promise((r) => setTimeout(r, 550));

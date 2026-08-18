@@ -180,18 +180,6 @@ export default function SubscriberPage() {
                 </div>
               )}
 
-              <div style={{ margin: "12px 0 0", fontSize: 11, color: "var(--text-tertiary)", textAlign: "center", lineHeight: 1.5 }}>
-                <p style={{ fontWeight: 700, color: "var(--text-secondary)", margin: "0 0 6px", fontSize: 12, letterSpacing: 0.5 }}>Terms and Conditions</p>
-                <p style={{ margin: "0 0 4px" }}>
-                  By subscribing, you consent to receive newsletter communications from 180 Degrees Consulting via email.
-                  You also agree to receive updates about events conducted by 180 Degrees Consulting, including but not limited to workshops, seminars, and promotional events.
-                </p>
-                <p style={{ margin: 0 }}>
-                  You may unsubscribe at any time by visiting{" "}
-                  <a href="https://180dcvitc.org/unsubscribe" style={{ color: "var(--accent)", textDecoration: "underline" }}>180dcvitc.org/unsubscribe</a>.
-                </p>
-              </div>
-
               {subMsg && (
                 <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--text-secondary)", textAlign: "center" }}>
                   {subMsg}
@@ -199,6 +187,15 @@ export default function SubscriberPage() {
               )}
             </div>
           )}
+        </div>
+
+        <div style={{ marginTop: 16, padding: "0 4px", fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.6 }}>
+          <p style={{ fontWeight: 700, color: "var(--text-secondary)", margin: "0 0 6px", fontSize: 12, letterSpacing: 0.5 }}>Terms and Conditions</p>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            <li>By subscribing, you consent to receive newsletter communications from 180 Degrees Consulting via email.</li>
+            <li>You also agree to receive updates about events conducted by 180 Degrees Consulting, including workshops, seminars, and promotional events.</li>
+            <li>You may unsubscribe at any time by visiting <a href="https://180dcvitc.org/unsubscribe" style={{ color: "var(--accent)", textDecoration: "underline" }}>180dcvitc.org/unsubscribe</a>.</li>
+          </ul>
         </div>
 
         <p style={{ textAlign: "center", marginTop: "2rem", color: "var(--text-tertiary)", fontSize: "13px" }}>
