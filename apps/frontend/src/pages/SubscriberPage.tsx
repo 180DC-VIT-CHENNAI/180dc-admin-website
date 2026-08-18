@@ -164,6 +164,10 @@ export default function SubscriberPage() {
                 </button>
               </form>
 
+              <p style={{ margin: "12px 0 0", fontSize: 11, color: "var(--text-tertiary)", textAlign: "center", lineHeight: 1.5 }}>
+                By subscribing, you consent to receive newsletter communications from 180 Degrees Consulting via email. You may unsubscribe at any time.
+              </p>
+
               {subMsg && (
                 <p style={{ margin: "12px 0 0", fontSize: 13, color: "var(--text-secondary)", textAlign: "center" }}>
                   {subMsg}

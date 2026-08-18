@@ -1058,10 +1058,55 @@ app.post("/api/newsletter/subscribe", async (c) => {
     if (existing) {
       if (existing.active === 1) return c.json({ success: true, message: "You are already subscribed!" });
       await c.env.DB.prepare("UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL WHERE id = ?").bind(existing.id).run();
+      const apiKey = c.env.RESEND_API_KEY;
+      if (apiKey) {
+        fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ from: "180DC Newsletter <team@180dcvitc.org>", to: email, subject: "Welcome back to the 180DC Newsletter!", html: `<p style="font-family:'Nunito',sans-serif;font-size:15px;color:#1a1a1a;line-height:1.6">Welcome back! You have been re-subscribed to the 180DC newsletter. You will continue receiving our latest updates in your inbox.</p>` }),
+        }).catch(() => {});
+      }
       return c.json({ success: true, message: "Welcome back! You have been re-subscribed." });
     }
 
     await c.env.DB.prepare("INSERT INTO newsletter_subscribers (id, email, active) VALUES (?, ?, 1)").bind(crypto.randomUUID(), email).run();
+
+    const apiKey = c.env.RESEND_API_KEY;
+    if (apiKey) {
+      const welcomeHtml = `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#8dc63f;padding:28px 24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dcvitc.org/images/180DC.png" alt="180DC" width="56" style="margin-bottom:8px">
+<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:28px;margin:0;font-weight:600;text-shadow:2px 2px 0 rgba(0,0,0,0.15)">180 Degrees Consulting</h1>
+<p style="color:#1a1a1a;font-size:13px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
+</td></tr>
+<tr><td style="padding:28px 28px 20px">
+<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Welcome aboard!</p>
+<p style="font-size:14px;color:#555555;margin:0 0 20px;line-height:1.6">Thank you for subscribing to the 180DC newsletter. You will now receive our latest updates, insights, and event announcements directly in your inbox.</p>
+<p style="font-size:14px;color:#555555;margin:0 0 20px;line-height:1.6">Should you wish to unsubscribe at any time, simply click the link provided in any of our newsletters.</p>
+<table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto 20px">
+<tr><td style="padding:10px 28px;text-align:center">
+<a href="https://180dcvitc.org" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Visit Our Website</a>
+</td></tr>
+</table>
+</td></tr>
+<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:16px 28px;text-align:center">
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting — VIT Chennai<br><span style="color:#777777;font-weight:400">You received this because you subscribed to our newsletter.</span></p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`;
+      fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ from: "180DC Newsletter <team@180dcvitc.org>", to: email, subject: "Welcome to the 180DC Newsletter!", html: welcomeHtml }),
+      }).catch(() => {});
+    }
+
     return c.json({ success: true, message: "Successfully subscribed to the newsletter!" });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
