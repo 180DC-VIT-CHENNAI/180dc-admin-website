@@ -848,8 +848,8 @@ app.use("*", async (c, next) => {
     return;
   }
 
-  // Newsletter editor routes use their own OTP session auth
-  if (url.pathname.startsWith("/api/newsletter-editor/")) {
+  // Newsletter editor OTP routes use their own auth (not admin tokens)
+  if (url.pathname.startsWith("/api/newsletter-editor/") && !url.pathname.startsWith("/api/newsletter-editor/admin/")) {
     await next();
     return;
   }
