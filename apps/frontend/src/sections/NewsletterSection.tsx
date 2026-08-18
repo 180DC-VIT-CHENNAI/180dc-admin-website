@@ -25,9 +25,14 @@ export default function NewsletterSection() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(apiUrl("/api/newsletter"));
-        const data = await res.json();
-        if (data.success) setNewsletters(data.data || []);
+        const [nlRes, countRes] = await Promise.all([
+          fetch(apiUrl("/api/newsletter")),
+          fetch(apiUrl("/api/newsletter/subscribers/count")),
+        ]);
+        const nlData = await nlRes.json();
+        if (nlData.success) setNewsletters(nlData.data || []);
+        const countData = await countRes.json();
+        if (countData.count != null) setSubscriberCount(countData.count);
       } catch {}
     }
     load();
@@ -88,6 +93,11 @@ export default function NewsletterSection() {
           <h2 className="section-heading" style={{ margin: 0 }}>
             Newsletter
           </h2>
+          {subscriberCount !== null && subscriberCount > 0 && (
+            <p style={{ margin: "8px 0 0", fontSize: 14, color: "var(--text-secondary)", textAlign: "center" }}>
+              Join {subscriberCount.toLocaleString()} subscribers
+            </p>
+          )}
         </div>
 
         {/* Subscribe form */}
