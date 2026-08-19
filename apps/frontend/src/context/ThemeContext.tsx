@@ -19,7 +19,14 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
   }, [isDark]);
 
-  const toggle = () => setIsDark(prev => !prev);
+  const toggle = () => {
+    // Suppress all CSS transitions during the swap so hundreds of elements
+    // don't animate colors simultaneously (feels laggy) — the change is instant.
+    const root = document.documentElement;
+    root.classList.add('theme-switching');
+    setIsDark(prev => !prev);
+    window.setTimeout(() => root.classList.remove('theme-switching'), 100);
+  };
 
   return (
     <ThemeContext.Provider value={{ isDark, toggle }}>

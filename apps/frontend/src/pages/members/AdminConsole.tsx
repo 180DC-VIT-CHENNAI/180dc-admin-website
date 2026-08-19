@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import AdminDataLoader from "./AdminDataLoader";
+import { useEffect } from "react";
 import { apiUrl } from "../../lib/api";
 
 const EX_TITLES = [
@@ -198,9 +198,24 @@ export default function AdminConsole({
   setMaintenanceMode,
   stats,
 }: AdminConsoleProps) {
+  // Refresh users/roles when the console opens (they may have changed elsewhere)
+  useEffect(() => {
+    (async () => {
+      try {
+        const [uRes, rRes] = await Promise.all([
+          fetch(apiUrl("/api/users"), { headers: { Authorization: `Bearer ${authToken}` } }),
+          fetch(apiUrl("/api/roles"), { headers: { Authorization: `Bearer ${authToken}` } }),
+        ]);
+        const uData = await uRes.json();
+        const rData = await rRes.json();
+        if (uData.success) setAllUsers(uData.data || []);
+        if (rData.success) setAllRoles(rData.data || []);
+      } catch { /* ignore */ }
+    })(); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authToken]);
+
   return (
     <>
-      <AdminDataLoader authToken={authToken} setAllUsers={setAllUsers} setAllRoles={setAllRoles} />
       <div className="members-grid">
         {renderSystemConfig()}
         {renderTokenRegistry()}

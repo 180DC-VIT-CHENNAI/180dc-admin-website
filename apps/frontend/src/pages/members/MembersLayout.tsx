@@ -3,7 +3,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth, useClerk } from "@clerk/react";
 import MembersLogin from "./MembersLogin";
 import DepartmentPanel from "./DepartmentPanel";
-import RecruitmentsPanel from "./RecruitmentsPanel";
 import ProfileSection from "./ProfileSection";
 import ClubFilesPanel from "./ClubFilesPanel";
 import MembersSection from "./MembersSection";
@@ -18,6 +17,7 @@ import CaseStudySection from "./CaseStudySection";
 import AdminNewsletterSection from "./NewsletterSection";
 import TransfersSection from "./TransfersSection";
 import AdminConsole from "./AdminConsole";
+import AdminDataLoader from "./AdminDataLoader";
 import { apiUrl } from "../../lib/api";
 import { useTheme } from "../../context/ThemeContext";
 import { stripHtmlTags } from "../../lib/sanitize";
@@ -372,7 +372,6 @@ export default function MembersLayout() {
       { id: "meets", label: "Meets", minPower: 0, icon: "event" },
       { id: "projects", label: "Projects", minPower: 0, icon: "account_tree" },
       { id: "instructions", label: "Instructions", minPower: 0, icon: "menu_book" },
-      { id: "recruitments", label: "Recruitments", minPower: 50, icon: "person_add" },
       { id: "transfers", label: "Transfers", minPower: 0, icon: "swap_horiz" },
       { id: "announcements", label: "Announcements", minPower: 0, icon: "campaign" },
       { id: "case-studies", label: "Case Studies", minPower: 0, icon: "description" },
@@ -427,6 +426,10 @@ export default function MembersLayout() {
 
   return (
     <div className="members-layout">
+      {/* Loads users/roles once per session so member dropdowns are instant */}
+      {powerLevel >= 50 && (
+        <AdminDataLoader authToken={authToken!} setAllUsers={setAllUsers} setAllRoles={setAllRoles} />
+      )}
       {/* HEADER */}
       <header className="members-header">
         <div className="header-left">
@@ -758,10 +761,6 @@ export default function MembersLayout() {
                 <TransfersSection authToken={authToken!} />
               </div>
             </div>
-          )}
-
-          {activePanel === "recruitments" && (
-            <RecruitmentsPanel authToken={authToken!} powerLevel={powerLevel} />
           )}
 
           {activePanel === "case-studies" && (

@@ -123,6 +123,15 @@
   --container-px: clamp(1rem, 4vw, 2rem);
 }
 
+/* Applied to <html> briefly while swapping themes — kills the laggy
+   every-element-animates-its-colors effect and expensive blur repaints. */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
+
 [data-theme="dark"] {
   --surface-canvas: #0a0a0a;
   --surface-soft: #121212;

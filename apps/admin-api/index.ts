@@ -38,9 +38,6 @@ function isPublicRoute(pathname: string, method: string): boolean {
     ["/api/auth/forgot-token"],
     ["/api/departments"],
     ["/api/projects/completed"],
-    ["/api/recruitment/register"],
-    ["/api/recruitment/login"],
-    ["/api/recruitment/open-domains"],
     ["/api/chat", "POST"],
     ["/api/newsletter/subscribe", "POST"],
     ["/api/newsletter/unsubscribe", "GET"],
@@ -621,6 +618,23 @@ async function verifyPassword(password: string, salt: string, storedHash: string
   return result === 0;
 }
 
+// One-time (per isolate) DB init — running ensureTables/seedData on every
+// request cost 50-100+ D1 round trips per API call. Cached after first run;
+// reset on failure so the next request retries.
+let dbReadyPromise: Promise<void> | null = null;
+function ensureDbReady(db: any, env?: any): Promise<void> {
+  if (!dbReadyPromise) {
+    dbReadyPromise = (async () => {
+      await ensureTables(db);
+      await seedData(db, env);
+    })().catch((e: any) => {
+      dbReadyPromise = null;
+      throw e;
+    });
+  }
+  return dbReadyPromise;
+}
+
 async function ensureTables(db: any) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS departments (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT);
@@ -643,12 +657,6 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS project_departments (project_id TEXT NOT NULL, department_id TEXT NOT NULL, PRIMARY KEY (project_id, department_id), FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (department_id) REFERENCES departments(id));
     CREATE TABLE IF NOT EXISTS project_roles (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL, role_name TEXT NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (user_id) REFERENCES users(id));
     CREATE TABLE IF NOT EXISTS project_tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT, assigned_to TEXT, status TEXT DEFAULT 'pending', created_by TEXT, completed_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id));
-    CREATE TABLE IF NOT EXISTS recruitment_rounds (id TEXT PRIMARY KEY, name TEXT NOT NULL, is_active INTEGER DEFAULT 0, start_date DATETIME, end_date DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
-    CREATE TABLE IF NOT EXISTS recruitment_applicants (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, name TEXT NOT NULL, password_hash TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
-    CREATE TABLE IF NOT EXISTS recruitment_applications (id TEXT PRIMARY KEY, applicant_id TEXT NOT NULL, round_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, year TEXT NOT NULL, course TEXT NOT NULL, primary_domain TEXT NOT NULL, secondary_domain TEXT, why_join TEXT NOT NULL, why_domain TEXT NOT NULL, prior_experience TEXT, portfolio_link TEXT, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (applicant_id) REFERENCES recruitment_applicants(id), FOREIGN KEY (round_id) REFERENCES recruitment_rounds(id));
-    CREATE TABLE IF NOT EXISTS recruitment_evaluation_criteria (id TEXT PRIMARY KEY, round_id TEXT NOT NULL, name TEXT NOT NULL, max_score REAL NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (round_id) REFERENCES recruitment_rounds(id));
-    CREATE TABLE IF NOT EXISTS recruitment_evaluations (id TEXT PRIMARY KEY, application_id TEXT NOT NULL, criterion_id TEXT NOT NULL, evaluator_id TEXT NOT NULL, score REAL NOT NULL, comment TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (application_id) REFERENCES recruitment_applications(id), FOREIGN KEY (criterion_id) REFERENCES recruitment_evaluation_criteria(id));
-    CREATE TABLE IF NOT EXISTS recruitment_domain_settings (domain_name TEXT PRIMARY KEY, is_open INTEGER DEFAULT 0, updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS rate_limits (ip TEXT NOT NULL, endpoint TEXT NOT NULL, count INTEGER DEFAULT 1, window_start DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (ip, endpoint));
     CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, action TEXT NOT NULL, actor_email TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS daily_email_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
@@ -671,26 +679,26 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE signup_requests ADD COLUMN department_id TEXT"); } catch { console.warn("Migration: department_id may already exist"); }
   try { await db.exec("ALTER TABLE projects ADD COLUMN company_org TEXT"); } catch { console.warn("Migration: company_org may already exist"); }
   try { await db.exec("ALTER TABLE projects ADD COLUMN year TEXT"); } catch { console.warn("Migration: year may already exist"); }
-  try { await db.exec("ALTER TABLE recruitment_evaluations ADD COLUMN comment TEXT"); } catch { console.warn("Migration: recruitment_evaluations.comment may already exist"); }
-  try { await db.exec("ALTER TABLE recruitment_applicants ADD COLUMN salt TEXT"); } catch { console.warn("Migration: salt may already exist"); }
   try { await db.exec("ALTER TABLE admin_tokens ADD COLUMN expires_at DATETIME"); } catch { console.warn("Migration: expires_at may already exist"); }
-  try { await db.exec("ALTER TABLE recruitment_sessions ADD COLUMN token_hash TEXT"); } catch { console.warn("Migration: token_hash may already exist"); }
-  try { await db.exec("ALTER TABLE recruitment_sessions RENAME COLUMN token TO token_old"); } catch { console.warn("Migration: token column rename"); }
-  try { await db.exec("UPDATE recruitment_sessions SET token_hash = token_old WHERE token_hash IS NULL"); } catch { console.warn("Migration: token_hash backfill"); }
   try { await db.exec("ALTER TABLE case_studies ADD COLUMN content TEXT DEFAULT ''"); } catch { console.warn("Migration: case_studies.content may already exist"); }
   try { await db.exec("ALTER TABLE case_studies ADD COLUMN image_url TEXT"); } catch { console.warn("Migration: case_studies.image_url may already exist"); }
   try { await db.exec("ALTER TABLE case_studies ADD COLUMN author_name TEXT DEFAULT 'Anonymous'"); } catch { console.warn("Migration: case_studies.author_name may already exist"); }
   try { await db.exec("ALTER TABLE case_studies ADD COLUMN created_by TEXT"); } catch { console.warn("Migration: case_studies.created_by may already exist"); }
   try { await db.exec("DELETE FROM case_studies WHERE id LIKE 'cs%' AND content IS NULL"); } catch { console.warn("Migration: could not remove seed case studies"); }
   try { await db.exec("ALTER TABLE case_studies ADD COLUMN source_file_url TEXT"); } catch { console.warn("Migration: case_studies.source_file_url may already exist"); }
-  try {
-    await db.exec(`CREATE TABLE IF NOT EXISTS recruitment_sessions (
-      id TEXT PRIMARY KEY, applicant_id TEXT NOT NULL, token_hash TEXT NOT NULL,
-      expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (applicant_id) REFERENCES recruitment_applicants(id)
-    )`);
-  } catch (e: any) { logError("Migration: recruitment_sessions table", e); }
   try { await db.exec("DELETE FROM rate_limits WHERE endpoint IN ('dev_login', 'recruitment_login', 'recruitment_register')"); } catch (e: any) { console.warn("Migration: clear login rate limits"); }
+  // Recruitment system removed — drop its tables if they still exist
+  try {
+    await db.exec(`
+      DROP TABLE IF EXISTS recruitment_evaluations;
+      DROP TABLE IF EXISTS recruitment_evaluation_criteria;
+      DROP TABLE IF EXISTS recruitment_applications;
+      DROP TABLE IF EXISTS recruitment_sessions;
+      DROP TABLE IF EXISTS recruitment_applicants;
+      DROP TABLE IF EXISTS recruitment_rounds;
+      DROP TABLE IF EXISTS recruitment_domain_settings;
+    `);
+  } catch (e: any) { logError("Migration: drop recruitment tables", e); }
   try { await db.exec("ALTER TABLE users ADD COLUMN secondary_role_id TEXT"); } catch { console.warn("Migration: secondary_role_id may already exist"); }
   try { await db.exec("ALTER TABLE admin_tokens ADD COLUMN active_role_id TEXT"); } catch { console.warn("Migration: active_role_id may already exist"); }
   try { await db.exec("ALTER TABLE users ADD COLUMN ex_title TEXT"); } catch { console.warn("Migration: ex_title may already exist"); }
@@ -804,28 +812,7 @@ async function seedData(db: any, env?: any) {
     await db.prepare("UPDATE users SET secondary_role_id = NULL WHERE secondary_role_id IS NOT NULL").run();
     await db.prepare("UPDATE admin_tokens SET active_role_id = NULL WHERE active_role_id IS NOT NULL").run();
 
-    // 7. Recruitment domain renames / removals (domain_name is UNIQUE — delete old row if target exists)
-    const domainRenames: [string, string][] = [
-      ["Events and Initiatives", "Operations"],
-      ["Client Partner Sponsor", "Client Relationship Management"],
-    ];
-    for (const [oldName, newName] of domainRenames) {
-      await db.prepare(
-        "DELETE FROM recruitment_domain_settings WHERE domain_name = ? AND EXISTS (SELECT 1 FROM recruitment_domain_settings WHERE domain_name = ?)",
-      ).bind(oldName, newName).run();
-      await db.prepare(
-        "UPDATE recruitment_domain_settings SET domain_name = ? WHERE domain_name = ?",
-      ).bind(newName, oldName).run();
-    }
-    await db.prepare(
-      "DELETE FROM recruitment_domain_settings WHERE domain_name IN ('R&D', 'PR & Outreach', 'Design & Creative', 'Content & Editorial', 'HR & Logistics', 'Research & Development', 'Social Media', 'Human Resources')",
-    ).run();
-    await db.prepare("UPDATE recruitment_applications SET primary_domain = 'Operations' WHERE primary_domain = 'Events and Initiatives'").run();
-    await db.prepare("UPDATE recruitment_applications SET secondary_domain = 'Operations' WHERE secondary_domain = 'Events and Initiatives'").run();
-    await db.prepare("UPDATE recruitment_applications SET primary_domain = 'Client Relationship Management' WHERE primary_domain = 'Client Partner Sponsor'").run();
-    await db.prepare("UPDATE recruitment_applications SET secondary_domain = 'Client Relationship Management' WHERE secondary_domain = 'Client Partner Sponsor'").run();
-
-    // 8. Delete legacy departments, roles, and titles
+    // 7. Delete legacy departments, roles, and titles
     await db.prepare("DELETE FROM departments WHERE id IN ('rnd', 'social_media', 'events-initiatives', 'client-partner-sponsor', 'hr', 'legal')").run();
     await db.prepare("DELETE FROM roles WHERE id IN ('president', 'vice_president', 'lead', 'lead_rnd', 'lead_marketing', 'lead_social', 'lead_finance', 'lead_events', 'lead_cps', 'lead_business_strategy', 'lead_hr', 'lead_legal')").run();
     await db.prepare("UPDATE team_members SET role = 'Chairperson' WHERE role = 'President'").run();
@@ -858,16 +845,6 @@ async function seedData(db: any, env?: any) {
       await db.prepare(pi).bind("p6", "Partner Org 6").run();
       await db.prepare(pi).bind("p7", "Partner Org 7").run();
       await db.prepare(pi).bind("p8", "Partner Org 8").run();
-    }
-    const rrCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM recruitment_rounds").first();
-    if (rrCount && rrCount.cnt === 0) {
-      await db.prepare("INSERT OR IGNORE INTO recruitment_rounds (id, name, is_active) VALUES (?, ?, ?)").bind("round1", "Round 1", 1).run();
-      await db.prepare("INSERT OR IGNORE INTO recruitment_rounds (id, name, is_active) VALUES (?, ?, ?)").bind("round2", "Round 2", 0).run();
-    }
-
-    const knownDomains = ["Technical", "Finance", "Client Relationship Management", "Operations", "Business Strategy", "Marketing"];
-    for (const domain of knownDomains) {
-      await db.prepare("INSERT OR IGNORE INTO recruitment_domain_settings (domain_name, is_open) VALUES (?, ?)").bind(domain, 1).run();
     }
   } catch (e: any) {
     logError("Seed failed", e);
@@ -929,8 +906,7 @@ app.use("*", csrf({
 // Auth middleware
 app.use("*", async (c, next) => {
   try {
-    await ensureTables(c.env.DB);
-    await seedData(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
   } catch (e: any) {
     logError("DB init failed", e, c);
     return c.json({ error: "Database initialization failed" }, 500);
@@ -1032,29 +1008,15 @@ const requireBoard = (c: any) => {
   }
 };
 
-async function getSessionApplicant(c: any): Promise<any | null> {
-  const token = c.req.header("X-Session-Token") || "";
-  if (!token) return null;
-  const tokenHash = await sha256Hex(token);
-  await c.env.DB.prepare("DELETE FROM recruitment_sessions WHERE expires_at <= datetime('now')").run();
-  const session: any = await c.env.DB.prepare(
-    "SELECT sa.* FROM recruitment_sessions rs JOIN recruitment_applicants sa ON rs.applicant_id = sa.id WHERE rs.token_hash = ? AND rs.expires_at > datetime('now')",
-  ).bind(tokenHash).first();
-  return session || null;
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
+// ---------------------------------------------------------
+// CONTENT ENDPOINTS (Public Ã¢â‚¬â€ landing page data)
 // ---------------------------------------------------------
 // CONTENT ENDPOINTS (Public Ã¢â‚¬â€ landing page data)
 // ---------------------------------------------------------
 app.get("/api/content/case-studies", async (c) => {
   try {
-    await ensureTables(c.env.DB);
-    await seedData(c.env.DB, c.env);
+    await ensureDbReady(c.env.DB, c.env);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "content_case_studies", 100, 60);
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare("SELECT * FROM case_studies ORDER BY created_at ASC").all();
@@ -1066,8 +1028,8 @@ app.get("/api/content/case-studies", async (c) => {
 
 app.get("/api/content/team-members", async (c) => {
   try {
-    await ensureTables(c.env.DB);
-    await seedData(c.env.DB, c.env);
+    await ensureDbReady(c.env.DB, c.env);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "content_team_members", 100, 60);
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare("SELECT * FROM team_members ORDER BY created_at ASC").all();
@@ -1079,8 +1041,8 @@ app.get("/api/content/team-members", async (c) => {
 
 app.get("/api/content/partners", async (c) => {
   try {
-    await ensureTables(c.env.DB);
-    await seedData(c.env.DB, c.env);
+    await ensureDbReady(c.env.DB, c.env);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "content_partners", 100, 60);
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare("SELECT * FROM partners ORDER BY created_at ASC").all();
@@ -1327,7 +1289,7 @@ ${hasPdf ? `<tr><td style="padding:0 32px">
 // Public: Subscribe to newsletter
 app.post("/api/newsletter/subscribe", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "newsletter_subscribe", 5, 3600);
     if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
     const body = await c.req.json();
@@ -1492,7 +1454,7 @@ app.post("/api/newsletter/subscribe", async (c) => {
 // Public: Unsubscribe
 app.get("/api/newsletter/unsubscribe", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const email = c.req.query("email");
     if (!email || !validateEmail(email)) return c.json({ error: "Invalid email address." }, 400);
 
@@ -1514,8 +1476,8 @@ app.get("/api/newsletter/unsubscribe", async (c) => {
 // Public: List published newsletters (landing page)
 app.get("/api/newsletter", async (c) => {
   try {
-    await ensureTables(c.env.DB);
-    await seedData(c.env.DB, c.env);
+    await ensureDbReady(c.env.DB, c.env);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "content_newsletter", 100, 60);
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare("SELECT id, title, description, image_url, source_file_url, created_at FROM newsletters ORDER BY created_at DESC LIMIT 10").all();
@@ -1528,7 +1490,7 @@ app.get("/api/newsletter", async (c) => {
 // Public: Get subscriber count
 app.get("/api/newsletter/subscribers/count", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const row = await c.env.DB.prepare("SELECT COUNT(*) as count FROM newsletter_subscribers WHERE active = 1").first();
     return c.json({ success: true, count: row?.count || 0 });
   } catch (e: any) {
@@ -1539,7 +1501,7 @@ app.get("/api/newsletter/subscribers/count", async (c) => {
 // Admin: List all newsletters
 app.get("/api/newsletter/admin", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const rows = await c.env.DB.prepare("SELECT * FROM newsletters ORDER BY created_at DESC").all();
     return c.json({ success: true, data: rows.results || [] });
@@ -1551,7 +1513,7 @@ app.get("/api/newsletter/admin", async (c) => {
 // Admin: List subscribers
 app.get("/api/newsletter/admin/subscribers", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const rows = await c.env.DB.prepare("SELECT id, email, active, subscribed_at, unsubscribed_at FROM newsletter_subscribers ORDER BY subscribed_at DESC").all();
     return c.json({ success: true, data: rows.results || [] });
@@ -1563,7 +1525,7 @@ app.get("/api/newsletter/admin/subscribers", async (c) => {
 // Admin: Upload newsletter source PDF/IMG
 app.post("/api/newsletter/upload-source", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
     const rl = await checkRateLimit(c, "newsletter_upload", 20, 3600);
@@ -1599,7 +1561,7 @@ app.post("/api/newsletter/upload-source", async (c) => {
 // Admin: Create / update newsletter
 app.post("/api/newsletter", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
     const body = await c.req.json();
@@ -1630,7 +1592,7 @@ app.post("/api/newsletter", async (c) => {
 // Admin: Delete newsletter
 app.delete("/api/newsletter/:id", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
     const id = c.req.param("id");
@@ -1644,7 +1606,7 @@ app.delete("/api/newsletter/:id", async (c) => {
 // Admin: Send newsletter to all active subscribers
 app.post("/api/newsletter/send", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
     const rl = await checkRateLimit(c, "newsletter_send", 5, 3600);
@@ -1774,7 +1736,7 @@ async function verifyNewsletterSession(c: any): Promise<string | null> {
 // OTP: Send code to authorized email
 app.post("/api/newsletter-editor/otp/send", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const body = await c.req.json();
     const email = validateEmail(body.email);
     if (!email) return c.json({ error: "Valid email required" }, 400);
@@ -1830,7 +1792,7 @@ app.post("/api/newsletter-editor/otp/send", async (c) => {
 // OTP: Verify code and return session token
 app.post("/api/newsletter-editor/otp/verify", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const body = await c.req.json();
     const email = validateEmail(body.email);
     const code = sanitizeStr(body.code, 10);
@@ -2215,7 +2177,7 @@ app.post("/api/members", async (c) => {
 // This returns the mapped email so the frontend can use it as the dev identity.
 app.post("/api/dev-login", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     if (c.env.ENVIRONMENT === "production") {
       return c.json({ error: "Not available in production" }, 403);
     }
@@ -2292,7 +2254,7 @@ app.post("/api/dev-login", async (c) => {
 // ---------------------------------------------------------
 app.post("/api/auth/forgot-token", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "forgot_token", 3, 3600);
     if (!rl.allowed) {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
@@ -2335,7 +2297,7 @@ app.post("/api/auth/forgot-token", async (c) => {
 // ---------------------------------------------------------
 app.post("/api/auth/clerk-login", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkLoginRateLimit(c, "clerk_login", 20, 60);
     if (!rl.allowed) {
       return c.json({ error: "Too many login attempts. Try again later.", retryAfter: rl.retryAfter }, 429);
@@ -2432,7 +2394,7 @@ app.post("/api/auth/clerk-login", async (c) => {
 // ---------------------------------------------------------
 app.post("/api/auth/link-clerk", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "link_clerk", 5, 3600);
     if (!rl.allowed) {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
@@ -2467,7 +2429,7 @@ app.post("/api/auth/link-clerk", async (c) => {
 // ---------------------------------------------------------
 app.post("/api/auth/unlink-clerk", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "unlink_clerk", 5, 3600);
     if (!rl.allowed) {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
@@ -2494,7 +2456,7 @@ app.post("/api/auth/unlink-clerk", async (c) => {
 // ---------------------------------------------------------
 app.post("/api/auth/rotate-token", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     const rl = await checkRateLimit(c, "rotate_token", 3, 3600);
     if (!rl.allowed) {
@@ -2518,7 +2480,7 @@ app.post("/api/auth/rotate-token", async (c) => {
 // ---------------------------------------------------------
 app.get("/api/dashboard", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "dashboard", 30, 60);
     if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
@@ -2608,7 +2570,7 @@ app.get("/api/dashboard", async (c) => {
 // ---------------------------------------------------------
 app.post("/api/admin-tokens", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const rl = await checkRateLimit(c, "send_email", 10, 3600);
     if (!rl.allowed) {
@@ -2652,7 +2614,7 @@ app.post("/api/admin-tokens", async (c) => {
 
 app.delete("/api/admin-tokens/:email", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const email = c.req.param("email");
     const row: any = await c.env.DB.prepare("SELECT email FROM admin_tokens WHERE email = ?").bind(email).first();
@@ -2671,7 +2633,7 @@ app.delete("/api/admin-tokens/:email", async (c) => {
 
 app.post("/api/admin-tokens/:email/revoke", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const email = c.req.param("email");
     if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -2693,7 +2655,7 @@ app.post("/api/admin-tokens/:email/revoke", async (c) => {
 // ---------------------------------------------------------
 app.post("/api/board-users", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const rl = await checkRateLimit(c, "create_board_user", 10, 3600);
     if (!rl.allowed) {
@@ -2786,7 +2748,7 @@ app.post("/api/board-users", async (c) => {
 // ---------------------------------------------------------
 app.post("/api/advisory-members", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const rl = await checkRateLimit(c, "create_advisory_member", 10, 3600);
     if (!rl.allowed) {
@@ -2942,7 +2904,7 @@ app.post("/api/roles", async (c) => {
 // ---------------------------------------------------------
 app.get("/api/users", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (!user || user.power_level < 50) {
       return c.json({ error: "Forbidden: Board and directors only" }, 403);
@@ -2967,7 +2929,7 @@ app.get("/api/users", async (c) => {
 // Export all users as CSV for download
 app.get("/api/members/export", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const rows = await c.env.DB.prepare(
       "SELECT u.name, u.email, r.name as role_name, d.name as department_name, u.ex_title, u.created_at FROM users u JOIN roles r ON u.role_id = r.id LEFT JOIN departments d ON u.department_id = d.id ORDER BY r.power_level DESC, u.name ASC"
@@ -2993,7 +2955,7 @@ app.get("/api/members/export", async (c) => {
 
 app.get("/api/members-directory", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireMember(c);
     const rows = await c.env.DB.prepare(
       "SELECT u.id, u.name, u.email, u.role_id, u.department_id, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id ORDER BY r.power_level DESC, u.name ASC",
@@ -3006,7 +2968,7 @@ app.get("/api/members-directory", async (c) => {
 
 app.get("/api/roles", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const rows = await c.env.DB.prepare("SELECT id, name, power_level FROM roles ORDER BY power_level DESC").all();
     return c.json({ success: true, data: rows.results || [] });
@@ -3020,7 +2982,7 @@ app.get("/api/roles", async (c) => {
 // ---------------------------------------------------------
 app.get("/api/role-transfers", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const rows = await c.env.DB.prepare(
       "SELECT rt.*, fu.name as from_name, fu.email as from_email, tu.name as to_name, tu.email as to_email, r.name as role_name FROM role_transfers rt JOIN users fu ON rt.from_user_id = fu.id JOIN users tu ON rt.to_user_id = tu.id JOIN roles r ON rt.role_id = r.id WHERE rt.status = 'pending' ORDER BY rt.created_at DESC",
@@ -3033,7 +2995,7 @@ app.get("/api/role-transfers", async (c) => {
 
 app.post("/api/role-transfers", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -3057,7 +3019,7 @@ app.post("/api/role-transfers", async (c) => {
 
 app.post("/api/role-transfers/:id/approve", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const id = c.req.param("id");
     const row: any = await c.env.DB.prepare("SELECT * FROM role_transfers WHERE id = ?").bind(id).first();
@@ -3090,7 +3052,7 @@ app.post("/api/role-transfers/:id/approve", async (c) => {
 
 app.post("/api/role-transfers/:id/reject", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const id = c.req.param("id");
     await c.env.DB.prepare("UPDATE role_transfers SET status = 'rejected' WHERE id = ?").bind(id).run();
@@ -3103,7 +3065,7 @@ app.post("/api/role-transfers/:id/reject", async (c) => {
 // My role transfers (for involved users to see and accept/decline)
 app.get("/api/my-role-transfers", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     const rows = await c.env.DB.prepare(
       `SELECT rt.*, fu.name as from_name, fu.email as from_email,
@@ -3123,7 +3085,7 @@ app.get("/api/my-role-transfers", async (c) => {
 
 app.post("/api/my-role-transfers/:id/accept", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     const id = c.req.param("id");
     const row: any = await c.env.DB.prepare("SELECT * FROM role_transfers WHERE id = ?").bind(id).first();
@@ -3176,7 +3138,7 @@ app.post("/api/my-role-transfers/:id/accept", async (c) => {
 
 app.post("/api/my-role-transfers/:id/decline", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     const id = c.req.param("id");
     const row: any = await c.env.DB.prepare("SELECT * FROM role_transfers WHERE id = ?").bind(id).first();
@@ -3245,7 +3207,7 @@ app.delete("/api/members/:id", async (c) => {
 // 6a. Create a signup request (public - no auth required)
 app.post("/api/signup-requests", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "signup_request", 5, 3600);
     if (!rl.allowed) {
       return c.json({ error: "Too many signup requests. Try again later.", retryAfter: rl.retryAfter }, 429);
@@ -3281,7 +3243,7 @@ app.post("/api/signup-requests", async (c) => {
 // 6b. List pending signup requests (Admin only)
 app.get("/api/signup-requests", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const rows = await c.env.DB.prepare(
       "SELECT * FROM signup_requests WHERE status = 'pending' ORDER BY created_at DESC",
@@ -3295,7 +3257,7 @@ app.get("/api/signup-requests", async (c) => {
 // 6c. Approve a signup request (Admin only)
 app.post("/api/signup-requests/:id/approve", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const id = c.req.param("id");
 
@@ -3351,7 +3313,7 @@ app.post("/api/signup-requests/:id/approve", async (c) => {
 // 6d. Reject a signup request (Admin only)
 app.post("/api/signup-requests/:id/reject", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const id = c.req.param("id");
     await c.env.DB.prepare("UPDATE signup_requests SET status = ? WHERE id = ?")
@@ -3377,7 +3339,7 @@ async function canAccessDept(c: any, deptId: string) {
 // GET /api/departments/:id/overview Ã¢â‚¬â€ all department data in one call
 app.get("/api/departments/:id/overview", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
 
@@ -3413,7 +3375,7 @@ app.get("/api/departments/:id/overview", async (c) => {
 // --- MEETS ---
 app.post("/api/departments/:id/meets", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
@@ -3443,7 +3405,7 @@ app.post("/api/departments/:id/meets", async (c) => {
 
 app.delete("/api/departments/:id/meets/:meetId", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const meetId = c.req.param("meetId");
@@ -3457,7 +3419,7 @@ app.delete("/api/departments/:id/meets/:meetId", async (c) => {
 // --- DOCUMENTS ---
 app.post("/api/departments/:id/documents", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
@@ -3481,7 +3443,7 @@ app.post("/api/departments/:id/documents", async (c) => {
 
 app.delete("/api/departments/:id/documents/:docId", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const docId = c.req.param("docId");
@@ -3495,7 +3457,7 @@ app.delete("/api/departments/:id/documents/:docId", async (c) => {
 // --- INSTRUCTIONS ---
 app.post("/api/departments/:id/instructions", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
@@ -3518,7 +3480,7 @@ app.post("/api/departments/:id/instructions", async (c) => {
 
 app.delete("/api/departments/:id/instructions/:instructionId", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const instructionId = c.req.param("instructionId");
@@ -3532,7 +3494,7 @@ app.delete("/api/departments/:id/instructions/:instructionId", async (c) => {
 // --- PROJECTS ---
 app.post("/api/departments/:id/projects", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const body = await c.req.json();
@@ -3555,7 +3517,7 @@ app.post("/api/departments/:id/projects", async (c) => {
 
 app.put("/api/departments/:id/projects/:projectId/status", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const projectId = c.req.param("projectId");
@@ -3576,7 +3538,7 @@ app.put("/api/departments/:id/projects/:projectId/status", async (c) => {
 // ---------------------------------------------------------
 app.get("/api/departments", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "public_departments", 100, 60);
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
     const rows = await c.env.DB.prepare("SELECT id, name, description FROM departments ORDER BY name ASC").all();
@@ -3588,7 +3550,7 @@ app.get("/api/departments", async (c) => {
 
 app.get("/api/departments/:id/members", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const rows = await c.env.DB.prepare(
@@ -3602,7 +3564,7 @@ app.get("/api/departments/:id/members", async (c) => {
 
 app.get("/api/departments/:id/instructions", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const rows = await c.env.DB.prepare(
@@ -3619,7 +3581,7 @@ app.get("/api/departments/:id/instructions", async (c) => {
 // ---------------------------------------------------------
 app.get("/api/club-meets", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rows = await c.env.DB.prepare("SELECT * FROM club_meets ORDER BY scheduled_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
@@ -3629,7 +3591,7 @@ app.get("/api/club-meets", async (c) => {
 
 app.post("/api/club-meets", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (user.power_level < 50) {
       return c.json({ error: "Forbidden: Lead or above only" }, 403);
@@ -3660,7 +3622,7 @@ app.post("/api/club-meets", async (c) => {
 
 app.delete("/api/club-meets/:id", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (user.power_level < 50) {
       return c.json({ error: "Forbidden: Lead or above only" }, 403);
@@ -3678,7 +3640,7 @@ app.delete("/api/club-meets/:id", async (c) => {
 // ---------------------------------------------------------
 app.get("/api/inter-dept-meets", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rows = await c.env.DB.prepare("SELECT * FROM inter_dept_meets ORDER BY scheduled_at ASC").all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
@@ -3688,7 +3650,7 @@ app.get("/api/inter-dept-meets", async (c) => {
 
 app.post("/api/inter-dept-meets", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (user.power_level < 50) {
       return c.json({ error: "Forbidden: Lead or above only" }, 403);
@@ -3726,7 +3688,7 @@ app.post("/api/inter-dept-meets", async (c) => {
 
 app.delete("/api/inter-dept-meets/:id", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (user.power_level < 50) {
       return c.json({ error: "Forbidden: Lead or above only" }, 403);
@@ -3744,7 +3706,7 @@ app.delete("/api/inter-dept-meets/:id", async (c) => {
 // ---------------------------------------------------------
 app.post("/api/meets/:type/:id/send-notification", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "meet_notification", 10, 3600);
     if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
@@ -3788,7 +3750,7 @@ app.post("/api/meets/:type/:id/send-notification", async (c) => {
 
 app.post("/api/meets/process-queue", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
 
@@ -3817,7 +3779,7 @@ app.post("/api/meets/process-queue", async (c) => {
 // ---------------------------------------------------------
 app.get("/api/department-meets", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (!user) return c.json({ error: "Unauthorized" }, 401);
     let rows: any;
@@ -3843,7 +3805,7 @@ app.get("/api/department-meets", async (c) => {
 // ---------------------------------------------------------
 app.get("/api/announcements", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rows = await c.env.DB.prepare("SELECT * FROM announcements ORDER BY created_at DESC").all();
     const user: any = c.get("user");
     return c.json({ success: true, data: rows.results || [] });
@@ -3854,7 +3816,7 @@ app.get("/api/announcements", async (c) => {
 
 app.post("/api/announcements", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (user.power_level < 100) {
       return c.json({ error: "Forbidden: Board only" }, 403);
@@ -3881,7 +3843,7 @@ app.post("/api/announcements", async (c) => {
 
 app.delete("/api/announcements/:id", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (user.power_level < 100) {
       return c.json({ error: "Forbidden: Board only" }, 403);
@@ -3906,7 +3868,7 @@ function canManageProject(c: any) {
 
 app.get("/api/projects", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
 
     let projects;
@@ -3944,7 +3906,7 @@ app.get("/api/projects", async (c) => {
 
 app.post("/api/projects", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (user.power_level < 100) {
       return c.json({ error: "Forbidden: Board only" }, 403);
@@ -4005,7 +3967,7 @@ app.post("/api/projects", async (c) => {
 
 app.delete("/api/projects/:id", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (user.power_level < 100) {
       return c.json({ error: "Forbidden: Board only" }, 403);
@@ -4028,7 +3990,7 @@ app.delete("/api/projects/:id", async (c) => {
 // Project role assignments
 app.post("/api/projects/:id/roles", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     const projectId = c.req.param("id");
     const body = await c.req.json();
@@ -4073,7 +4035,7 @@ app.post("/api/projects/:id/roles", async (c) => {
 
 app.delete("/api/projects/:id/roles/:roleId", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     const projectId = c.req.param("id");
     const roleId = c.req.param("roleId");
@@ -4110,7 +4072,7 @@ async function canManageProjectTasks(c: any, projectId: string) {
 
 app.get("/api/projects/:id/tasks", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const projectId = c.req.param("id");
     const rows = await c.env.DB.prepare(
       "SELECT pt.*, u.name as assigned_name FROM project_tasks pt LEFT JOIN users u ON pt.assigned_to = u.id WHERE pt.project_id = ? ORDER BY pt.created_at ASC",
@@ -4123,7 +4085,7 @@ app.get("/api/projects/:id/tasks", async (c) => {
 
 app.post("/api/projects/:id/tasks", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const projectId = c.req.param("id");
     const user: any = c.get("user");
     await canManageProjectTasks(c, projectId);
@@ -4146,7 +4108,7 @@ app.post("/api/projects/:id/tasks", async (c) => {
 
 app.put("/api/projects/:id/tasks/:taskId", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const projectId = c.req.param("id");
     const taskId = c.req.param("taskId");
     const user: any = c.get("user");
@@ -4172,7 +4134,7 @@ app.put("/api/projects/:id/tasks/:taskId", async (c) => {
 
 app.post("/api/projects/:id/tasks/complete-all", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const projectId = c.req.param("id");
     const user: any = c.get("user");
     await canManageProjectTasks(c, projectId);
@@ -4218,7 +4180,7 @@ async function regenerateCompletedProjectsJson(db: any, r2: R2Bucket): Promise<v
 
 app.post("/api/projects/:id/complete", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const projectId = c.req.param("id");
     const user: any = c.get("user");
     if (user.power_level < 100) {
@@ -4234,7 +4196,7 @@ app.post("/api/projects/:id/complete", async (c) => {
 
 app.post("/api/projects/:id/reopen", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const projectId = c.req.param("id");
     const user: any = c.get("user");
     if (user.power_level < 100) {
@@ -4252,7 +4214,7 @@ app.post("/api/projects/:id/reopen", async (c) => {
 // Reads from R2 static JSON for fast loading; falls back to DB if R2 misses.
 app.get("/api/projects/completed", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "public_completed_projects", 100, 60);
     if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
 
@@ -4276,489 +4238,11 @@ app.get("/api/projects/completed", async (c) => {
 // Manual trigger Ã¢â‚¬â€ regenerate static JSON (board only)
 app.post("/api/projects/regenerate-completed", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (user.power_level < 100) return c.json({ error: "Forbidden" }, 403);
     await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES);
     return c.json({ success: true, message: "Completed projects JSON regenerated" });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// ---------------------------------------------------------
-// RECRUITMENT SYSTEM
-// ---------------------------------------------------------
-
-// Helper to check if user can access recruitment admin (lead+)
-function canAccessRecruitAdmin(c: any) {
-  const user: any = c.get("user");
-  if (user.power_level >= 50) return true;
-  throw new Error("Forbidden: Leads or above only");
-}
-
-// 1. Register a new applicant account
-app.post("/api/recruitment/register", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const rl = await checkLoginRateLimit(c, "recruitment_register", 5, 60);
-    if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Please try again later.", retryAfter: rl.retryAfter }, 429);
-    }
-    const body = await c.req.json();
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid request body" }, 400);
-    }
-    const name = sanitizeStr(body.name);
-    const email = validateEmail(body.email);
-    const password = sanitizeStr(body.password);
-    if (!name || !email || !password) {
-      await incrementLoginRateLimit(c, "recruitment_register");
-      return c.json({ error: "Missing name, email, or password" }, 400);
-    }
-    if (password.length < 8) {
-      await incrementLoginRateLimit(c, "recruitment_register");
-      return c.json({ error: "Password must be at least 8 characters" }, 400);
-    }
-    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password)) {
-      await incrementLoginRateLimit(c, "recruitment_register");
-      return c.json({ error: "Password must contain uppercase, lowercase, a digit, and a special character" }, 400);
-    }
-
-    const existing: any = await c.env.DB.prepare("SELECT id FROM recruitment_applicants WHERE email = ?").bind(email).first();
-    if (existing) {
-      await resetLoginRateLimit(c, "recruitment_register");
-      return c.json({ success: true, message: "Account created. You can now log in." });
-    }
-
-    const { hash: passwordHash, salt } = await hashPassword(password);
-
-    await c.env.DB.prepare(
-      "INSERT INTO recruitment_applicants (id, email, name, password_hash, salt) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
-    ).bind(email, name, passwordHash, salt).run();
-
-    await resetLoginRateLimit(c, "recruitment_register");
-    return c.json({ success: true, message: "Account created. You can now log in." });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// 2. Login applicant
-app.post("/api/recruitment/login", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const rl = await checkLoginRateLimit(c, "recruitment_login", 10, 60);
-    if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Please try again later.", retryAfter: rl.retryAfter }, 429);
-    }
-    const body = await c.req.json();
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid request body" }, 400);
-    }
-    const email = validateEmail(body.email);
-    const password = sanitizeStr(body.password);
-    if (!email || !password) {
-      await incrementLoginRateLimit(c, "recruitment_login");
-      return c.json({ error: "Missing email or password" }, 400);
-    }
-
-    const applicant: any = await c.env.DB.prepare(
-      "SELECT id, email, name, password_hash, salt FROM recruitment_applicants WHERE email = ?",
-    ).bind(email).first();
-
-    if (!applicant || !applicant.salt) {
-      await incrementLoginRateLimit(c, "recruitment_login");
-      return c.json({ error: "Invalid email or password" }, 401);
-    }
-
-    const valid = await verifyPassword(password, applicant.salt, applicant.password_hash);
-    if (!valid) {
-      await incrementLoginRateLimit(c, "recruitment_login");
-      return c.json({ error: "Invalid email or password" }, 401);
-    }
-
-    // Delete old sessions for this applicant
-    await c.env.DB.prepare("DELETE FROM recruitment_sessions WHERE applicant_id = ?").bind(applicant.id).run();
-
-    // Create session token stored in DB (store SHA-256 hash, return raw token)
-    const sessionToken = crypto.randomUUID().replace(/-/g, "");
-    const tokenHash = await sha256Hex(sessionToken);
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    await c.env.DB.prepare(
-      "INSERT INTO recruitment_sessions (id, applicant_id, token_hash, expires_at) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
-    ).bind(applicant.id, tokenHash, expiresAt).run();
-
-    await resetLoginRateLimit(c, "recruitment_login");
-
-    return c.json({
-      success: true,
-      applicant: { id: applicant.id, email: applicant.email, name: applicant.name },
-      token: sessionToken,
-    });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// 3. Submit an application (Round 1)
-app.post("/api/recruitment/applications", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "recruitment_application", 3, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
-    const sessionApplicant = await getSessionApplicant(c);
-    if (!sessionApplicant) {
-      return c.json({ error: "Unauthorized: please log in first" }, 401);
-    }
-    const applicantId = sessionApplicant.id;
-
-    const body = await c.req.json();
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid request body" }, 400);
-    }
-    const name = sanitizeStr(body.name);
-    const email = validateEmail(body.email);
-    const year = sanitizeStr(body.year);
-    const course = sanitizeStr(body.course);
-    const primaryDomain = sanitizeStr(body.primaryDomain);
-    const secondaryDomain = sanitizeStr(body.secondaryDomain) || null;
-    const whyJoin = sanitizeStr(body.whyJoin);
-    const whyDomain = sanitizeStr(body.whyDomain);
-    const priorExperience = sanitizeStr(body.priorExperience) || null;
-    const portfolioLink = sanitizeStr(body.portfolioLink) || null;
-
-    if (!name || !email || !year || !course || !primaryDomain || !whyJoin || !whyDomain) {
-      return c.json({ error: "Missing required fields" }, 400);
-    }
-
-    // Validate portfolio link if provided
-    if (portfolioLink && !isValidUrl(portfolioLink)) {
-      return c.json({ error: "Invalid portfolio link URL" }, 400);
-    }
-
-    // Check if the selected domain is open for recruitment
-    const domainRow: any = await c.env.DB.prepare(
-      "SELECT is_open FROM recruitment_domain_settings WHERE domain_name = ?",
-    ).bind(primaryDomain).first();
-    if (!domainRow || !domainRow.is_open) {
-      return c.json({ error: "Applications are not currently open for " + primaryDomain }, 400);
-    }
-
-    // Check if already applied
-    const existing: any = await c.env.DB.prepare(
-      "SELECT id FROM recruitment_applications WHERE applicant_id = ?",
-    ).bind(applicantId).first();
-    if (existing) {
-      return c.json({ error: "You have already submitted an application" }, 409);
-    }
-
-    // Get active round
-    const round: any = await c.env.DB.prepare(
-      "SELECT id FROM recruitment_rounds WHERE is_active = 1",
-    ).first();
-    if (!round) {
-      return c.json({ error: "Recruitments are not currently open" }, 400);
-    }
-
-    await c.env.DB.prepare(
-      "INSERT INTO recruitment_applications (id, applicant_id, round_id, name, email, year, course, primary_domain, secondary_domain, why_join, why_domain, prior_experience, portfolio_link, status) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
-    ).bind(applicantId, round.id, name, email, year, course, primaryDomain, secondaryDomain, whyJoin, whyDomain, priorExperience, portfolioLink).run();
-
-    return c.json({ success: true, message: "Application submitted successfully" });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// 4. Get applicant's own application status
-app.get("/api/recruitment/my-application", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const sessionApplicant = await getSessionApplicant(c);
-    if (!sessionApplicant) {
-      return c.json({ error: "Unauthorized: please log in first" }, 401);
-    }
-
-    const app: any = await c.env.DB.prepare(
-      "SELECT * FROM recruitment_applications WHERE applicant_id = ? ORDER BY created_at DESC",
-    ).bind(sessionApplicant.id).first();
-
-    if (!app) return c.json({ success: true, application: null });
-
-    return c.json({ success: true, application: app });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
-
-// 5. ADMIN: List all applications (with optional filters)
-app.get("/api/recruitment/admin/applications", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    canAccessRecruitAdmin(c);
-    const domain = c.req.query("domain");
-    const status = c.req.query("status");
-
-    let sql = "SELECT * FROM recruitment_applications WHERE 1=1";
-    const params: string[] = [];
-
-    if (domain) {
-      sql += " AND (primary_domain = ? OR secondary_domain = ?)";
-      params.push(domain, domain);
-    }
-    if (status) {
-      sql += " AND status = ?";
-      params.push(status);
-    }
-    sql += " ORDER BY created_at DESC";
-
-    const rows = await c.env.DB.prepare(sql).bind(...params).all();
-    return c.json({ success: true, data: rows.results || [] });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
-
-// 6. ADMIN: Get single application with evaluations
-app.get("/api/recruitment/admin/applications/:id", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    canAccessRecruitAdmin(c);
-    const id = c.req.param("id");
-
-    const application: any = await c.env.DB.prepare("SELECT * FROM recruitment_applications WHERE id = ?").bind(id).first();
-    if (!application) return c.json({ error: "Application not found" }, 404);
-
-    const criteria = await c.env.DB.prepare(
-      "SELECT * FROM recruitment_evaluation_criteria WHERE round_id = ? ORDER BY created_at ASC",
-    ).bind(application.round_id).all();
-
-    const evaluations = await c.env.DB.prepare(
-      "SELECT re.*, rec.name as criterion_name, u.name as evaluator_name FROM recruitment_evaluations re JOIN recruitment_evaluation_criteria rec ON re.criterion_id = rec.id JOIN users u ON re.evaluator_id = u.id WHERE re.application_id = ? ORDER BY rec.name ASC",
-    ).bind(id).all();
-
-    return c.json({
-      success: true,
-      application,
-      criteria: criteria.results || [],
-      evaluations: evaluations.results || [],
-    });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
-
-// 7. ADMIN: Add evaluation criteria for a round
-app.post("/api/recruitment/admin/evaluation-criteria", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    canAccessRecruitAdmin(c);
-    const body = await c.req.json();
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid request body" }, 400);
-    }
-    const roundId = sanitizeStr(body.roundId);
-    const name = sanitizeStr(body.name);
-    const maxScore = body.maxScore;
-
-    if (!roundId || !name || typeof maxScore !== "number") {
-      return c.json({ error: "Missing roundId, name, or maxScore" }, 400);
-    }
-    if (maxScore <= 0 || maxScore > 100) {
-      return c.json({ error: "maxScore must be between 1 and 100" }, 400);
-    }
-
-    await c.env.DB.prepare(
-      "INSERT INTO recruitment_evaluation_criteria (id, round_id, name, max_score) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
-    ).bind(roundId, name, maxScore).run();
-
-    return c.json({ success: true, message: "Evaluation criterion added" });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
-
-// 8. ADMIN: List evaluation criteria
-app.get("/api/recruitment/admin/evaluation-criteria", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    canAccessRecruitAdmin(c);
-    const roundId = c.req.query("roundId");
-    if (!roundId) return c.json({ error: "Missing roundId" }, 400);
-
-    const rows = await c.env.DB.prepare(
-      "SELECT * FROM recruitment_evaluation_criteria WHERE round_id = ? ORDER BY created_at ASC",
-    ).bind(roundId).all();
-
-    return c.json({ success: true, data: rows.results || [] });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
-
-// 9. ADMIN: Add/update evaluation score for an applicant
-app.post("/api/recruitment/admin/evaluations", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    canAccessRecruitAdmin(c);
-    const user: any = c.get("user");
-    const body = await c.req.json();
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid request body" }, 400);
-    }
-    const applicationId = sanitizeStr(body.applicationId);
-    const criterionId = sanitizeStr(body.criterionId);
-    const score = body.score;
-    const comment = sanitizeStr(body.comment) || null;
-
-    if (!applicationId || !criterionId || typeof score !== "number") {
-      return c.json({ error: "Missing applicationId, criterionId, or score" }, 400);
-    }
-    if (score < 0) {
-      return c.json({ error: "Score cannot be negative" }, 400);
-    }
-    const criterion: any = await c.env.DB.prepare("SELECT max_score FROM recruitment_evaluation_criteria WHERE id = ?").bind(criterionId).first();
-    if (!criterion) return c.json({ error: "Evaluation criterion not found" }, 400);
-    if (score > criterion.max_score) {
-      return c.json({ error: "Score cannot exceed max_score of " + criterion.max_score }, 400);
-    }
-
-    // Check if evaluation already exists
-    const existing: any = await c.env.DB.prepare(
-      "SELECT id FROM recruitment_evaluations WHERE application_id = ? AND criterion_id = ? AND evaluator_id = ?",
-    ).bind(applicationId, criterionId, user.id).first();
-
-    if (existing) {
-      await c.env.DB.prepare(
-        "UPDATE recruitment_evaluations SET score = ?, comment = ? WHERE id = ?",
-      ).bind(score, comment, existing.id).run();
-    } else {
-      await c.env.DB.prepare(
-        "INSERT INTO recruitment_evaluations (id, application_id, criterion_id, evaluator_id, score, comment) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
-      ).bind(applicationId, criterionId, user.id, score, comment).run();
-    }
-
-    return c.json({ success: true, message: "Evaluation saved" });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
-
-// 10. ADMIN: Update application status (shortlist/reject/select)
-app.put("/api/recruitment/admin/applications/:id/status", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    canAccessRecruitAdmin(c);
-    const id = c.req.param("id");
-    const body = await c.req.json();
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid request body" }, 400);
-    }
-    const status = sanitizeStr(body.status);
-
-    if (!status || !["pending", "shortlisted", "selected", "rejected"].includes(status)) {
-      return c.json({ error: "Invalid status" }, 400);
-    }
-
-    await c.env.DB.prepare("UPDATE recruitment_applications SET status = ? WHERE id = ?").bind(status, id).run();
-    await addAuditLog(c, "application_status_change", "recruitment_application", id, "Status changed to " + status);
-    return c.json({ success: true, message: "Status updated to " + status });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
-
-// 11. ADMIN: Bulk shortlist Ã¢â‚¬â€ auto-shortlist top N applicants by total score
-app.post("/api/recruitment/admin/bulk-shortlist", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    canAccessRecruitAdmin(c);
-    const body = await c.req.json();
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid request body" }, 400);
-    }
-    const count = body.count;
-    const roundId = sanitizeStr(body.roundId);
-    if (!roundId || typeof count !== "number" || count < 1) {
-      return c.json({ error: "Missing roundId or invalid count" }, 400);
-    }
-
-    // Get all pending applications with their total evaluation scores
-    const rows: any = await c.env.DB.prepare(
-      `SELECT ra.id, COALESCE(SUM(re.score), 0) as total_score
-       FROM recruitment_applications ra
-       LEFT JOIN recruitment_evaluations re ON ra.id = re.application_id
-       WHERE ra.round_id = ? AND ra.status = 'pending'
-       GROUP BY ra.id
-       ORDER BY total_score DESC`,
-    ).bind(roundId).all();
-
-    const applicants = rows.results || [];
-    const toShortlist = applicants.slice(0, count);
-
-    for (const app of toShortlist) {
-      await c.env.DB.prepare("UPDATE recruitment_applications SET status = 'shortlisted' WHERE id = ?").bind(app.id).run();
-    }
-
-    return c.json({
-      success: true,
-      message: `Shortlisted ${toShortlist.length} applicants`,
-      shortlisted: toShortlist,
-    });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
-
-// 12. ADMIN: Get recruitment domain settings
-app.get("/api/recruitment/admin/settings", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    canAccessRecruitAdmin(c);
-    const rows = await c.env.DB.prepare("SELECT * FROM recruitment_domain_settings ORDER BY domain_name ASC").all();
-    return c.json({ success: true, data: rows.results || [] });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
-
-// 13. ADMIN: Update recruitment domain settings (Board only)
-app.put("/api/recruitment/admin/settings", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    requireBoard(c);
-    const body = await c.req.json();
-    if (!body || typeof body !== "object") {
-      return c.json({ error: "Invalid request body" }, 400);
-    }
-    const openDomains = body.openDomains;
-    if (!Array.isArray(openDomains)) {
-      return c.json({ error: "openDomains must be an array of domain names" }, 400);
-    }
-    const sanitizedDomains = openDomains.map((d: any) => String(d).trim()).filter(Boolean);
-    const user: any = c.get("user");
-    await c.env.DB.prepare("UPDATE recruitment_domain_settings SET is_open = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP").bind(user.id).run();
-    if (sanitizedDomains.length > 0) {
-      const placeholders = sanitizedDomains.map(() => "?").join(",");
-      await c.env.DB.prepare(
-        `UPDATE recruitment_domain_settings SET is_open = 1, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE domain_name IN (${placeholders})`,
-      ).bind(user.id, ...sanitizedDomains).run();
-    }
-    return c.json({ success: true, message: "Recruitment settings updated" });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
-
-// 14. PUBLIC: Get list of domains currently open for applications
-app.get("/api/recruitment/open-domains", async (c) => {
-  try {
-    await ensureTables(c.env.DB);
-    const rl = await checkRateLimit(c, "recruitment_open_domains", 100, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-    const rows = await c.env.DB.prepare("SELECT domain_name FROM recruitment_domain_settings WHERE is_open = 1 ORDER BY domain_name ASC").all();
-    return c.json({ success: true, data: (rows.results || []).map((r: any) => r.domain_name) });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -4773,7 +4257,7 @@ const MAX_IMG_SIZE = 10 * 1024 * 1024; // 10 MB
 
 app.post("/api/case-studies/upload-image", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
     const rl = await checkRateLimit(c, "case_study_upload_image", 20, 3600);
@@ -4839,7 +4323,7 @@ app.get("/api/case-studies/images/*", async (c) => {
 // Delete uploaded case study image from R2 (power >= 10)
 app.delete("/api/case-studies/delete-image", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
 
@@ -4866,7 +4350,7 @@ const MAX_DOC_SIZE = 20 * 1024 * 1024; // 20 MB
 
 app.post("/api/case-studies/upload-document", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
     const rl = await checkRateLimit(c, "case_study_upload_doc", 20, 3600);
@@ -5050,7 +4534,7 @@ app.post("/api/case-studies/upload-document", async (c) => {
 // Upload source PDF/DOCX to R2 for download link
 app.post("/api/case-studies/upload-source", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
     const rl = await checkRateLimit(c, "case_study_upload_source", 20, 3600);
@@ -5089,7 +4573,7 @@ app.post("/api/case-studies/upload-source", async (c) => {
 // 1. Public: Submit a consulting request
 app.post("/api/consulting-request", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "consulting_request", 1, 3600);
     if (!rl.allowed) {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
@@ -5122,7 +4606,7 @@ app.post("/api/consulting-request", async (c) => {
 // 2. Admin: List all consulting requests (Board only)
 app.get("/api/consulting-requests", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const rows = await c.env.DB.prepare(
       "SELECT * FROM consulting_requests ORDER BY created_at DESC",
@@ -5136,7 +4620,7 @@ app.get("/api/consulting-requests", async (c) => {
 // 3. Admin: Accept a consulting request with custom email (Board only)
 app.post("/api/consulting-requests/:id/accept", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "consulting_accept", 10, 3600);
     if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     requireBoard(c);
@@ -5208,7 +4692,7 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
 // 4. Admin: Reject a consulting request with custom email (Board only)
 app.post("/api/consulting-requests/:id/reject", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "consulting_reject", 10, 3600);
     if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     requireBoard(c);
@@ -5277,7 +4761,7 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
 // 5. Admin: Delete a consulting request (any status)
 app.delete("/api/consulting-requests/:id", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const id = c.req.param("id");
 
@@ -5303,7 +4787,7 @@ app.delete("/api/consulting-requests/:id", async (c) => {
 // 1. Create a case study (authenticated, power >= 10)
 app.post("/api/case-studies", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "case_study_create", 20, 3600);
     if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
@@ -5345,7 +4829,7 @@ app.post("/api/case-studies", async (c) => {
 // 2. List all case studies for admin/members (authenticated, power >= 10)
 app.get("/api/case-studies", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
 
@@ -5359,7 +4843,7 @@ app.get("/api/case-studies", async (c) => {
 // 3. Delete a case study (power >= 50)
 app.delete("/api/case-studies/:id", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (!user || user.power_level < 50) return c.json({ error: "Forbidden: Lead or above only" }, 403);
 
@@ -5393,7 +4877,7 @@ app.delete("/api/case-studies/:id", async (c) => {
 // 4. Edit a case study (authenticated, power >= 10)
 app.put("/api/case-studies/:id", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "case_study_edit", 20, 3600);
     if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
@@ -5436,7 +4920,7 @@ app.put("/api/case-studies/:id", async (c) => {
 // 6. Admin: Send arbitrary email (Board: anyone · Directors: own department only)
 app.post("/api/send-email", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (!user || user.power_level < 50) {
       return c.json({ error: "Forbidden: Board and directors only" }, 403);
@@ -5636,7 +5120,7 @@ app.get("/api/club-files/projects", async (c) => {
 // Delete a file (power >= 50 only)
 app.delete("/api/club-files/:id", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "club_files_delete", 20, 3600);
     if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
@@ -5699,7 +5183,7 @@ app.get("/api/club-files/:id/download", async (c) => {
 // Upload a file (power >= 50 only)
 app.post("/api/club-files/upload", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "club_files_upload", 20, 3600);
     if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
@@ -5747,7 +5231,7 @@ app.post("/api/club-files/upload", async (c) => {
 // GET /api/admin/maintenance Ã¢â‚¬â€ check maintenance status
 app.get("/api/admin/maintenance", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const mm: any = await c.env.DB.prepare("SELECT enabled, message FROM maintenance_mode WHERE id = 1").first();
     return c.json({ enabled: mm?.enabled === 1, message: mm?.message || "" });
   } catch (e: any) {
@@ -5758,7 +5242,7 @@ app.get("/api/admin/maintenance", async (c) => {
 // POST /api/admin/maintenance Ã¢â‚¬â€ toggle maintenance mode (power >= 100)
 app.post("/api/admin/maintenance", async (c) => {
   try {
-    await ensureTables(c.env.DB);
+    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "admin_maintenance_toggle", 5, 60);
     if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
     const user: any = c.get("user");
