@@ -48,12 +48,14 @@ export default function NewsletterEditorPage() {
   const [editorTab, setEditorTab] = useState<EditorTab>("newsletters");
   const [eventSubject, setEventSubject] = useState("");
   const [eventDescription, setEventDescription] = useState("");
-  const [_eventExtractedContent, setEventExtractedContent] = useState("");
   const [eventSourceFileUrl, setEventSourceFileUrl] = useState("");
   const [eventSourceFileName, setEventSourceFileName] = useState("");
-  const [eventExtracting, setEventExtracting] = useState(false);
+  const [eventImageUrl, setEventImageUrl] = useState("");
+  const [eventImageFileName, setEventImageFileName] = useState("");
+  const [eventUploading, setEventUploading] = useState(false);
   const [eventSending, setEventSending] = useState(false);
   const [eventDragOver, setEventDragOver] = useState(false);
+  const [eventImageDragOver, setEventImageDragOver] = useState(false);
 
   const authHeaders: Record<string, string> = sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {};
 
@@ -148,8 +150,6 @@ export default function NewsletterEditorPage() {
     setMode("list");
   };
 
-  const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-
   const handleDocumentUpload = useCallback(async (file: File) => {
     setUploading(true);
     setError("");
@@ -214,56 +214,26 @@ export default function NewsletterEditorPage() {
   const resetEventForm = useCallback(() => {
     setEventSubject("");
     setEventDescription("");
-    setEventExtractedContent("");
     setEventSourceFileUrl("");
     setEventSourceFileName("");
+    setEventImageUrl("");
+    setEventImageFileName("");
     setError("");
     setSuccess("");
   }, []);
 
   const handleEventDocumentUpload = useCallback(async (file: File) => {
-    setEventExtracting(true);
+    setEventUploading(true);
     setError("");
-    setEventExtractedContent("");
     setEventSourceFileName(file.name);
     try {
-      let html = "";
-      if (file.type === "application/pdf") {
-        const pdfjsLib = await import("pdfjs-dist");
-        const pdfjsVersion = pdfjsLib.version;
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsVersion}/build/pdf.worker.min.mjs`;
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, useWorkerFetch: true, useSystemFonts: true }).promise;
-        const textParts: string[] = [];
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          textParts.push(content.items.map((item: any) => item.str).join(" "));
-        }
-        const text = textParts.join("\n\n");
-        const paragraphs = text.split(/\n{2,}/).filter((p: string) => p.trim().length > 0);
-        html = paragraphs.map((p: string) => {
-          const lines = p.trim().split("\n");
-          if (lines.length === 1) return `<p>${escapeHtml(lines[0].trim())}</p>`;
-          return lines.map((l: string) => `<p>${escapeHtml(l.trim())}</p>`).join("\n");
-        }).join("\n");
-      } else if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-        const mammoth = await import("mammoth");
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer });
-        html = result.value;
-      } else {
-        setError("Unsupported file type. Upload a PDF or DOCX.");
-        setEventExtracting(false);
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      const allowed = ["pdf", "docx", "jpg", "jpeg", "png", "webp", "gif"];
+      if (!ext || !allowed.includes(ext)) {
+        setError("Unsupported file type. Upload a PDF, DOCX, JPG, PNG, or WEBP.");
+        setEventUploading(false);
         return;
       }
-      const textOnly = html.replace(/<[^>]*>/g, "").trim();
-      if (textOnly.length < 10) {
-        setError("Document appears empty.");
-        setEventExtracting(false);
-        return;
-      }
-      setEventExtractedContent(html);
       const srcFd = new FormData();
       srcFd.append("file", file);
       const srcRes = await fetch(apiUrl("/api/newsletter-editor/upload-source"), {
@@ -272,11 +242,50 @@ export default function NewsletterEditorPage() {
         body: srcFd,
       });
       const srcData = await srcRes.json();
-      if (srcData.success) setEventSourceFileUrl(srcData.url);
+      if (srcData.success) {
+        setEventSourceFileUrl(srcData.url);
+      } else {
+        setError(srcData.error || "Failed to upload file");
+        setEventSourceFileName("");
+      }
     } catch (err: any) {
-      setError("Failed to parse document: " + (err?.message || "Unknown error"));
+      setError("Failed to upload: " + (err?.message || "Unknown error"));
+      setEventSourceFileName("");
     }
-    setEventExtracting(false);
+    setEventUploading(false);
+  }, [authHeaders]);
+
+  const handleEventImageUpload = useCallback(async (file: File) => {
+    setEventUploading(true);
+    setError("");
+    setEventImageFileName(file.name);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      if (!ext || !["jpg", "jpeg", "png", "webp", "gif"].includes(ext)) {
+        setError("Unsupported file type. Upload a JPG, PNG, WEBP, or GIF image.");
+        setEventUploading(false);
+        setEventImageFileName("");
+        return;
+      }
+      const srcFd = new FormData();
+      srcFd.append("file", file);
+      const srcRes = await fetch(apiUrl("/api/newsletter-editor/upload-source"), {
+        method: "POST",
+        headers: authHeaders,
+        body: srcFd,
+      });
+      const srcData = await srcRes.json();
+      if (srcData.success) {
+        setEventImageUrl(srcData.url);
+      } else {
+        setError(srcData.error || "Failed to upload image");
+        setEventImageFileName("");
+      }
+    } catch (err: any) {
+      setError("Failed to upload: " + (err?.message || "Unknown error"));
+      setEventImageFileName("");
+    }
+    setEventUploading(false);
   }, [authHeaders]);
 
   const handleEventFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -291,6 +300,18 @@ export default function NewsletterEditorPage() {
     if (file) handleEventDocumentUpload(file);
   }, [handleEventDocumentUpload]);
 
+  const handleEventImageInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleEventImageUpload(file);
+  }, [handleEventImageUpload]);
+
+  const handleEventImageDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setEventImageDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleEventImageUpload(file);
+  }, [handleEventImageUpload]);
+
   const handleEventSend = async () => {
     if (!eventSubject.trim()) { setError("Subject is required"); return; }
     setEventSending(true);
@@ -300,7 +321,7 @@ export default function NewsletterEditorPage() {
       const res = await fetch(apiUrl("/api/newsletter-editor/send-event"), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
-        body: JSON.stringify({ subject: eventSubject, description: eventDescription, sourceFileUrl: eventSourceFileUrl || undefined }),
+        body: JSON.stringify({ subject: eventSubject, description: eventDescription, sourceFileUrl: eventSourceFileUrl || undefined, imageUrl: eventImageUrl || undefined }),
       });
       const data = await res.json();
       if (data.success) {
@@ -644,7 +665,7 @@ export default function NewsletterEditorPage() {
           <div style={{ background: cardBg, padding: "1.5rem", borderRadius: 20, border: "1px solid var(--border-light)", boxShadow: "var(--shadow-md)" }}>
             <h2 style={{ margin: "0 0 16px", fontSize: 20, fontWeight: 800, color: "var(--text-primary)" }}>Send Event Mail</h2>
             <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-secondary)" }}>
-              Send an event announcement to all active subscribers. This uses the event email template.
+              Send an event announcement to all active subscribers. PDF attachment and image poster are both optional.
             </p>
 
             <input
@@ -661,6 +682,8 @@ export default function NewsletterEditorPage() {
               style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: 12, border: "1px solid var(--border-light)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, marginBottom: 12, boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
             />
 
+            {/* PDF / DOCX Upload */}
+            <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.5 }}>PDF Attachment (optional)</p>
             <div
               onDragOver={(e) => { e.preventDefault(); setEventDragOver(true); }}
               onDragLeave={() => setEventDragOver(false)}
@@ -668,28 +691,68 @@ export default function NewsletterEditorPage() {
               onClick={() => document.getElementById("event-file-input")?.click()}
               style={{
                 border: `2px dashed ${eventDragOver ? "#e85d2c" : "var(--border-light)"}`,
-                borderRadius: 12, padding: "24px 16px", textAlign: "center", cursor: "pointer",
+                borderRadius: 12, padding: "18px 16px", textAlign: "center", cursor: "pointer",
                 background: eventDragOver ? "rgba(232,93,44,0.05)" : "transparent", transition: "all 0.2s", marginBottom: 16,
               }}
             >
               <input id="event-file-input" type="file" accept=".pdf,.docx" style={{ display: "none" }} onChange={handleEventFileInput} />
-              {eventExtracting ? (
-                <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)" }}>Extracting text...</p>
+              {eventUploading && eventSourceFileName ? (
+                <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)" }}>Uploading...</p>
               ) : eventSourceFileName ? (
                 <div>
                   <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{eventSourceFileName}</p>
-                  <button onClick={(e) => { e.stopPropagation(); setEventExtractedContent(""); setEventSourceFileUrl(""); setEventSourceFileName(""); }} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, color: "#ef4444", background: "transparent" }}>Remove</button>
+                  <button onClick={(e) => { e.stopPropagation(); setEventSourceFileUrl(""); setEventSourceFileName(""); }} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, color: "#ef4444", background: "transparent" }}>Remove</button>
                 </div>
               ) : (
                 <div>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 8px", opacity: 0.4, color: "var(--text-secondary)" }}>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 6px", opacity: 0.4, color: "var(--text-secondary)" }}>
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><polyline points="14 2 14 8 20 8" />
                   </svg>
-                  <p style={{ margin: "0 0 4px", fontSize: 14, color: "var(--text-secondary)" }}>Drop a PDF or DOCX (optional attachment)</p>
-                  <p style={{ margin: 0, fontSize: 12, color: "var(--text-tertiary)" }}>Max 20 MB</p>
+                  <p style={{ margin: "0 0 4px", fontSize: 13, color: "var(--text-secondary)" }}>Drop a PDF or DOCX here</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "var(--text-tertiary)" }}>Max 20 MB</p>
                 </div>
               )}
             </div>
+
+            {/* Image Poster Upload */}
+            <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.5 }}>Event Poster Image (optional)</p>
+            <div
+              onDragOver={(e) => { e.preventDefault(); setEventImageDragOver(true); }}
+              onDragLeave={() => setEventImageDragOver(false)}
+              onDrop={handleEventImageDrop}
+              onClick={() => document.getElementById("event-image-input")?.click()}
+              style={{
+                border: `2px dashed ${eventImageDragOver ? "#e85d2c" : "var(--border-light)"}`,
+                borderRadius: 12, padding: "18px 16px", textAlign: "center", cursor: "pointer",
+                background: eventImageDragOver ? "rgba(232,93,44,0.05)" : "transparent", transition: "all 0.2s", marginBottom: 16,
+              }}
+            >
+              <input id="event-image-input" type="file" accept=".jpg,.jpeg,.png,.webp,.gif" style={{ display: "none" }} onChange={handleEventImageInput} />
+              {eventUploading && eventImageFileName ? (
+                <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)" }}>Uploading...</p>
+              ) : eventImageFileName ? (
+                <div>
+                  <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{eventImageFileName}</p>
+                  <button onClick={(e) => { e.stopPropagation(); setEventImageUrl(""); setEventImageFileName(""); }} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, color: "#ef4444", background: "transparent" }}>Remove</button>
+                </div>
+              ) : (
+                <div>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 6px", opacity: 0.4, color: "var(--text-secondary)" }}>
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
+                  </svg>
+                  <p style={{ margin: "0 0 4px", fontSize: 13, color: "var(--text-secondary)" }}>Drop a poster image (JPG, PNG, WEBP)</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "var(--text-tertiary)" }}>Shown inline in the email body. Max 20 MB</p>
+                </div>
+              )}
+            </div>
+
+            {/* Image preview */}
+            {eventImageUrl && (
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-secondary)" }}>Poster preview:</p>
+                <img src={apiUrl(eventImageUrl)} alt="Poster preview" style={{ width: "100%", maxHeight: 300, objectFit: "contain", borderRadius: 8, border: "1px solid var(--border-light)" }} />
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={resetEventForm} style={{ ...btnBase, padding: "8px 20px", background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-light)" }}>Clear</button>

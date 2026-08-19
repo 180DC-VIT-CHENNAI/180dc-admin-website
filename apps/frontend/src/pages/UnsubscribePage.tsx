@@ -5,39 +5,57 @@ import { useTheme } from "../context/ThemeContext";
 
 export default function UnsubscribePage() {
   const [searchParams] = useSearchParams();
-  const email = searchParams.get("email") || "";
+  const emailParam = searchParams.get("email") || "";
   const { isDark, toggle: toggleTheme } = useTheme();
 
-  const [status, setStatus] = useState<"loading" | "success" | "already" | "no-email" | "error">("loading");
+  const [inputEmail, setInputEmail] = useState(emailParam);
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "already" | "not-found" | "error">("idle");
 
   useEffect(() => {
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setStatus("no-email");
-      return;
+    if (emailParam && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailParam)) {
+      setInputEmail(emailParam);
+      doUnsubscribe(emailParam);
     }
-    fetch(apiUrl(`/api/newsletter/unsubscribe?email=${encodeURIComponent(email)}`))
-      .then((res) => {
-        if (res.ok) {
-          res.text().then((text) => {
-            if (text.includes("Successfully")) setStatus("success");
-            else if (text.includes("not currently") || text.includes("Already")) setStatus("already");
-            else setStatus("success");
-          });
-        } else {
-          setStatus("error");
-        }
-      })
-      .catch(() => setStatus("error"));
-  }, [email]);
+  }, [emailParam]);
 
-  const messages = {
-    loading: { title: "Unsubscribing...", desc: "Please wait while we process your request.", color: "var(--text-secondary)" },
-    success: { title: "Successfully Unsubscribed", desc: "You have been unsubscribed from the 180DC newsletter. You will no longer receive newsletter emails from us.", color: "#22c55e" },
-    already: { title: "Already Unsubscribed", desc: "You are not currently subscribed to the 180DC newsletter, or you have already unsubscribed.", color: "var(--text-secondary)" },
-    "no-email": { title: "Invalid Request", desc: "No email address was provided. Please use the unsubscribe link from one of our emails.", color: "#ef4444" },
-    error: { title: "Something Went Wrong", desc: "We couldn't process your unsubscribe request. Please try again later.", color: "#ef4444" },
+  const doUnsubscribe = async (email: string) => {
+    setStatus("loading");
+    try {
+      const res = await fetch(apiUrl(`/api/newsletter/unsubscribe?email=${encodeURIComponent(email)}`));
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.status === "already") setStatus("already");
+        else if (data.status === "not_found") setStatus("not-found");
+        else setStatus("success");
+      } else if (res.status === 400) {
+        setStatus("not-found");
+      } else {
+        setStatus("error");
+      }
+    } catch {
+      setStatus("error");
+    }
   };
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = inputEmail.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setStatus("not-found");
+      return;
+    }
+    doUnsubscribe(trimmed);
+  };
+
+  const messages: Record<string, { title: string; desc: string; icon: string }> = {
+    loading: { title: "Unsubscribing...", desc: "Please wait while we process your request.", icon: "..." },
+    success: { title: "Successfully Unsubscribed", desc: "You have been unsubscribed from the 180DC newsletter. You will no longer receive newsletter emails from us.", icon: "\u2713" },
+    already: { title: "Already Unsubscribed", desc: "You are not currently subscribed to the 180DC newsletter, or you have already unsubscribed.", icon: "\u2713" },
+    "not-found": { title: "Email Not Found", desc: "This email address is not subscribed to our newsletter. Please check and try again.", icon: "!" },
+    error: { title: "Something Went Wrong", desc: "We couldn't process your unsubscribe request. Please try again later.", icon: "!" },
+  };
+
+  const showForm = status === "idle" || status === "not-found" || status === "error";
   const msg = messages[status];
 
   return (
@@ -94,15 +112,16 @@ export default function UnsubscribePage() {
           <div
             style={{
               width: 64, height: 64, borderRadius: "50%",
-              background: status === "success" ? "#22c55e" : "var(--accent)", color: "white",
+              background: status === "success" || status === "already" ? "#22c55e" : "var(--accent)",
+              color: "white",
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 28, fontWeight: 800, margin: "0 auto 1.25rem",
-              boxShadow: status === "success"
+              boxShadow: status === "success" || status === "already"
                 ? "0 4px 12px rgba(34,197,94,0.3)"
                 : "0 4px 12px rgba(141, 198, 63, 0.3)",
             }}
           >
-            {status === "loading" ? "..." : status === "success" || status === "already" ? "\u2713" : "!"}
+            {status === "loading" ? "..." : msg.icon}
           </div>
 
           <h1 style={{ fontSize: "1.5rem", fontWeight: 800, margin: "0 0 8px", color: "var(--text-primary)" }}>
@@ -112,9 +131,37 @@ export default function UnsubscribePage() {
             {msg.desc}
           </p>
 
-          {email && status !== "loading" && (
+          {showForm && (
+            <form onSubmit={handleSubmit} style={{ marginBottom: "1.25rem" }}>
+              <input
+                type="email"
+                placeholder="Enter your email address"
+                value={inputEmail}
+                onChange={(e) => setInputEmail(e.target.value)}
+                required
+                style={{
+                  width: "100%", padding: "10px 14px", borderRadius: 8,
+                  border: "2px solid var(--border-light)", background: "var(--bg-primary)",
+                  color: "var(--text-primary)", fontSize: 14, outline: "none",
+                  boxSizing: "border-box", marginBottom: 10,
+                }}
+              />
+              <button
+                type="submit"
+                style={{
+                  display: "inline-block", padding: "10px 28px", background: "#ef4444", color: "#fff",
+                  border: "none", borderRadius: 50, fontSize: 13, fontWeight: 800,
+                  textTransform: "uppercase" as const, letterSpacing: 1, cursor: "pointer",
+                }}
+              >
+                Unsubscribe
+              </button>
+            </form>
+          )}
+
+          {!showForm && emailParam && (
             <p style={{ fontSize: 12, color: "var(--text-tertiary)", margin: "0 0 1.25rem" }}>
-              {email}
+              {emailParam}
             </p>
           )}
 

@@ -16,9 +16,6 @@ interface Newsletter {
 export default function NewsletterSection() {
   const [newsletters, setNewsletters] = useState<Newsletter[]>([]);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
-  const [subscribing, setSubscribing] = useState(false);
-  const [subMsg, setSubMsg] = useState("");
   const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
 
@@ -64,27 +61,6 @@ export default function NewsletterSection() {
     return () => ctx.revert();
   }, [newsletters.length]);
 
-  const handleSubscribe = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed) return;
-    setSubscribing(true);
-    setSubMsg("");
-    try {
-      const res = await fetch(apiUrl("/api/newsletter/subscribe"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmed }),
-      });
-      const data = await res.json();
-      setSubMsg(data.message || (data.success ? "Subscribed!" : "Something went wrong"));
-      if (data.success) setEmail("");
-    } catch {
-      setSubMsg("Network error. Please try again.");
-    }
-    setSubscribing(false);
-  };
-
   return (
     <section id="newsletter" className="cases-section" ref={sectionRef}>
       <div className="container">
@@ -100,7 +76,7 @@ export default function NewsletterSection() {
           )}
         </div>
 
-        {/* Subscribe form */}
+        {/* Subscribe CTA */}
         <div
           style={{
             maxWidth: 480,
@@ -109,46 +85,22 @@ export default function NewsletterSection() {
             borderRadius: 12,
             border: "2px solid var(--border-default)",
             background: "var(--bg-secondary, rgba(0,0,0,0.02))",
+            textAlign: "center",
           }}
         >
-          <p style={{ margin: "0 0 12px", fontSize: 14, color: "var(--text-secondary)", textAlign: "center" }}>
+          <p style={{ margin: "0 0 12px", fontSize: 14, color: "var(--text-secondary)" }}>
             Stay updated — get our latest newsletters delivered to your inbox.
           </p>
-          <form onSubmit={handleSubscribe} style={{ display: "flex", gap: 8 }}>
-            <input
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              style={{
-                flex: 1,
-                padding: "10px 14px",
-                borderRadius: 8,
-                border: "2px solid var(--border-default)",
-                background: "var(--bg-primary)",
-                color: "var(--text-primary)",
-                fontSize: 14,
-                outline: "none",
-              }}
-            />
-            <button
-              type="submit"
-              disabled={subscribing}
-              className="btn"
-              style={{ whiteSpace: "nowrap", padding: "10px 20px" }}
-            >
-              {subscribing ? "..." : "Subscribe"}
-            </button>
-          </form>
-          {subMsg && (
-            <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--text-secondary)", textAlign: "center" }}>
-              {subMsg}
-            </p>
-          )}
-          <p style={{ margin: "10px 0 0", fontSize: 11, color: "var(--text-tertiary)", textAlign: "center", lineHeight: 1.5 }}>
-            By subscribing, you consent to receive newsletter communications from 180 Degrees Consulting via email. You may unsubscribe at any time.
-          </p>
+          <a
+            href="/subscriber"
+            className="btn"
+            style={{
+              display: "inline-block", padding: "10px 28px",
+              textDecoration: "none", whiteSpace: "nowrap",
+            }}
+          >
+            Subscribe to Newsletter
+          </a>
         </div>
 
         {/* Newsletter cards */}

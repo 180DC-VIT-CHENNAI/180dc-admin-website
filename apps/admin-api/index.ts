@@ -1125,12 +1125,13 @@ ${hasPdf ? `<tr><td style="padding:0 32px">
 }
 
 
-function eventMailEmailHtml(title: string, description: string, siteUrl: string, subscriberEmail?: string, hasPdf?: boolean): string {
+function eventMailEmailHtml(title: string, description: string, siteUrl: string, subscriberEmail?: string, hasPdf?: boolean, imageUrl?: string): string {
   const safeTitle = escapeHtml(title);
   const safeDesc = escapeHtml(description);
   const unsubUrl = subscriberEmail
     ? `https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(subscriberEmail)}`
     : "https://180dcvitc.org/unsubscribe";
+  const fullImageUrl = imageUrl ? `https://180dcvitc.org${imageUrl}` : "";
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
@@ -1169,6 +1170,11 @@ function eventMailEmailHtml(title: string, description: string, siteUrl: string,
 <!-- DESCRIPTION -->
 ${safeDesc ? `<tr><td style="padding:0 32px">
 <p style="font-size:14px;color:#555555;margin:0 0 24px;line-height:1.7">${safeDesc}</p>
+</td></tr>` : ""}
+
+<!-- INLINE IMAGE POSTER -->
+${fullImageUrl ? `<tr><td style="padding:0 32px">
+<img src="${fullImageUrl}" alt="Event Poster" style="width:100%;border-radius:12px;border:2px solid #e8e6e1;margin:0 0 24px;display:block" />
 </td></tr>` : ""}
 
 <!-- PDF ATTACHMENT NOTICE -->
@@ -1406,17 +1412,20 @@ app.get("/api/newsletter/unsubscribe", async (c) => {
   try {
     await ensureTables(c.env.DB);
     const email = c.req.query("email");
-    if (!email || !validateEmail(email)) return c.text("Invalid email address.", 400);
+    if (!email || !validateEmail(email)) return c.json({ error: "Invalid email address." }, 400);
 
     const sub = await c.env.DB.prepare("SELECT id, active FROM newsletter_subscribers WHERE email = ?").bind(email).first();
-    if (!sub || sub.active === 0) {
-      return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Already Unsubscribed Ã¢â‚¬â€ 180DC</title><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet"></head><body style="margin:0;padding:0;background:#f5f3ee;font-family:'Nunito',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh"><div style="background:#fff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a;padding:40px 32px;max-width:440px;text-align:center"><div style="width:56px;height:56px;border-radius:50%;background:#8dc63f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px;font-weight:800">180</div><h1 style="font-size:22px;color:#1a1a1a;margin:0 0 8px">Already Unsubscribed</h1><p style="font-size:14px;color:#555;margin:0 0 20px;line-height:1.6">You are not currently subscribed to the 180DC newsletter, or you have already unsubscribed.</p><a href="https://180dcvitc.org" style="display:inline-block;padding:10px 28px;background:#8dc63f;color:#1a1a1a;text-decoration:none;border-radius:50px;border:3px solid #1a1a1a;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Visit Website</a></div></body></html>`, 200);
+    if (!sub) {
+      return c.json({ success: true, status: "not_found", message: "This email is not subscribed to our newsletter." });
+    }
+    if (sub.active === 0) {
+      return c.json({ success: true, status: "already", message: "You have already unsubscribed from the 180DC newsletter." });
     }
 
     await c.env.DB.prepare("UPDATE newsletter_subscribers SET active = 0, unsubscribed_at = CURRENT_TIMESTAMP WHERE id = ?").bind(sub.id).run();
-    return c.html(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Unsubscribed Ã¢â‚¬â€ 180DC</title><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet"></head><body style="margin:0;padding:0;background:#f5f3ee;font-family:'Nunito',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh"><div style="background:#fff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a;padding:40px 32px;max-width:440px;text-align:center"><div style="width:56px;height:56px;border-radius:50%;background:#8dc63f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px;font-weight:800">180</div><h1 style="font-size:22px;color:#1a1a1a;margin:0 0 8px">Successfully Unsubscribed</h1><p style="font-size:14px;color:#555;margin:0 0 20px;line-height:1.6">You have been unsubscribed from the 180DC newsletter. You will no longer receive newsletter emails from us.</p><a href="https://180dcvitc.org" style="display:inline-block;padding:10px 28px;background:#8dc63f;color:#1a1a1a;text-decoration:none;border-radius:50px;border:3px solid #1a1a1a;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Visit Website</a></div></body></html>`, 200);
+    return c.json({ success: true, status: "unsubscribed", message: "You have been unsubscribed from the 180DC newsletter." });
   } catch (e: any) {
-    return c.text("Something went wrong.", 500);
+    return c.json({ error: "Something went wrong." }, 500);
   }
 });
 
@@ -1469,7 +1478,7 @@ app.get("/api/newsletter/admin/subscribers", async (c) => {
   }
 });
 
-// Admin: Upload newsletter source PDF
+// Admin: Upload newsletter source PDF/IMG
 app.post("/api/newsletter/upload-source", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -1484,8 +1493,9 @@ app.post("/api/newsletter/upload-source", async (c) => {
 
     const typedFile = file as File;
     const ext = typedFile.name.split(".").pop()?.toLowerCase();
-    if (ext !== "pdf" && ext !== "docx") {
-      return c.json({ error: "Invalid file type. Allowed: pdf, docx" }, 400);
+    const allowedExts = ["pdf", "docx", "jpg", "jpeg", "png", "webp", "gif"];
+    if (!ext || !allowedExts.includes(ext)) {
+      return c.json({ error: "Invalid file type. Allowed: pdf, docx, jpg, png, webp, gif" }, 400);
     }
     if (typedFile.size > MAX_DOC_SIZE) {
       return c.json({ error: "File too large. Max 20 MB" }, 400);
@@ -1850,7 +1860,7 @@ app.delete("/api/newsletter-editor/drafts/:id", async (c) => {
   }
 });
 
-// Draft: Upload source file (PDF/DOCX) to R2
+// Draft: Upload source file (PDF/DOCX/IMG) to R2
 app.post("/api/newsletter-editor/upload-source", async (c) => {
   try {
     const email = await verifyNewsletterSession(c);
@@ -1863,7 +1873,8 @@ app.post("/api/newsletter-editor/upload-source", async (c) => {
     if (!file || typeof file === "string") return c.json({ error: "No file provided" }, 400);
     const typedFile = file as File;
     const ext = typedFile.name.split(".").pop()?.toLowerCase();
-    if (ext !== "pdf" && ext !== "docx") return c.json({ error: "Invalid file type. Allowed: pdf, docx" }, 400);
+    const allowedExts = ["pdf", "docx", "jpg", "jpeg", "png", "webp", "gif"];
+    if (!ext || !allowedExts.includes(ext)) return c.json({ error: "Invalid file type. Allowed: pdf, docx, jpg, png, webp, gif" }, 400);
     if (typedFile.size > MAX_DOC_SIZE) return c.json({ error: "File too large. Max 20 MB" }, 400);
 
     const key = `source/${crypto.randomUUID()}.${ext}`;
@@ -1970,6 +1981,7 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
     const body = await c.req.json();
     const { subject, description } = body;
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
+    const imageUrl = sanitizeStr(body.imageUrl);
     if (!subject || !subject.trim()) return c.json({ error: "Subject is required" }, 400);
 
     const currentCount = await getTodayEmailCount(c.env.DB);
@@ -1996,7 +2008,7 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
     for (const to of recipients) {
       if (currentCount + sentCount >= 100) break;
       try {
-        const html = eventMailEmailHtml(subject, description || "", siteUrl, to, !!pdfAttachment);
+        const html = eventMailEmailHtml(subject, description || "", siteUrl, to, !!pdfAttachment, imageUrl || undefined);
         const payload: any = {
           from: "180DC Events <team@180dcvitc.org>",
           to,
