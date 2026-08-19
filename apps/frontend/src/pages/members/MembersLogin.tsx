@@ -25,7 +25,6 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
-  const [dualRolePending, setDualRolePending] = useState<any>(null);
 
   const handleGoogleLogin = async () => {
     console.log("[gauth] handleGoogleLogin called");
@@ -44,7 +43,7 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
     }
   };
 
-  const handleTokenLogin = async (loginAs?: string) => {
+  const handleTokenLogin = async () => {
     const t = token;
     if (!t) return alert("Enter token");
     setLoading(true);
@@ -52,15 +51,10 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
       const res = await fetch(apiUrl("/api/dev-login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(loginAs ? { token: t, loginAs } : { token: t }),
+        body: JSON.stringify({ token: t }),
       });
       const data = await res.json();
       if (data.success) {
-        if (data.dualRole && !data.dualRoleChosen) {
-          setDualRolePending(data);
-          setLoading(false);
-          return;
-        }
         onLogin(token, data.email, data.powerLevel, data.departmentId, data.roleId);
       } else {
         alert("Login failed: " + (data.error || "unknown"));
@@ -264,34 +258,6 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
           <div style={{ background: "var(--bg-card)", padding: "2rem", borderRadius: 24, textAlign: "center", boxShadow: "var(--shadow-lg)" }}>
             <span className="material-symbols-outlined" style={{ fontSize: 36, display: "block", marginBottom: "1rem" }}>sync</span>
             <p style={{ margin: 0, fontSize: 15, color: "var(--text-secondary)" }}>Please wait...</p>
-          </div>
-        </div>
-      )}
-
-      {dualRolePending && (
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 999,
-          background: "rgba(0,0,0,0.6)",
-          backdropFilter: "blur(4px)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          padding: "1rem",
-        }}>
-          <div style={{ background: "var(--bg-card)", maxWidth: 440, width: "100%", padding: "2.5rem", borderRadius: 24, border: "1px solid var(--border-light)", boxShadow: "var(--shadow-lg)", textAlign: "center" }}>
-            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "var(--accent-bg)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem" }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 32 }}>badge</span>
-            </div>
-            <h3 style={{ margin: "0 0 12px", fontSize: "1.25rem", fontWeight: 700 }}>Choose Your Role</h3>
-            <p style={{ fontSize: 15, color: "var(--text-secondary)", margin: "0 0 2rem", lineHeight: 1.6 }}>
-              You have multiple roles: <strong>{dualRolePending.roleName}</strong> and <strong>{dualRolePending.secondaryRoleName}</strong>. Select which one to use for this session.
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <button className="btn" style={{ justifyContent: "center", padding: "0.875rem" }} onClick={() => handleTokenLogin(dualRolePending.secondaryRoleId)}>
-                Login as {dualRolePending.secondaryRoleName}
-              </button>
-              <button className="btn outline" style={{ justifyContent: "center", padding: "0.875rem" }} onClick={() => handleTokenLogin("director")}>
-                Login as {dualRolePending.roleName}
-              </button>
-            </div>
           </div>
         </div>
       )}

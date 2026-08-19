@@ -3,21 +3,16 @@ import AdminDataLoader from "./AdminDataLoader";
 import { apiUrl } from "../../lib/api";
 
 const EX_TITLES = [
-  "x-president",
-  "x-vice_president",
-  "x-technical_director",
-  "x-marketing_director",
-  "x-business_strategy_director",
+  "x-chairperson",
+  "x-vice_chairperson",
   "x-secretary",
-  "x-lead",
-  "x-lead_rnd",
-  "x-lead_marketing",
-  "x-lead_social",
-  "x-lead_finance",
-  "x-lead_events",
-  "x-lead_cps",
-  "x-lead_business_strategy",
-  "x-lead_hr",
+  "x-co_secretary",
+  "x-technical_director",
+  "x-finance_director",
+  "x-crm_director",
+  "x-operations_director",
+  "x-business_strategy_director",
+  "x-marketing_director",
 ];
 
 const maskToken = (token: string) =>
@@ -59,8 +54,6 @@ interface AdminConsoleProps {
   setBoardRoleId: React.Dispatch<React.SetStateAction<string>>;
   boardDepartmentId: string;
   setBoardDepartmentId: React.Dispatch<React.SetStateAction<string>>;
-  boardSecondaryRoleId: string;
-  setBoardSecondaryRoleId: React.Dispatch<React.SetStateAction<string>>;
   boardBusy: boolean;
   setBoardBusy: React.Dispatch<React.SetStateAction<boolean>>;
   // Advisory Member form
@@ -153,8 +146,6 @@ export default function AdminConsole({
   setBoardRoleId,
   boardDepartmentId,
   setBoardDepartmentId,
-  boardSecondaryRoleId,
-  setBoardSecondaryRoleId,
   boardBusy,
   setBoardBusy,
   advisoryEmail,
@@ -305,10 +296,10 @@ export default function AdminConsole({
           <input className="input" placeholder="Name" value={tokenName} onChange={(e) => setTokenName(e.target.value)} />
           <select className="input" value={tokenRoleId} onChange={(e) => setTokenRoleId(e.target.value)}>
             <option value="member">member</option>
-            <option value="lead">lead</option>
             <option value="secretary">secretary</option>
-            <option value="vice_president">vice_president</option>
-            <option value="president">president</option>
+            <option value="co_secretary">co_secretary</option>
+            <option value="vice_chairperson">vice_chairperson</option>
+            <option value="chairperson">chairperson</option>
           </select>
           <button className="btn" disabled={tokenBusy} onClick={async () => {
             if (!authToken || !tokenEmail.trim()) { alert("Enter an email first"); return; }
@@ -370,26 +361,21 @@ export default function AdminConsole({
 
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
           <div>
-            <h4 className="admin-form-section-title">Board Member</h4>
+            <h4 className="admin-form-section-title">Board / Director Member</h4>
             <div className="admin-grid-4" style={{ marginTop: 12 }}>
               <input className="input" placeholder="Email" value={boardEmail} onChange={(e) => setBoardEmail(e.target.value)} />
               <input className="input" placeholder="Name" value={boardName} onChange={(e) => setBoardName(e.target.value)} />
               <select className="input" value={boardRoleId} onChange={(e) => setBoardRoleId(e.target.value)}>
-                <option value="president">president</option>
-                <option value="vice_president">vice_president</option>
-                <option value="technical_director">technical_director</option>
-                <option value="marketing_director">marketing_director</option>
-                <option value="business_strategy_director">business_strategy_director</option>
-                <option value="secretary">secretary</option>
-                <option value="lead">Technical Lead</option>
-                <option value="lead_rnd">R&D Lead</option>
-                <option value="lead_marketing">Marketing Lead</option>
-                <option value="lead_social">Social Media Lead</option>
-                <option value="lead_finance">Finance Lead</option>
-                <option value="lead_events">Events Lead</option>
-                <option value="lead_cps">Client Partner Sponsor Lead</option>
-                <option value="lead_business_strategy">Business Strategy Lead</option>
-                <option value="lead_hr">HR Lead</option>
+                <option value="chairperson">Chairperson</option>
+                <option value="vice_chairperson">Vice Chairperson</option>
+                <option value="secretary">Secretary</option>
+                <option value="co_secretary">Co-Secretary</option>
+                <option value="technical_director">Technical Director</option>
+                <option value="finance_director">Finance Director</option>
+                <option value="crm_director">Client Relationship Director</option>
+                <option value="operations_director">Operations Director</option>
+                <option value="business_strategy_director">Business Strategy Director</option>
+                <option value="marketing_director">Marketing Director</option>
               </select>
               <select className="input" value={boardDepartmentId} onChange={(e) => setBoardDepartmentId(e.target.value)}>
                 <option value="">No department</option>
@@ -401,12 +387,12 @@ export default function AdminConsole({
                 try {
                   const res = await fetch(apiUrl("/api/board-users"), {
                     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-                    body: JSON.stringify({ email: boardEmail.trim(), name: boardName.trim(), roleId: boardRoleId, departmentId: boardDepartmentId || null, secondaryRoleId: boardSecondaryRoleId || null }),
+                    body: JSON.stringify({ email: boardEmail.trim(), name: boardName.trim(), roleId: boardRoleId, departmentId: boardDepartmentId || null }),
                   });
                   const data = await res.json();
                   if (data.success) {
                     setAdminTokens((prev) => [data, ...prev]);
-                    setBoardEmail(""); setBoardName(""); setBoardRoleId("president"); setBoardDepartmentId(""); setBoardSecondaryRoleId("");
+                    setBoardEmail(""); setBoardName(""); setBoardRoleId("chairperson"); setBoardDepartmentId("");
                     setRecentToken(data.token); setShowRecentToken(false);
                     alert(`Board user created successfully.`);
                   } else alert(data.error);

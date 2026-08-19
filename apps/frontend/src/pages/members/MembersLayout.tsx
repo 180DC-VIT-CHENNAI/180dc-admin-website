@@ -55,9 +55,8 @@ export default function MembersLayout() {
   const [tokenBusy, setTokenBusy] = useState(false);
   const [boardEmail, setBoardEmail] = useState("");
   const [boardName, setBoardName] = useState("");
-  const [boardRoleId, setBoardRoleId] = useState("president");
+  const [boardRoleId, setBoardRoleId] = useState("chairperson");
   const [boardDepartmentId, setBoardDepartmentId] = useState("");
-  const [boardSecondaryRoleId, setBoardSecondaryRoleId] = useState("");
   const [boardBusy, setBoardBusy] = useState(false);
   const [recentToken, setRecentToken] = useState<string | null>(null);
   const [showRecentToken, setShowRecentToken] = useState(false);
@@ -326,12 +325,8 @@ export default function MembersLayout() {
   type NavItem = { id: string; label: string; minPower: number; deptId?: string; icon: string };
   type NavSection = { label: string; items: NavItem[] };
 
-  const roleDeptAccess: Record<string, string[]> = {
-    marketing_director: ["marketing", "social_media"],
-    business_strategy_director: ["business_strategy", "client-partner-sponsor"],
-  };
-  const multiDeptRoles = roleDeptAccess[roleId || ""];
-  const allowedDeptIds = multiDeptRoles || (hasDepartment && powerLevel >= 50 ? [departmentId!] : []);
+  // Directors (power 50) see only their own department's panel
+  const allowedDeptIds = hasDepartment && powerLevel >= 50 ? [departmentId!] : [];
 
   const navSections: NavSection[] = [];
 
@@ -389,7 +384,7 @@ export default function MembersLayout() {
       label: "Admin",
       items: [
         { id: "consulting", label: "Consulting", minPower: 100, icon: "business_center" },
-        { id: "sendmail", label: "Send Mail", minPower: 100, icon: "alternate_email" },
+        { id: "sendmail", label: "Send Mail", minPower: 50, icon: "alternate_email" },
         { id: "newsletter", label: "Newsletter", minPower: 100, icon: "mail" },
         { id: "admin", label: "Admin Console", minPower: 100, icon: "terminal" },
       ],
@@ -777,8 +772,8 @@ export default function MembersLayout() {
             <ConsultingRequestsSection authToken={authToken!} />
           )}
 
-          {activePanel === "sendmail" && powerLevel >= 100 && (
-            <SendMailSection authToken={authToken!} onEmailSent={async () => {
+          {activePanel === "sendmail" && powerLevel >= 50 && (
+            <SendMailSection authToken={authToken!} powerLevel={powerLevel} onEmailSent={async () => {
               const res = await fetch(apiUrl("/api/dashboard"), { headers: { Authorization: `Bearer ${authToken}` } });
               const data = await res.json();
               if (data.stats) setStats(data.stats);
@@ -880,8 +875,6 @@ export default function MembersLayout() {
               setBoardRoleId={setBoardRoleId}
               boardDepartmentId={boardDepartmentId}
               setBoardDepartmentId={setBoardDepartmentId}
-              boardSecondaryRoleId={boardSecondaryRoleId}
-              setBoardSecondaryRoleId={setBoardSecondaryRoleId}
               boardBusy={boardBusy}
               setBoardBusy={setBoardBusy}
               advisoryEmail={advisoryEmail}

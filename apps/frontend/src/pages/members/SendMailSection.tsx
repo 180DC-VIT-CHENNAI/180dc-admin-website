@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { apiUrl } from "../../lib/api";
 
-export default function SendMailSection({ authToken, onEmailSent }: { authToken: string; onEmailSent?: () => void }) {
+export default function SendMailSection({ authToken, powerLevel = 100, onEmailSent }: { authToken: string; powerLevel?: number; onEmailSent?: () => void }) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -11,6 +11,8 @@ export default function SendMailSection({ authToken, onEmailSent }: { authToken:
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [roleFilter, setRoleFilter] = useState("");
+
+  const isDirector = powerLevel < 100;
 
   useEffect(() => {
     (async () => {
@@ -88,6 +90,12 @@ export default function SendMailSection({ authToken, onEmailSent }: { authToken:
              <h3 style={{ margin: 0 }}>Select Recipients</h3>
           </div>
 
+          {isDirector && (
+            <p style={{ margin: "0 0 1rem", fontSize: 13, color: "var(--text-secondary)", background: "var(--surface)", border: "1px solid var(--border-light)", borderRadius: 12, padding: "0.6rem 0.9rem" }}>
+              As a director you can send emails to members of your department only.
+            </p>
+          )}
+
           <div style={{ display: "flex", gap: 10, marginBottom: "1.5rem", flexWrap: "wrap" }}>
             <div style={{ position: "relative", flex: 2, minWidth: 260 }}>
                <span className="material-symbols-outlined" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 20, color: "var(--text-tertiary)" }}>search</span>
@@ -131,10 +139,12 @@ export default function SendMailSection({ authToken, onEmailSent }: { authToken:
             )}
           </div>
 
-          <div style={{ marginTop: "1.5rem" }}>
-            <label style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, display: "block", color: "var(--text-tertiary)" }}>ADDITIONAL RECIPIENTS (SEPARATED BY COMMA)</label>
-            <input className="input" placeholder="e.g. guest@example.com, external@test.com" value={manualEmails} onChange={(e) => setManualEmails(e.target.value)} />
-          </div>
+          {!isDirector && (
+            <div style={{ marginTop: "1.5rem" }}>
+              <label style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, display: "block", color: "var(--text-tertiary)" }}>ADDITIONAL RECIPIENTS (SEPARATED BY COMMA)</label>
+              <input className="input" placeholder="e.g. guest@example.com, external@test.com" value={manualEmails} onChange={(e) => setManualEmails(e.target.value)} />
+            </div>
+          )}
         </div>
 
         <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>

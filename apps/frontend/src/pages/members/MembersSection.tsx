@@ -42,11 +42,17 @@ export default function MembersSection({ authToken }: { authToken: string; power
   }
 
   const roleOrder: Record<string, number> = {
-    president: 0,
-    vice_president: 1,
+    chairperson: 0,
+    vice_chairperson: 1,
     secretary: 2,
-    lead: 3,
-    member: 4,
+    co_secretary: 3,
+    technical_director: 4,
+    finance_director: 4,
+    crm_director: 4,
+    operations_director: 4,
+    business_strategy_director: 4,
+    marketing_director: 4,
+    member: 5,
   };
 
   const q = query.toLowerCase();

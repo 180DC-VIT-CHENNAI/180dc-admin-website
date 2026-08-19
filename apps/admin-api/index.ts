@@ -435,7 +435,7 @@ async function queueOrSendMeetEmails(c: any, recipients: { email: string; name: 
 }
 
 async function getMeetRecipients(db: any, meetType: string, departmentId?: string, departments?: string[]): Promise<{ email: string; name: string }[]> {
-  const advisoryFilter = " AND NOT (role_id = 'advisory' AND secondary_role_id IS NULL)";
+  const advisoryFilter = " AND NOT (role_id = 'advisory' AND department_id IS NULL)";
   if (meetType === "department_meet" && departmentId) {
     const rows: any = await db.prepare("SELECT email, name FROM users WHERE department_id = ?" + advisoryFilter).bind(departmentId).all();
     return rows.results || [];
@@ -457,7 +457,7 @@ async function sendProjectAssignmentEmail(c: any, projectName: string, departmen
   if (!apiKey) return;
   const safeProjectName = escapeHtml(projectName);
   const rows: any = await c.env.DB.prepare(
-    `SELECT u.email, u.name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id IN (${departmentIds.map(() => "?").join(",")}) AND r.power_level >= 50 AND NOT (u.role_id = 'advisory' AND u.secondary_role_id IS NULL)`
+    `SELECT u.email, u.name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id IN (${departmentIds.map(() => "?").join(",")}) AND r.power_level >= 50 AND NOT (u.role_id = 'advisory' AND u.department_id IS NULL)`
   ).bind(...departmentIds).all();
   const leads = rows.results || [];
   let count = await getTodayEmailCount(c.env.DB);
@@ -712,50 +712,134 @@ async function seedData(db: any, env?: any) {
   if (env) currentEnv = env;
   try {
     const roleSql = "INSERT OR IGNORE INTO roles (id, name, power_level, created_by) VALUES (?, ?, ?, ?)";
-    await db.prepare(roleSql).bind("president", "President", 100, "system").run();
-    await db.prepare(roleSql).bind("vice_president", "Vice President", 100, "system").run();
-    await db.prepare(roleSql).bind("technical_director", "Technical Director", 100, "system").run();
-    await db.prepare(roleSql).bind("marketing_director", "Marketing Director", 80, "system").run();
-    await db.prepare(roleSql).bind("secretary", "Secretary", 80, "system").run();
-    await db.prepare(roleSql).bind("lead", "Technical Lead", 50, "system").run();
-    await db.prepare(roleSql).bind("lead_rnd", "R&D Lead", 50, "system").run();
-    await db.prepare(roleSql).bind("lead_marketing", "Marketing Lead", 50, "system").run();
-    await db.prepare(roleSql).bind("lead_social", "Social Media Lead", 50, "system").run();
-    await db.prepare(roleSql).bind("lead_finance", "Finance Lead", 50, "system").run();
-    await db.prepare(roleSql).bind("lead_events", "Events and Initiatives Lead", 50, "system").run();
-    await db.prepare(roleSql).bind("business_strategy_director", "Business Strategy Director", 70, "system").run();
-    await db.prepare(roleSql).bind("lead_cps", "Client Partner Sponsor Lead", 50, "system").run();
-    await db.prepare(roleSql).bind("lead_business_strategy", "Business Strategy Lead", 50, "system").run();
-    await db.prepare(roleSql).bind("lead_hr", "HR Lead", 50, "system").run();
+    // Board (power 100)
+    await db.prepare(roleSql).bind("chairperson", "Chairperson", 100, "system").run();
+    await db.prepare(roleSql).bind("vice_chairperson", "Vice Chairperson", 100, "system").run();
+    await db.prepare(roleSql).bind("secretary", "Secretary", 100, "system").run();
+    await db.prepare(roleSql).bind("co_secretary", "Co-Secretary", 100, "system").run();
+    // Department Directors (power 50 — manage their own department only)
+    await db.prepare(roleSql).bind("technical_director", "Technical Director", 50, "system").run();
+    await db.prepare(roleSql).bind("finance_director", "Finance Director", 50, "system").run();
+    await db.prepare(roleSql).bind("crm_director", "Client Relationship Director", 50, "system").run();
+    await db.prepare(roleSql).bind("operations_director", "Operations Director", 50, "system").run();
+    await db.prepare(roleSql).bind("business_strategy_director", "Business Strategy Director", 50, "system").run();
+    await db.prepare(roleSql).bind("marketing_director", "Marketing Director", 50, "system").run();
+    // Members
     await db.prepare(roleSql).bind("member", "General Member", 10, "system").run();
-    await db.prepare(roleSql).bind("advisory", "Advisory Board", 30, "system").run();
+    await db.prepare(roleSql).bind("advisory", "Advisory Member", 30, "system").run();
 
     await db.prepare("INSERT OR IGNORE INTO users (id, name, email, role_id) VALUES (?, ?, ?, ?)").bind("anonymous", "Anonymous", "anonymous@180dcvitc.org", "member").run();
 
-    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("tech", "Technical", "Handles technical infrastructure and UI").run();
-    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("rnd", "Research & Development", "Handles consulting research").run();
-    await db.prepare("INSERT OR REPLACE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("marketing", "Marketing", "Handles marketing, outreach, and communications").run();
-    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("social_media", "Social Media", "Handles social media presence and content").run();
+    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("tech", "Technical", "Handles technical infrastructure, UI, and research & development").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("finance", "Finance", "Handles budgeting and financial planning").run();
-    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("events-initiatives", "Events and Initiatives", "Plans and executes events and club initiatives").run();
-    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("client-partner-sponsor", "Client Partner Sponsor", "Manages client relationships, partnerships, and sponsorships").run();
-    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("business_strategy", "Business Strategy", "Handles business strategy, client partner sponsorship, and organizational planning").run();
-    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("hr", "Human Resources", "Handles recruitment and people management").run();
+    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("crm", "Client Relationship Management", "Manages client relationships, partnerships, and sponsorships").run();
+    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("operations", "Operations", "Plans and executes events and club initiatives").run();
+    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("business_strategy", "Business Strategy", "Handles business strategy and organizational planning").run();
+    await db.prepare("INSERT OR REPLACE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("marketing", "Marketing", "Handles marketing, outreach, communications, and social media").run();
 
-    // Cleanup: remove legacy "Legal" department and role if they exist
-    await db.prepare("DELETE FROM departments WHERE id = 'legal' OR name = 'Legal'").run();
-    await db.prepare("DELETE FROM roles WHERE id = 'lead_legal'").run();
+    // ── Org restructure migration (idempotent) ──
+    // 1. Role id/name/power fixes for retained roles
+    await db.prepare("UPDATE roles SET name = 'Advisory Member' WHERE id = 'advisory' AND name != 'Advisory Member'").run();
+    await db.prepare("UPDATE roles SET name = 'General Member' WHERE id = 'member' AND name != 'General Member'").run();
+    await db.prepare("UPDATE roles SET power_level = 100 WHERE id IN ('secretary') AND power_level != 100").run();
+    await db.prepare("UPDATE roles SET power_level = 50 WHERE id IN ('technical_director', 'business_strategy_director', 'marketing_director') AND power_level != 50").run();
+
+    // 2. Migrate user roles to the new structure
+    await db.prepare("UPDATE users SET role_id = 'chairperson' WHERE role_id = 'president'").run();
+    await db.prepare("UPDATE users SET role_id = 'vice_chairperson' WHERE role_id = 'vice_president'").run();
+    await db.prepare("UPDATE users SET role_id = 'technical_director' WHERE role_id IN ('lead', 'lead_rnd')").run();
+    await db.prepare("UPDATE users SET role_id = 'finance_director' WHERE role_id = 'lead_finance'").run();
+    await db.prepare("UPDATE users SET role_id = 'operations_director' WHERE role_id = 'lead_events'").run();
+    await db.prepare("UPDATE users SET role_id = 'crm_director' WHERE role_id = 'lead_cps'").run();
+    await db.prepare("UPDATE users SET role_id = 'business_strategy_director' WHERE role_id = 'lead_business_strategy'").run();
+    await db.prepare("UPDATE users SET role_id = 'member' WHERE role_id IN ('lead_marketing', 'lead_social', 'lead_hr')").run();
+
+    // 3. Migrate department references (R&D → Technical, Social Media → Marketing,
+    //     Events → Operations, CPS → CRM, HR → Operations) across all FK tables
+    const deptRenames: Record<string, string> = {
+      rnd: "tech",
+      social_media: "marketing",
+      "events-initiatives": "operations",
+      "client-partner-sponsor": "crm",
+      hr: "operations",
+    };
+    for (const [oldId, newId] of Object.entries(deptRenames)) {
+      await db.prepare("UPDATE users SET department_id = ? WHERE department_id = ?").bind(newId, oldId).run();
+      for (const t of ["department_meets", "department_documents", "department_instructions", "department_projects"]) {
+        await db.prepare(`UPDATE ${t} SET department_id = ? WHERE department_id = ?`).bind(newId, oldId).run();
+      }
+      // Junction table has a composite PK — drop the old row if the new one already exists
+      await db.prepare(
+        "DELETE FROM project_departments WHERE department_id = ? AND EXISTS (SELECT 1 FROM project_departments pd2 WHERE pd2.project_id = project_departments.project_id AND pd2.department_id = ?)",
+      ).bind(oldId, newId).run();
+      await db.prepare("UPDATE project_departments SET department_id = ? WHERE department_id = ?").bind(newId, oldId).run();
+    }
+
+    // 4. Ensure every director is attached to their department
+    const directorDepts: Record<string, string> = {
+      technical_director: "tech",
+      finance_director: "finance",
+      crm_director: "crm",
+      operations_director: "operations",
+      business_strategy_director: "business_strategy",
+      marketing_director: "marketing",
+    };
+    for (const [roleId, deptId] of Object.entries(directorDepts)) {
+      await db.prepare(
+        `UPDATE users SET department_id = ? WHERE role_id = ? AND (department_id IS NULL OR department_id NOT IN ('tech', 'finance', 'crm', 'operations', 'business_strategy', 'marketing'))`
+      ).bind(deptId, roleId).run();
+    }
+
+    // 5. Migrate admin tokens to the new role ids
+    await db.prepare("UPDATE admin_tokens SET role_id = 'chairperson' WHERE role_id = 'president'").run();
+    await db.prepare("UPDATE admin_tokens SET role_id = 'vice_chairperson' WHERE role_id = 'vice_president'").run();
+    await db.prepare("UPDATE admin_tokens SET role_id = 'technical_director' WHERE role_id IN ('lead', 'lead_rnd')").run();
+    await db.prepare("UPDATE admin_tokens SET role_id = 'finance_director' WHERE role_id = 'lead_finance'").run();
+    await db.prepare("UPDATE admin_tokens SET role_id = 'operations_director' WHERE role_id = 'lead_events'").run();
+    await db.prepare("UPDATE admin_tokens SET role_id = 'crm_director' WHERE role_id = 'lead_cps'").run();
+    await db.prepare("UPDATE admin_tokens SET role_id = 'business_strategy_director' WHERE role_id = 'lead_business_strategy'").run();
+    await db.prepare("UPDATE admin_tokens SET role_id = 'member' WHERE role_id IN ('lead_marketing', 'lead_social', 'lead_hr')").run();
+
+    // 6. Remove dual-role (secondary role) data
+    await db.prepare("UPDATE users SET secondary_role_id = NULL WHERE secondary_role_id IS NOT NULL").run();
+    await db.prepare("UPDATE admin_tokens SET active_role_id = NULL WHERE active_role_id IS NOT NULL").run();
+
+    // 7. Recruitment domain renames / removals (domain_name is UNIQUE — delete old row if target exists)
+    const domainRenames: [string, string][] = [
+      ["Events and Initiatives", "Operations"],
+      ["Client Partner Sponsor", "Client Relationship Management"],
+    ];
+    for (const [oldName, newName] of domainRenames) {
+      await db.prepare(
+        "DELETE FROM recruitment_domain_settings WHERE domain_name = ? AND EXISTS (SELECT 1 FROM recruitment_domain_settings WHERE domain_name = ?)",
+      ).bind(oldName, newName).run();
+      await db.prepare(
+        "UPDATE recruitment_domain_settings SET domain_name = ? WHERE domain_name = ?",
+      ).bind(newName, oldName).run();
+    }
+    await db.prepare(
+      "DELETE FROM recruitment_domain_settings WHERE domain_name IN ('R&D', 'PR & Outreach', 'Design & Creative', 'Content & Editorial', 'HR & Logistics', 'Research & Development', 'Social Media', 'Human Resources')",
+    ).run();
+    await db.prepare("UPDATE recruitment_applications SET primary_domain = 'Operations' WHERE primary_domain = 'Events and Initiatives'").run();
+    await db.prepare("UPDATE recruitment_applications SET secondary_domain = 'Operations' WHERE secondary_domain = 'Events and Initiatives'").run();
+    await db.prepare("UPDATE recruitment_applications SET primary_domain = 'Client Relationship Management' WHERE primary_domain = 'Client Partner Sponsor'").run();
+    await db.prepare("UPDATE recruitment_applications SET secondary_domain = 'Client Relationship Management' WHERE secondary_domain = 'Client Partner Sponsor'").run();
+
+    // 8. Delete legacy departments, roles, and titles
+    await db.prepare("DELETE FROM departments WHERE id IN ('rnd', 'social_media', 'events-initiatives', 'client-partner-sponsor', 'hr', 'legal')").run();
+    await db.prepare("DELETE FROM roles WHERE id IN ('president', 'vice_president', 'lead', 'lead_rnd', 'lead_marketing', 'lead_social', 'lead_finance', 'lead_events', 'lead_cps', 'lead_business_strategy', 'lead_hr', 'lead_legal')").run();
+    await db.prepare("UPDATE team_members SET role = 'Chairperson' WHERE role = 'President'").run();
 
     if (!currentEnv || (currentEnv.ENVIRONMENT || "").toLowerCase() !== "production") {
       const devToken = crypto.randomUUID().replace(/-/g, "");
-      await db.prepare("INSERT OR REPLACE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)").bind(devToken, "admin@vitstudent.ac.in", "Dev Admin", "president", "system").run();
+      await db.prepare("INSERT OR REPLACE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)").bind(devToken, "admin@vitstudent.ac.in", "Dev Admin", "chairperson", "system").run();
       console.info("Dev token generated (visible only in dev mode)");
     }
 
     const tmCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM team_members").first();
     if (tmCount && tmCount.cnt === 0) {
       const tm = "INSERT OR IGNORE INTO team_members (id, initials, name, role) VALUES (?, ?, ?, ?)";
-      await db.prepare(tm).bind("tm1", "JD", "John Doe", "President").run();
+      await db.prepare(tm).bind("tm1", "JD", "John Doe", "Chairperson").run();
       await db.prepare(tm).bind("tm2", "JS", "Jane Smith", "Director of External Relations").run();
       await db.prepare(tm).bind("tm3", "AT", "Alex Turner", "Director of Internal Relations").run();
       await db.prepare(tm).bind("tm4", "EC", "Emily Chen", "Director of L&D").run();
@@ -781,7 +865,7 @@ async function seedData(db: any, env?: any) {
       await db.prepare("INSERT OR IGNORE INTO recruitment_rounds (id, name, is_active) VALUES (?, ?, ?)").bind("round2", "Round 2", 0).run();
     }
 
-    const knownDomains = ["Technical", "Research & Development", "Marketing", "Social Media", "Finance", "Events and Initiatives", "Client Partner Sponsor", "Business Strategy", "Human Resources"];
+    const knownDomains = ["Technical", "Finance", "Client Relationship Management", "Operations", "Business Strategy", "Marketing"];
     for (const domain of knownDomains) {
       await db.prepare("INSERT OR IGNORE INTO recruitment_domain_settings (domain_name, is_open) VALUES (?, ?)").bind(domain, 1).run();
     }
@@ -873,7 +957,7 @@ app.use("*", async (c, next) => {
     if (authHeader.trim().toLowerCase().startsWith("bearer ")) {
       const token = authHeader.slice(7).trim();
       tokenRow = await c.env.DB.prepare(
-        "SELECT token, email, name, role_id, revoked_at, expires_at, active_role_id FROM admin_tokens WHERE token = ?",
+        "SELECT token, email, name, role_id, revoked_at, expires_at FROM admin_tokens WHERE token = ?",
       )
         .bind(token)
         .first();
@@ -919,19 +1003,6 @@ app.use("*", async (c, next) => {
     );
   }
 
-  // If token has an active_role_id (dual-role choice), override the user's role
-  const tokenRowActiveRole = tokenRow?.active_role_id;
-  if (tokenRowActiveRole && tokenRowActiveRole !== user.role_id) {
-    const activeRole: any = await c.env.DB.prepare(
-      "SELECT id, name, power_level FROM roles WHERE id = ?",
-    ).bind(tokenRowActiveRole).first();
-    if (activeRole) {
-      user.role_id = activeRole.id;
-      user.role_name = activeRole.name;
-      user.power_level = activeRole.power_level;
-    }
-  }
-
   const mm: any = await c.env.DB.prepare("SELECT enabled, message FROM maintenance_mode WHERE id = 1").first();
   if (mm && mm.enabled === 1 && user.power_level < 100) {
     return c.json({ error: mm.message || "Site is under maintenance." }, 503);
@@ -942,7 +1013,8 @@ app.use("*", async (c, next) => {
 });
 
 /**
- * Helper to check if current user is President/VP (Power == 100)
+ * Helper to check if current user is Board (Power == 100:
+ * Chairperson, Vice Chairperson, Secretary, Co-Secretary)
  */
 const requireMember = (c: any) => {
   const user = c.get("user");
@@ -955,7 +1027,7 @@ const requireBoard = (c: any) => {
   const user = c.get("user");
   if (user.power_level < 100) {
     throw new Error(
-      "Forbidden: Requires President or Vice President privileges.",
+      "Forbidden: Requires Board privileges (Chairperson, Vice Chairperson, Secretary, or Co-Secretary).",
     );
   }
 };
@@ -2139,9 +2211,8 @@ app.post("/api/members", async (c) => {
 
 // ---------------------------------------------------------
 // Developer token login (dev only) - maps token -> email via ADMIN_TOKENS
-// ADMIN_TOKENS example: { "token123": { "email": "admin@vitstudent.ac.in", "roleId": "president", "name": "Admin" } }
+// ADMIN_TOKENS example: { "token123": { "email": "admin@vitstudent.ac.in", "roleId": "chairperson", "name": "Admin" } }
 // This returns the mapped email so the frontend can use it as the dev identity.
-// Supports dual-role login for Technical Director (can login as lead or director).
 app.post("/api/dev-login", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -2190,7 +2261,7 @@ app.post("/api/dev-login", async (c) => {
     }
 
     const user: any = await c.env.DB.prepare(
-      "SELECT u.email, u.name, u.role_id, u.department_id, u.secondary_role_id, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
+      "SELECT u.email, u.name, u.role_id, u.department_id, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
     )
       .bind(entry.email)
       .first();
@@ -2201,67 +2272,6 @@ app.post("/api/dev-login", async (c) => {
     }
 
     await resetLoginRateLimit(c, "dev_login");
-
-    // Dual-role support: if user has a secondary_role_id, show role choice prompt
-    if (user.secondary_role_id) {
-      const loginAs = body.loginAs;
-      if (loginAs && loginAs !== "director") {
-        // Look up the secondary role's power_level and name
-        const secondaryRole: any = await c.env.DB.prepare(
-          "SELECT id, name, power_level FROM roles WHERE id = ?",
-        ).bind(user.secondary_role_id).first();
-        if (secondaryRole) {
-          // Persist the chosen role on the token for subsequent requests
-          await c.env.DB.prepare(
-            "UPDATE admin_tokens SET active_role_id = ? WHERE token = ?",
-          ).bind(secondaryRole.id, token).run();
-          return c.json({
-            success: true,
-            email: entry.email,
-            name: user.name || entry.name,
-            roleId: secondaryRole.id,
-            roleName: secondaryRole.name,
-            powerLevel: secondaryRole.power_level,
-            departmentId: user.department_id || null,
-            dualRole: true,
-            dualRoleChosen: true,
-          });
-        }
-        // Fallback: if secondary role not found, fall through to director
-      }
-
-      // Look up secondary role details for the prompt (only on first call without loginAs)
-      let secondaryRoleName = null;
-      if (!loginAs) {
-        const sr: any = await c.env.DB.prepare(
-          "SELECT name FROM roles WHERE id = ?",
-        ).bind(user.secondary_role_id).first();
-        secondaryRoleName = sr?.name || null;
-      }
-
-      // Default or "director" Ã¢â‚¬â€ primary role; clear any active role choice
-      await c.env.DB.prepare(
-        "UPDATE admin_tokens SET active_role_id = NULL WHERE token = ?",
-      ).bind(token).run();
-      return c.json({
-        success: true,
-        email: entry.email,
-        name: user.name || entry.name,
-        roleId: user.role_id || entry.role_id || "member",
-        roleName: user.role_name || null,
-        powerLevel: user.power_level ?? 10,
-        departmentId: user.department_id || null,
-        dualRole: true,
-        dualRoleChosen: !!loginAs,
-        secondaryRoleId: user.secondary_role_id,
-        secondaryRoleName,
-      });
-  }
-
-    // Clear any stale active_role_id (e.g. from a removed secondary_role_id)
-    await c.env.DB.prepare(
-      "UPDATE admin_tokens SET active_role_id = NULL WHERE token = ?",
-    ).bind(token).run();
 
     return c.json({
       success: true,
@@ -2699,7 +2709,6 @@ app.post("/api/board-users", async (c) => {
       sanitizeStr(body.name) || email?.split?.("@")?.[0] || "board-member";
     const roleId = sanitizeStr(body.roleId);
     const departmentId = sanitizeStr(body.departmentId) || null;
-    const secondaryRoleId = sanitizeStr(body.secondaryRoleId) || null;
 
     if (!email || !roleId) {
       return c.json({ error: "Missing email or roleId" }, 400);
@@ -2717,7 +2726,7 @@ app.post("/api/board-users", async (c) => {
 
     if (roleRow.power_level < 50) {
       return c.json(
-        { error: "Role must be lead-level or above" },
+        { error: "Role must be director-level or above" },
         400,
       );
     }
@@ -2730,15 +2739,15 @@ app.post("/api/board-users", async (c) => {
 
     if (userRow) {
       await c.env.DB.prepare(
-        "UPDATE users SET name = ?, role_id = ?, department_id = ?, secondary_role_id = ? WHERE email = ?",
+        "UPDATE users SET name = ?, role_id = ?, department_id = ?, secondary_role_id = NULL WHERE email = ?",
       )
-        .bind(name, roleId, departmentId, secondaryRoleId, email)
+        .bind(name, roleId, departmentId, email)
         .run();
     } else {
       await c.env.DB.prepare(
-        "INSERT INTO users (id, name, email, role_id, department_id, secondary_role_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
+        "INSERT INTO users (id, name, email, role_id, department_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
       )
-        .bind(name, email, roleId, departmentId, secondaryRoleId)
+        .bind(name, email, roleId, departmentId)
         .run();
     }
 
@@ -2806,12 +2815,12 @@ app.post("/api/advisory-members", async (c) => {
 
     if (userRow) {
       await c.env.DB.prepare(
-        "UPDATE users SET name = ?, role_id = 'advisory', ex_title = ?, department_id = ?, secondary_role_id = ? WHERE email = ?",
-      ).bind(name, exTitle, memberDeptId, memberDeptId ? "member" : null, email).run();
+        "UPDATE users SET name = ?, role_id = 'advisory', ex_title = ?, department_id = ?, secondary_role_id = NULL WHERE email = ?",
+      ).bind(name, exTitle, memberDeptId, email).run();
     } else {
       await c.env.DB.prepare(
-        "INSERT INTO users (id, name, email, role_id, department_id, secondary_role_id, ex_title) VALUES (lower(hex(randomblob(16))), ?, ?, 'advisory', ?, ?, ?)",
-      ).bind(name, email, memberDeptId, memberDeptId ? "member" : null, exTitle).run();
+        "INSERT INTO users (id, name, email, role_id, department_id, ex_title) VALUES (lower(hex(randomblob(16))), ?, ?, 'advisory', ?, ?)",
+      ).bind(name, email, memberDeptId, exTitle).run();
     }
 
     // Delete prior token
@@ -2841,7 +2850,7 @@ app.post("/api/advisory-members", async (c) => {
 });
 
 // ---------------------------------------------------------
-// 2. PROMOTE / CHANGE ROLE (Only Pres / VP)
+// 2. PROMOTE / CHANGE ROLE (Board only)
 // ---------------------------------------------------------
 app.put("/api/members/:id/role", async (c) => {
   try {
@@ -2853,16 +2862,15 @@ app.put("/api/members/:id/role", async (c) => {
     }
     const newRoleId = sanitizeStr(body.newRoleId);
     const departmentId = sanitizeStr(body.departmentId);
-    const secondaryRoleId = sanitizeStr(body.secondaryRoleId) || null;
     const exTitle = sanitizeStr(body.exTitle) || null;
     if (!newRoleId) {
       return c.json({ error: "Missing newRoleId" }, 400);
     }
 
     await c.env.DB.prepare(
-      "UPDATE users SET role_id = ?, department_id = ?, secondary_role_id = ?, ex_title = ? WHERE id = ?",
+      "UPDATE users SET role_id = ?, department_id = ?, secondary_role_id = NULL, ex_title = ? WHERE id = ?",
     )
-      .bind(newRoleId, departmentId || null, secondaryRoleId, exTitle, targetUserId)
+      .bind(newRoleId, departmentId || null, exTitle, targetUserId)
       .run();
 
     // Send role change email
@@ -2907,7 +2915,7 @@ app.post("/api/roles", async (c) => {
       return c.json(
         {
           error:
-            "Cannot create roles equal or greater than President/VP level (100).",
+            "Cannot create roles equal or greater than Board level (100).",
         },
         400,
       );
@@ -2935,10 +2943,21 @@ app.post("/api/roles", async (c) => {
 app.get("/api/users", async (c) => {
   try {
     await ensureTables(c.env.DB);
-    requireBoard(c);
-    const rows = await c.env.DB.prepare(
-      "SELECT u.id, u.name, u.email, u.role_id, u.department_id, u.secondary_role_id, u.ex_title, u.created_at, r.name as role_name, r.power_level, sr.name as secondary_role_name FROM users u JOIN roles r ON u.role_id = r.id LEFT JOIN roles sr ON u.secondary_role_id = sr.id ORDER BY u.name ASC",
-    ).all();
+    const user: any = c.get("user");
+    if (!user || user.power_level < 50) {
+      return c.json({ error: "Forbidden: Board and directors only" }, 403);
+    }
+    // Directors (power 50) only see members of their own department
+    const baseSql = "SELECT u.id, u.name, u.email, u.role_id, u.department_id, u.ex_title, u.created_at, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id";
+    let rows: any;
+    if (user.power_level >= 100) {
+      rows = await c.env.DB.prepare(baseSql + " ORDER BY u.name ASC").all();
+    } else {
+      if (!user.department_id) return c.json({ success: true, data: [] });
+      rows = await c.env.DB.prepare(
+        baseSql + " WHERE u.department_id = ? OR r.power_level >= 100 ORDER BY u.name ASC",
+      ).bind(user.department_id).all();
+    }
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -2951,7 +2970,7 @@ app.get("/api/members/export", async (c) => {
     await ensureTables(c.env.DB);
     requireBoard(c);
     const rows = await c.env.DB.prepare(
-      "SELECT u.name, u.email, r.name as role_name, d.name as department_name, sr.name as secondary_role_name, u.ex_title, u.created_at FROM users u JOIN roles r ON u.role_id = r.id LEFT JOIN departments d ON u.department_id = d.id LEFT JOIN roles sr ON u.secondary_role_id = sr.id ORDER BY r.power_level DESC, u.name ASC"
+      "SELECT u.name, u.email, r.name as role_name, d.name as department_name, u.ex_title, u.created_at FROM users u JOIN roles r ON u.role_id = r.id LEFT JOIN departments d ON u.department_id = d.id ORDER BY r.power_level DESC, u.name ASC"
     ).all();
 
     const esc = (v: any) => {
@@ -2959,9 +2978,9 @@ app.get("/api/members/export", async (c) => {
       return s.includes(",") || s.includes('"') || s.includes("\n") ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
 
-    let csv = "Name,Email,Role,Department,Secondary Role,Ex.Title,Created At\r\n";
+    let csv = "Name,Email,Role,Department,Ex.Title,Created At\r\n";
     for (const r of (rows.results || [])) {
-      csv += `${esc(r.name)},${esc(r.email)},${esc(r.role_name)},${esc(r.department_name)},${esc(r.secondary_role_name)},${esc(r.ex_title)},${esc(r.created_at)}\r\n`;
+      csv += `${esc(r.name)},${esc(r.email)},${esc(r.role_name)},${esc(r.department_name)},${esc(r.ex_title)},${esc(r.created_at)}\r\n`;
     }
 
     c.header("Content-Type", "text/csv; charset=utf-8");
@@ -3055,7 +3074,7 @@ app.post("/api/role-transfers/:id/approve", async (c) => {
 
     if (!fromPower || !toPower || !targetRole) return c.json({ error: "User or role not found" }, 400);
     if (fromPower.power_level >= 100 || toPower.power_level >= 100) {
-      return c.json({ error: "Cannot transfer President/VP roles" }, 400);
+      return c.json({ error: "Cannot transfer Board roles" }, 400);
     }
 
     await c.env.DB.prepare("UPDATE users SET role_id = ? WHERE id = ?").bind(row.role_id, row.to_user_id).run();
@@ -3140,7 +3159,7 @@ app.post("/api/my-role-transfers/:id/accept", async (c) => {
         return c.json({ error: "User or role not found" }, 400);
       }
       if (fromPower.power_level >= 100 || toPower.power_level >= 100) {
-        return c.json({ error: "Cannot transfer President/VP roles" }, 400);
+        return c.json({ error: "Cannot transfer Board roles" }, 400);
       }
 
       await c.env.DB.prepare("UPDATE users SET role_id = ? WHERE id = ?").bind(row.role_id, row.to_user_id).run();
@@ -3181,7 +3200,7 @@ app.delete("/api/members/:id", async (c) => {
     requireBoard(c);
     const targetId = c.req.param("id");
 
-    // Prevent deleting other Presidents
+    // Prevent deleting other Board members
     const targetUser = await c.env.DB.prepare(
       "SELECT power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
     )
@@ -3191,7 +3210,7 @@ app.delete("/api/members/:id", async (c) => {
 
     if (tUserOptions && tUserOptions.power_level === 100) {
       return c.json(
-        { error: "Cannot remove another President or Vice President." },
+        { error: "Cannot remove another Board member." },
         400,
       );
     }
@@ -3350,13 +3369,7 @@ app.post("/api/signup-requests/:id/reject", async (c) => {
 async function canAccessDept(c: any, deptId: string) {
   const user: any = c.get("user");
   if (user.power_level >= 100) return true;
-  // Roles with multi-department access
-  const roleDeptAccess: Record<string, string[]> = {
-    marketing_director: ["marketing", "social_media"],
-    business_strategy_director: ["business_strategy", "client-partner-sponsor"],
-  };
-  const allowedDepts = roleDeptAccess[user.role_id];
-  if (allowedDepts && allowedDepts.includes(deptId)) return true;
+  // Directors (power 50) can access only their own department
   if (user.power_level >= 50 && user.department_id === deptId) return true;
   throw new Error("Forbidden: you do not have access to this department");
 }
@@ -3777,7 +3790,7 @@ app.post("/api/meets/process-queue", async (c) => {
   try {
     await ensureTables(c.env.DB);
     const user: any = c.get("user");
-    if (user.power_level < 100) return c.json({ error: "Forbidden: President or VP only" }, 403);
+    if (user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
 
     let count = await getTodayEmailCount(c.env.DB);
     const MAX_DAILY = 100;
@@ -3844,7 +3857,7 @@ app.post("/api/announcements", async (c) => {
     await ensureTables(c.env.DB);
     const user: any = c.get("user");
     if (user.power_level < 100) {
-      return c.json({ error: "Forbidden: President or VP only" }, 403);
+      return c.json({ error: "Forbidden: Board only" }, 403);
     }
     const rl = await checkRateLimit(c, "create_announcement", 5, 3600);
     if (!rl.allowed) {
@@ -3871,7 +3884,7 @@ app.delete("/api/announcements/:id", async (c) => {
     await ensureTables(c.env.DB);
     const user: any = c.get("user");
     if (user.power_level < 100) {
-      return c.json({ error: "Forbidden: President or VP only" }, 403);
+      return c.json({ error: "Forbidden: Board only" }, 403);
     }
     const id = c.req.param("id");
     await c.env.DB.prepare("DELETE FROM announcements WHERE id = ?").bind(id).run();
@@ -3934,7 +3947,7 @@ app.post("/api/projects", async (c) => {
     await ensureTables(c.env.DB);
     const user: any = c.get("user");
     if (user.power_level < 100) {
-      return c.json({ error: "Forbidden: President or VP only" }, 403);
+      return c.json({ error: "Forbidden: Board only" }, 403);
     }
     const rl = await checkRateLimit(c, "create_project", 10, 3600);
     if (!rl.allowed) {
@@ -3995,7 +4008,7 @@ app.delete("/api/projects/:id", async (c) => {
     await ensureTables(c.env.DB);
     const user: any = c.get("user");
     if (user.power_level < 100) {
-      return c.json({ error: "Forbidden: President or VP only" }, 403);
+      return c.json({ error: "Forbidden: Board only" }, 403);
     }
     const id = c.req.param("id");
     const proj: any = await c.env.DB.prepare("SELECT status FROM projects WHERE id = ?").bind(id).first();
@@ -4209,7 +4222,7 @@ app.post("/api/projects/:id/complete", async (c) => {
     const projectId = c.req.param("id");
     const user: any = c.get("user");
     if (user.power_level < 100) {
-      return c.json({ error: "Forbidden: President or VP only" }, 403);
+      return c.json({ error: "Forbidden: Board only" }, 403);
     }
     await c.env.DB.prepare("UPDATE projects SET status = 'completed' WHERE id = ?").bind(projectId).run();
     try { await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES); } catch {}
@@ -4225,7 +4238,7 @@ app.post("/api/projects/:id/reopen", async (c) => {
     const projectId = c.req.param("id");
     const user: any = c.get("user");
     if (user.power_level < 100) {
-      return c.json({ error: "Forbidden: President or VP only" }, 403);
+      return c.json({ error: "Forbidden: Board only" }, 403);
     }
     await c.env.DB.prepare("UPDATE projects SET status = 'upcoming' WHERE id = ?").bind(projectId).run();
     try { await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES); } catch {}
@@ -4710,7 +4723,7 @@ app.get("/api/recruitment/admin/settings", async (c) => {
   }
 });
 
-// 13. ADMIN: Update recruitment domain settings (President/VP only)
+// 13. ADMIN: Update recruitment domain settings (Board only)
 app.put("/api/recruitment/admin/settings", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -5106,7 +5119,7 @@ app.post("/api/consulting-request", async (c) => {
   }
 });
 
-// 2. Admin: List all consulting requests (President/VP only)
+// 2. Admin: List all consulting requests (Board only)
 app.get("/api/consulting-requests", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -5120,7 +5133,7 @@ app.get("/api/consulting-requests", async (c) => {
   }
 });
 
-// 3. Admin: Accept a consulting request with custom email (President/VP only)
+// 3. Admin: Accept a consulting request with custom email (Board only)
 app.post("/api/consulting-requests/:id/accept", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -5192,7 +5205,7 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
   }
 });
 
-// 4. Admin: Reject a consulting request with custom email (President/VP only)
+// 4. Admin: Reject a consulting request with custom email (Board only)
 app.post("/api/consulting-requests/:id/reject", async (c) => {
   try {
     await ensureTables(c.env.DB);
@@ -5420,11 +5433,14 @@ app.put("/api/case-studies/:id", async (c) => {
   }
 });
 
-// 6. Admin: Send arbitrary email (President/VP only)
+// 6. Admin: Send arbitrary email (Board: anyone · Directors: own department only)
 app.post("/api/send-email", async (c) => {
   try {
     await ensureTables(c.env.DB);
-    requireBoard(c);
+    const user: any = c.get("user");
+    if (!user || user.power_level < 50) {
+      return c.json({ error: "Forbidden: Board and directors only" }, 403);
+    }
     const rl = await checkRateLimit(c, "send_email", 10, 3600);
     if (!rl.allowed) {
       return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
@@ -5452,7 +5468,23 @@ app.post("/api/send-email", async (c) => {
     // Support multiple recipients separated by comma/semicolon
     const recipients = to.split(/[;,]+/).map((e: string) => e.trim()).filter(Boolean);
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const validRecipients = recipients.filter((e: string) => EMAIL_RE.test(e));
+    let validRecipients = recipients.filter((e: string) => EMAIL_RE.test(e));
+
+    // Directors (power < 100) can only email members of their own department
+    if (user.power_level < 100) {
+      if (!user.department_id) {
+        return c.json({ error: "No department assigned — cannot send department emails" }, 403);
+      }
+      const deptRows: any = await c.env.DB.prepare(
+        "SELECT email FROM users WHERE department_id = ?",
+      ).bind(user.department_id).all();
+      const deptEmails = new Set((deptRows.results || []).map((r: any) => (r.email || "").toLowerCase()));
+      validRecipients = validRecipients.filter((e: string) => deptEmails.has(e.toLowerCase()));
+      if (validRecipients.length === 0) {
+        return c.json({ error: "Directors can only send emails to members of their own department" }, 403);
+      }
+    }
+
     if (validRecipients.length === 0) {
       return c.json({ error: "No valid email addresses provided" }, 400);
     }
@@ -5709,7 +5741,7 @@ app.post("/api/club-files/upload", async (c) => {
 });
 
 // ---------------------------------------------------------
-// MAINTENANCE MODE (President/VP only)
+// MAINTENANCE MODE (Board only)
 // ---------------------------------------------------------
 
 // GET /api/admin/maintenance Ã¢â‚¬â€ check maintenance status
@@ -5766,23 +5798,21 @@ About 180DC VIT Chennai:
 
 Our Leadership Team (Board Members):
 - Faculty Coordinator: Dr. Balaji
-- President: Saad Siddiqui
-- Vice Presidents: S Yaswaanth, Sharan K
+- Chairperson: Saad Siddiqui
+- Vice Chairpersons: S Yaswaanth, Sharan K
 - Business Strategy Director: Rounak Handa
-- CPS Lead: Paramveer Singh Vilkhu
+- Client Relationship Director: Paramveer Singh Vilkhu
 - Marketing Director: Sanjana Chejeti
-- Social Media Lead: Khyati Mohapatra
-- HR Lead: Sowmiya Vijayakumar
 - Finance Director: Riddhima Singh
 - Technical Director: Sanjay Sivakumar
-- Research & Development: Mahak Khetan, Shivam Pandey
-- Events & Initiatives: Sonakshi Agrawal, Vansh Goel
+- Research & Development (under Technical): Mahak Khetan, Shivam Pandey
+- Operations: Sonakshi Agrawal, Vansh Goel
 
 Guidelines:
 1. ALWAYS format your responses beautifully using Markdown (bolding key terms, using bulleted or numbered lists for structure).
 2. Start by warmly and professionally greeting the user if it's the beginning of the conversation.
 3. Be highly actionable and structured. Explain your assumptions, identify potential risks, and suggest clear next steps.
-4. If asked about the club or its members (like who the tech lead is, who the president is, etc.), use the provided Leadership Team data. Speak proudly of our team.
+4. If asked about the club or its members (like who the technical director is, who the chairperson is, etc.), use the provided Leadership Team data. Speak proudly of our team.
 5. NEVER fabricate facts about the club. If you don't know something, offer to connect them with our leadership team.
 6. Keep responses relatively concise but extremely impactful. Never overwhelm with a wall of text.
 7. EASTER EGG: If and ONLY IF the user specifically asks about "L Kevin Daniel" or "Kevin" (or similar spellings), you must answer that he is a great leader and the technical backbone of 180DC VIT Chennai. Also mention that Ibhan will not dare to mess with 180DC's chatbot. Keep it lighthearted and proud.`;

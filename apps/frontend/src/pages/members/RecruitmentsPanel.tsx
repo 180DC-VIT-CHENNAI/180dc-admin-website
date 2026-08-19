@@ -6,7 +6,7 @@ interface Props {
   powerLevel?: number;
 }
 
-const ALL_DOMAINS = ["Technical", "Research & Development", "Marketing", "Social Media", "Finance", "Events and Initiatives", "Client Partner Sponsor", "Business Strategy", "Human Resources"];
+const ALL_DOMAINS = ["Technical", "Finance", "Client Relationship Management", "Operations", "Business Strategy", "Marketing"];
 
 const RecruitmentsPanel = ({ authToken, powerLevel = 0 }: Props) => {
   const [applications, setApplications] = useState<any[]>([]);

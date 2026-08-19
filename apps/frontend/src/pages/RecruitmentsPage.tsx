@@ -12,14 +12,11 @@ const navItems = [
 
 const domains = [
   "Technical",
-  "Research & Development",
-  "Marketing",
-  "Social Media",
   "Finance",
-  "Events and Initiatives",
-  "Client Partner Sponsor",
+  "Client Relationship Management",
+  "Operations",
   "Business Strategy",
-  "Human Resources",
+  "Marketing",
 ];
 
 const years = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
