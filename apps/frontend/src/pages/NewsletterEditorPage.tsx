@@ -155,8 +155,10 @@ export default function NewsletterEditorPage() {
     setError("");
     setSourceFileName(file.name);
     try {
-      if (file.type !== "application/pdf" && file.type !== "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      if (!ext || !["pdf", "docx"].includes(ext)) {
         setError("Unsupported file type. Upload a PDF or DOCX.");
+        setSourceFileName("");
         setUploading(false);
         return;
       }
@@ -174,6 +176,7 @@ export default function NewsletterEditorPage() {
         setSourceFileKey(srcData.key);
       } else {
         setError(srcData.error || "Upload failed");
+        setSourceFileName("");
       }
     } catch (err: any) {
       setError("Upload failed: " + (err?.message || "Unknown error"));

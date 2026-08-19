@@ -91,6 +91,16 @@ function errorResponse(c: any, message: string, status: number) {
 
 const URL_RE = /^https?:\/\/.+/;
 
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -1596,7 +1606,7 @@ app.post("/api/newsletter/send", async (c) => {
       const r2Obj = await c.env.CASE_STUDIES.get(r2Key);
       if (r2Obj) {
         const buf = await r2Obj.arrayBuffer();
-        const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        const b64 = arrayBufferToBase64(buf);
         pdfAttachment = { filename: r2Key.split("/").pop() || "newsletter.pdf", content: b64 };
       }
     }
@@ -1926,7 +1936,7 @@ app.post("/api/newsletter-editor/send", async (c) => {
       const r2Obj = await c.env.CASE_STUDIES.get(r2Key);
       if (r2Obj) {
         const buf = await r2Obj.arrayBuffer();
-        const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        const b64 = arrayBufferToBase64(buf);
         pdfAttachment = { filename: r2Key.split("/").pop() || "newsletter.pdf", content: b64 };
       }
     }
@@ -2000,7 +2010,7 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
       const r2Obj = await c.env.CASE_STUDIES.get(r2Key);
       if (r2Obj) {
         const buf = await r2Obj.arrayBuffer();
-        const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        const b64 = arrayBufferToBase64(buf);
         pdfAttachment = { filename: r2Key.split("/").pop() || "event.pdf", content: b64 };
       }
     }
