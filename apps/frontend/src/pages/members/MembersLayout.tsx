@@ -569,8 +569,8 @@ export default function MembersLayout() {
               <div className="members-grid" style={{ marginTop: "1.5rem" }}>
                 <div className="dashboard-card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <h3 style={{ margin: 0, fontSize: "1rem" }}>Club Activity</h3>
-                      <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 700, textTransform: "uppercase" }}>Last 7 Days</span>
+                       <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 500 }}>Club Activity</h2>
+                       <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 700, textTransform: "uppercase" }}>Last 7 Days</span>
                    </div>
                     <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 100, padding: "10px 0" }}>
                        {[35, 60, 40, 85, 55, 75, 50].map((h, i) => (
@@ -584,7 +584,7 @@ export default function MembersLayout() {
 
                 <div className="dashboard-card">
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                    <h3 style={{ margin: 0, fontSize: "1rem" }}>Member Composition</h3>
+                     <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 500 }}>Member Composition</h2>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     {[
@@ -609,7 +609,7 @@ export default function MembersLayout() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                        <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>event_list</span>
-                       <h3 style={{ margin: 0, fontSize: "1rem" }}>Upcoming Schedule</h3>
+                        <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 500 }}>Upcoming Schedule</h2>
                     </div>
                     <button className="btn outline" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => setActivePanel("meets")}>Calendar View</button>
                   </div>
@@ -639,7 +639,7 @@ export default function MembersLayout() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <span className="material-symbols-outlined" style={{ color: "var(--primary-green)" }}>campaign</span>
-                      <h3 style={{ margin: 0, fontSize: "1rem" }}>Recent Announcements</h3>
+                       <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 500 }}>Recent Announcements</h2>
                     </div>
                     <button className="btn outline" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => setActivePanel("announcements")}>View All</button>
                   </div>
@@ -713,15 +713,15 @@ export default function MembersLayout() {
             <>
               <div className="members-grid">
                 <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
-                  <h3>Club-Wide Meets</h3>
+                  <h2>Club-Wide Meets</h2>
                   <ClubMeetsSection authToken={authToken!} powerLevel={powerLevel} />
                 </div>
                 <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
-                  <h3>Inter-Department Meets</h3>
+                  <h2>Inter-Department Meets</h2>
                   <InterDeptMeetsSection authToken={authToken!} departments={departments} powerLevel={powerLevel} />
                 </div>
                 <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
-                  <h3>Department Meets</h3>
+                  <h2>Department Meets</h2>
                   <DepartmentMeetsSection
                     authToken={authToken!}
                     departments={departments}
@@ -787,7 +787,7 @@ export default function MembersLayout() {
             <div className="members-grid">
               {powerLevel >= 100 && (
                 <div className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
-                  <h3>Post Announcement</h3>
+                  <h2>Post Announcement</h2>
                   <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
                     <input className="input" placeholder="Title" value={annTitle} onChange={(e) => setAnnTitle(e.target.value)} />
                     <textarea className="input" placeholder="Content" rows={4} value={annContent} onChange={(e) => setAnnContent(e.target.value)} />
@@ -822,7 +822,7 @@ export default function MembersLayout() {
                 <div key={a.id} className="dashboard-card" style={{ gridColumn: "1 / -1" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div style={{ flex: 1 }}>
-                      <h3 style={{ margin: 0 }}>{stripHtmlTags(a.title)}</h3>
+                      <h2 style={{ margin: 0 }}>{stripHtmlTags(a.title)}</h2>
                       <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 4 }}>{a.created_at?.slice(0, 10)}</div>
                       <div style={{ marginTop: 12, whiteSpace: "pre-wrap", color: "var(--text-secondary)", fontSize: 14 }}>{stripHtmlTags(a.content)}</div>
                     </div>
