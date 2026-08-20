@@ -38,7 +38,6 @@ function isPublicRoute(pathname: string, method: string): boolean {
     ["/api/auth/forgot-token"],
     ["/api/departments"],
     ["/api/projects/completed"],
-    ["/api/chat", "POST"],
     ["/api/newsletter/subscribe", "POST"],
     ["/api/newsletter/unsubscribe", "GET"],
     ["/api/newsletter/subscribers/count", "GET"],
@@ -725,8 +724,8 @@ async function seedData(db: any, env?: any) {
     await db.prepare(roleSql).bind("vice_chairperson", "Vice Chairperson", 100, "system").run();
     await db.prepare(roleSql).bind("secretary", "Secretary", 100, "system").run();
     await db.prepare(roleSql).bind("co_secretary", "Co-Secretary", 100, "system").run();
+    await db.prepare(roleSql).bind("technical_director", "Technical Director", 100, "system").run();
     // Department Directors (power 50 — manage their own department only)
-    await db.prepare(roleSql).bind("technical_director", "Technical Director", 50, "system").run();
     await db.prepare(roleSql).bind("finance_director", "Finance Director", 50, "system").run();
     await db.prepare(roleSql).bind("crm_director", "Client Relationship Director", 50, "system").run();
     await db.prepare(roleSql).bind("operations_director", "Operations Director", 50, "system").run();
@@ -749,8 +748,8 @@ async function seedData(db: any, env?: any) {
     // 1. Role id/name/power fixes for retained roles
     await db.prepare("UPDATE roles SET name = 'Advisory Member' WHERE id = 'advisory' AND name != 'Advisory Member'").run();
     await db.prepare("UPDATE roles SET name = 'General Member' WHERE id = 'member' AND name != 'General Member'").run();
-    await db.prepare("UPDATE roles SET power_level = 100 WHERE id IN ('secretary') AND power_level != 100").run();
-    await db.prepare("UPDATE roles SET power_level = 50 WHERE id IN ('technical_director', 'business_strategy_director', 'marketing_director') AND power_level != 50").run();
+    await db.prepare("UPDATE roles SET power_level = 100 WHERE id IN ('secretary', 'technical_director') AND power_level != 100").run();
+    await db.prepare("UPDATE roles SET power_level = 50 WHERE id IN ('business_strategy_director', 'marketing_director') AND power_level != 50").run();
 
     // 2. Migrate user roles to the new structure
     await db.prepare("UPDATE users SET role_id = 'chairperson' WHERE role_id = 'president'").run();
@@ -1286,79 +1285,8 @@ ${hasPdf ? `<tr><td style="padding:0 32px">
 </table></td></tr></table>
 </body></html>`;
 }
-// Public: Subscribe to newsletter
-app.post("/api/newsletter/subscribe", async (c) => {
-  try {
-    await ensureDbReady(c.env.DB, c.env);
-    const rl = await checkRateLimit(c, "newsletter_subscribe", 5, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
-    const body = await c.req.json();
-    const email = validateEmail(body?.email);
-    if (!email) return c.json({ error: "Valid email address required" }, 400);
-
-    const existing = await c.env.DB.prepare("SELECT id, active FROM newsletter_subscribers WHERE email = ?").bind(email).first();
-    if (existing) {
-      if (existing.active === 1) return c.json({ success: true, message: "You are already subscribed!" });
-      await c.env.DB.prepare("UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL WHERE id = ?").bind(existing.id).run();
-      const apiKey = c.env.RESEND_API_KEY;
-      if (apiKey) {
-        fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ from: "180DC Newsletter <team@180dcvitc.org>", to: email, subject: "Welcome back to the 180DC Newsletter!", html: `<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
-</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
-<tr><td align="center">
-<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
-<tr><td style="background:#8dc63f;padding:28px 24px 20px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dcvitc.org/images/180DC.png" alt="180DC" width="52" style="margin-bottom:6px">
-<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:26px;margin:0;font-weight:600;text-shadow:2px 2px 0 rgba(0,0,0,0.12)">180 Degrees Consulting</h1>
-<p style="color:#1a1a1a;font-size:12px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
-</td></tr>
-<tr><td style="padding:28px 32px 0">
-<p style="font-size:15px;color:#1a1a1a;margin:0 0 4px;font-weight:700">Welcome back! &#x1F44B;</p>
-<p style="font-size:13px;color:#777777;margin:0 0 20px;line-height:1.5">Good to have you again.</p>
-</td></tr>
-<tr><td style="padding:0 32px">
-<p style="font-size:14px;color:#555555;margin:0 0 24px;line-height:1.7">You've been re-subscribed to the 180DC newsletter. You'll continue receiving our latest updates and insights in your inbox.</p>
-</td></tr>
-<tr><td style="padding:0 32px">
-<table width="100%" cellpadding="0" cellspacing="0"><tr>
-<td style="border-bottom:2px solid #e8e6e1"></td>
-</tr></table>
-</td></tr>
-<tr><td style="padding:24px 32px 0;text-align:center">
-<p style="font-size:11px;color:#777777;margin:0 0 12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">Follow Us</p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto">
-<tr>
-<td style="padding:0 8px"><a href="https://www.instagram.com/180dc.vitc/" style="text-decoration:none"><table cellpadding="0" cellspacing="0"><tr><td style="background:#1a1a1a;border-radius:8px;padding:8px 14px;text-align:center"><span style="font-size:11px;color:#ffffff;font-weight:700">Instagram</span></td></tr></table></a></td>
-<td style="padding:0 8px"><a href="https://www.linkedin.com/company/180-degrees-consulting-vit-chennai/" style="text-decoration:none"><table cellpadding="0" cellspacing="0"><tr><td style="background:#1a1a1a;border-radius:8px;padding:8px 14px;text-align:center"><span style="font-size:11px;color:#ffffff;font-weight:700">LinkedIn</span></td></tr></table></a></td>
-</tr>
-</table>
-</td></tr>
-<tr><td style="background:#f9f8f5;border-top:3px solid #1a1a1a;border-radius:0 0 13px 13px;padding:20px 32px;text-align:center">
-<p style="font-size:12px;color:#1a1a1a;margin:0 0 4px;font-weight:700">180 Degrees Consulting &#x2014; VIT Chennai</p>
-<p style="font-size:11px;color:#777777;margin:0 0 12px;line-height:1.5">You received this because you subscribed to our newsletter.</p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto">
-<tr><td style="border:1.5px solid #d0cec8;border-radius:50px;padding:6px 16px">
-<a href="https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(email)}" style="color:#888888;text-decoration:none;font-size:11px;font-weight:600">Unsubscribe</a>
-</td></tr>
-</table>
-</td></tr>
-</table></td></tr></table>
-</body></html>` }),
-        }).catch(() => {});
-      }
-      return c.json({ success: true, message: "Welcome back! You have been re-subscribed." });
-    }
-
-    await c.env.DB.prepare("INSERT INTO newsletter_subscribers (id, email, active) VALUES (?, ?, 1)").bind(crypto.randomUUID(), email).run();
-
-    const apiKey = c.env.RESEND_API_KEY;
-    if (apiKey) {
-      const welcomeHtml = `<!DOCTYPE html>
+function sendWelcomeEmail(apiKey: string, email: string) {
+  const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -1438,12 +1366,89 @@ app.post("/api/newsletter/subscribe", async (c) => {
 
 </table></td></tr></table>
 </body></html>`;
-      fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: "180DC Newsletter <team@180dcvitc.org>", to: email, subject: "Welcome to the 180DC Newsletter!", html: welcomeHtml }),
-      }).catch(() => {});
+  fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: "180DC Newsletter <team@180dcvitc.org>", to: email, subject: "Welcome to the 180DC Newsletter!", html }),
+  }).catch(() => {});
+}
+
+function sendWelcomeBackEmail(apiKey: string, email: string) {
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#8dc63f;padding:28px 24px 20px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dcvitc.org/images/180DC.png" alt="180DC" width="52" style="margin-bottom:6px">
+<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:26px;margin:0;font-weight:600;text-shadow:2px 2px 0 rgba(0,0,0,0.12)">180 Degrees Consulting</h1>
+<p style="color:#1a1a1a;font-size:12px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
+</td></tr>
+<tr><td style="padding:28px 32px 0">
+<p style="font-size:15px;color:#1a1a1a;margin:0 0 4px;font-weight:700">Welcome back! &#x1F44B;</p>
+<p style="font-size:13px;color:#777777;margin:0 0 20px;line-height:1.5">Good to have you again.</p>
+</td></tr>
+<tr><td style="padding:0 32px">
+<p style="font-size:14px;color:#555555;margin:0 0 24px;line-height:1.7">You've been re-subscribed to the 180DC newsletter. You'll continue receiving our latest updates and insights in your inbox.</p>
+</td></tr>
+<tr><td style="padding:0 32px">
+<table width="100%" cellpadding="0" cellspacing="0"><tr>
+<td style="border-bottom:2px solid #e8e6e1"></td>
+</tr></table>
+</td></tr>
+<tr><td style="padding:24px 32px 0;text-align:center">
+<p style="font-size:11px;color:#777777;margin:0 0 12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">Follow Us</p>
+<table cellpadding="0" cellspacing="0" style="margin:0 auto">
+<tr>
+<td style="padding:0 8px"><a href="https://www.instagram.com/180dc.vitc/" style="text-decoration:none"><table cellpadding="0" cellspacing="0"><tr><td style="background:#1a1a1a;border-radius:8px;padding:8px 14px;text-align:center"><span style="font-size:11px;color:#ffffff;font-weight:700">Instagram</span></td></tr></table></a></td>
+<td style="padding:0 8px"><a href="https://www.linkedin.com/company/180-degrees-consulting-vit-chennai/" style="text-decoration:none"><table cellpadding="0" cellspacing="0"><tr><td style="background:#1a1a1a;border-radius:8px;padding:8px 14px;text-align:center"><span style="font-size:11px;color:#ffffff;font-weight:700">LinkedIn</span></td></tr></table></a></td>
+</tr>
+</table>
+</td></tr>
+<tr><td style="background:#f9f8f5;border-top:3px solid #1a1a1a;border-radius:0 0 13px 13px;padding:20px 32px;text-align:center">
+<p style="font-size:12px;color:#1a1a1a;margin:0 0 4px;font-weight:700">180 Degrees Consulting &#x2014; VIT Chennai</p>
+<p style="font-size:11px;color:#777777;margin:0 0 12px;line-height:1.5">You received this because you subscribed to our newsletter.</p>
+<table cellpadding="0" cellspacing="0" style="margin:0 auto">
+<tr><td style="border:1.5px solid #d0cec8;border-radius:50px;padding:6px 16px">
+<a href="https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(email)}" style="color:#888888;text-decoration:none;font-size:11px;font-weight:600">Unsubscribe</a>
+</td></tr>
+</table>
+</td></tr>
+</table></td></tr></table>
+</body></html>`;
+  fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: "180DC Newsletter <team@180dcvitc.org>", to: email, subject: "Welcome back to the 180DC Newsletter!", html }),
+  }).catch(() => {});
+}
+
+// Public: Subscribe to newsletter (called from /subscriber after the email is
+// verified through Clerk Google sign-in, so the address is trusted)
+app.post("/api/newsletter/subscribe", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const rl = await checkRateLimit(c, "newsletter_subscribe", 5, 3600);
+    if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    const body = await c.req.json();
+    const email = validateEmail(body?.email);
+    if (!email) return c.json({ error: "Valid email address required" }, 400);
+
+    const existing = await c.env.DB.prepare("SELECT id, active FROM newsletter_subscribers WHERE email = ?").bind(email).first();
+    if (existing) {
+      if (existing.active === 1) return c.json({ success: true, message: "You are already subscribed!" });
+      await c.env.DB.prepare("UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL WHERE id = ?").bind(existing.id).run();
+      const apiKey = c.env.RESEND_API_KEY;
+      if (apiKey) sendWelcomeBackEmail(apiKey, email);
+      return c.json({ success: true, message: "Welcome back! You have been re-subscribed." });
     }
+
+    await c.env.DB.prepare("INSERT INTO newsletter_subscribers (id, email, active) VALUES (?, ?, 1)").bind(crypto.randomUUID(), email).run();
+
+    const apiKey = c.env.RESEND_API_KEY;
+    if (apiKey) sendWelcomeEmail(apiKey, email);
 
     return c.json({ success: true, message: "Successfully subscribed to the newsletter!" });
   } catch (e: any) {
@@ -5263,124 +5268,6 @@ app.post("/api/admin/maintenance", async (c) => {
     return c.json({ success: true, enabled: enabled === 1, message });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
-  }
-});
-
-app.post("/api/chat", async (c) => {
-  try {
-    const { messages } = await c.req.json();
-    const apiKey = c.env.GEMINI_API_KEY;
-    const groqKey = c.env.GROQ_API_KEY;
-
-    const systemPrompt = `You are ConsultAI, the highly professional, elite AI consulting assistant for 180 Degrees Consulting (180DC) VIT Chennai. Your tone should mirror that of a top-tier management consultant (e.g., McKinsey, BCG, Bain) Ã¢â‚¬â€ extremely articulate, well-versed, empathetic, and strictly professional. You speak on behalf of 180DC VIT Chennai using "we" and "our".
-
-About 180DC VIT Chennai:
-- We are part of the world's largest university-based consultancy.
-- We connect high-achieving, creative students with socially conscious organizations (non-profits, social enterprises) to provide very high quality, free consulting services and achieve meaningful impact.
-- We have 50+ elite consultants and have successfully completed 20+ projects with a 100% client satisfaction rate.
-- Our core competencies include: Business Strategy, Market Research, SWOT Analysis, Competitor Analysis, Startup Validation, Pricing Strategy, and Financial Planning.
-
-Our Leadership Team (Board Members):
-- Faculty Coordinator: Dr. Balaji
-- Chairperson: Saad Siddiqui
-- Vice Chairpersons: S Yaswaanth, Sharan K
-- Business Strategy Director: Rounak Handa
-- Client Relationship Director: Paramveer Singh Vilkhu
-- Marketing Director: Sanjana Chejeti
-- Finance Director: Riddhima Singh
-- Technical Director: Sanjay Sivakumar
-- Research & Development (under Technical): Mahak Khetan, Shivam Pandey
-- Operations: Sonakshi Agrawal, Vansh Goel
-
-Guidelines:
-1. ALWAYS format your responses beautifully using Markdown (bolding key terms, using bulleted or numbered lists for structure).
-2. Start by warmly and professionally greeting the user if it's the beginning of the conversation.
-3. Be highly actionable and structured. Explain your assumptions, identify potential risks, and suggest clear next steps.
-4. If asked about the club or its members (like who the technical director is, who the chairperson is, etc.), use the provided Leadership Team data. Speak proudly of our team.
-5. NEVER fabricate facts about the club. If you don't know something, offer to connect them with our leadership team.
-6. Keep responses relatively concise but extremely impactful. Never overwhelm with a wall of text.
-7. EASTER EGG: If and ONLY IF the user specifically asks about "L Kevin Daniel" or "Kevin" (or similar spellings), you must answer that he is a great leader and the technical backbone of 180DC VIT Chennai. Also mention that Ibhan will not dare to mess with 180DC's chatbot. Keep it lighthearted and proud.`;
-
-    async function callGemini(): Promise<string | null> {
-      if (!apiKey) return null;
-      try {
-        const geminiMessages = messages.map((msg: any) => ({
-          role: msg.role === "assistant" ? "model" : "user",
-          parts: [{ text: msg.content }]
-        }));
-
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents: geminiMessages
-          })
-        });
-
-        if (!res.ok) {
-          console.error("Gemini API Error:", await res.text());
-          return null;
-        }
-
-        const data = await res.json();
-        return data.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
-      } catch (e) {
-        console.error("Gemini call failed:", e);
-        return null;
-      }
-    }
-
-    async function callGroq(): Promise<string | null> {
-      if (!groqKey) return null;
-      try {
-        const groqMessages = [
-          { role: "system", content: systemPrompt },
-          ...messages.map((msg: any) => ({ role: msg.role, content: msg.content }))
-        ];
-
-        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${groqKey}`
-          },
-          body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-            messages: groqMessages
-          })
-        });
-
-        if (!res.ok) {
-          console.error("Groq API Error:", await res.text());
-          return null;
-        }
-
-        const data = await res.json();
-        return data.choices?.[0]?.message?.content ?? null;
-      } catch (e) {
-        console.error("Groq call failed:", e);
-        return null;
-      }
-    }
-
-    let assistantMessage = await callGemini();
-    if (!assistantMessage) {
-      console.warn("Gemini unavailable, falling back to Groq");
-      assistantMessage = await callGroq();
-    }
-    if (!assistantMessage) {
-      return c.json({ error: "All AI providers are currently unavailable" }, 503);
-    }
-
-    return c.json({
-      choices: [
-        { message: { content: assistantMessage } }
-      ]
-    });
-  } catch (error: any) {
-    console.error("Chat API error:", error);
-    return c.json({ error: "Internal server error" }, 500);
   }
 });
 
