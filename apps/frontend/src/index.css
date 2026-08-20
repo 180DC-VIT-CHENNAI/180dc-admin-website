@@ -1411,6 +1411,41 @@ a:hover {
   margin: 0;
 }
 
+/* ── Footer newsletter band ─────────────────────────────────────────────── */
+
+.footer-newsletter {
+  max-width: 600px;
+  margin: 0 auto var(--space-16);
+  padding-bottom: var(--space-12);
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.footer-newsletter-title {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin: 0 0 var(--space-3);
+}
+
+.footer-newsletter-desc {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-6);
+  max-width: 480px;
+}
+
+.footer-newsletter-note {
+  margin: var(--space-3) 0 0;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
 /* ═══ HOVER LIFT ═════════════════════════════════════════════════════════ */
 
 .hover-lift {
@@ -1722,6 +1757,11 @@ html.lenis body {
 
   .footer-content {
     flex-direction: column;
+  }
+
+  .footer-newsletter {
+    margin-bottom: var(--space-12);
+    padding-bottom: var(--space-10);
   }
 
   .footer-links {

@@ -8,7 +8,6 @@ import { apiUrl } from "./lib/api";
 import { attachCardHover } from "./lib/animations";
 import LazyReveal from "./components/LazyReveal";
 import ErrorBoundary from "./components/ErrorBoundary";
-import FloatingChatButton from "./components/chat/FloatingChatButton";
 
 // Above the fold — static imports, load immediately with the page
 import SplashSection from "./sections/SplashSection";
@@ -21,7 +20,6 @@ const AboutSection = lazy(() => import("./sections/AboutSection"));
 const CompletedProjectsSection = lazy(() => import("./sections/CompletedProjectsSection"));
 const CaseStudiesSection = lazy(() => import("./sections/CaseStudiesSection"));
 const LeadershipSection = lazy(() => import("./sections/LeadershipSection"));
-const NewsletterSection = lazy(() => import("./sections/NewsletterSection"));
 const PartnersSection = lazy(() => import("./sections/PartnersSection"));
 const FooterSection = lazy(() => import("./sections/FooterSection"));
 
@@ -66,7 +64,7 @@ function App() {
   // mounted later by LazyReveal still get their reveal animations and
   // card hover effects attached correctly.
   useEffect(() => {
-    const NAV_IDS = ["about", "case-studies", "leadership", "newsletter", "partners"];
+    const NAV_IDS = ["about", "case-studies", "leadership", "partners"];
     const observedNavEls = new Set<Element>();
 
     const navObserver = new IntersectionObserver(
@@ -134,7 +132,6 @@ function App() {
     { label: "About", href: "#about" },
     { label: "Case Studies", href: "#case-studies" },
     { label: "Leadership", href: "#leadership" },
-    { label: "Newsletter", href: "#newsletter" },
     { label: "Partners", href: "#partners" },
     { label: "Recruitments", href: "/recruitments" },
   ];
@@ -200,14 +197,6 @@ function App() {
       <LazyReveal>
         <ErrorBoundary>
           <Suspense fallback={null}>
-            <NewsletterSection />
-          </Suspense>
-        </ErrorBoundary>
-      </LazyReveal>
-
-      <LazyReveal>
-        <ErrorBoundary>
-          <Suspense fallback={null}>
             <PartnersSection />
           </Suspense>
         </ErrorBoundary>
@@ -235,7 +224,6 @@ function App() {
         </Suspense>
       </ErrorBoundary>
     </SmoothScroll>
-    <FloatingChatButton />
     </>
   );
 }
