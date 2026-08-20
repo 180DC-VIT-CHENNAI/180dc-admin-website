@@ -230,7 +230,9 @@ export default function ColorBends({
     }
     self.addEventListener('resize', handleResize);
 
+    let running = true;
     const loop = () => {
+      if (!running) return;
       const dt = clock.getDelta();
       const elapsed = clock.elapsedTime;
       material.uniforms.uTime.value = elapsed;
@@ -251,8 +253,25 @@ export default function ColorBends({
     };
     rafRef.current = requestAnimationFrame(loop);
 
+    // Pause the render loop while the canvas is offscreen — the hero
+    // background shouldn't keep burning GPU after the user scrolls past it.
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        if (!running) {
+          running = true;
+          rafRef.current = requestAnimationFrame(loop);
+        }
+      } else if (running) {
+        running = false;
+        if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      }
+    });
+    io.observe(container);
+
     return () => {
+      running = false;
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      io.disconnect();
       if (resizeObserverRef.current) resizeObserverRef.current.disconnect();
       else window.removeEventListener('resize', handleResize);
       geometry.dispose();

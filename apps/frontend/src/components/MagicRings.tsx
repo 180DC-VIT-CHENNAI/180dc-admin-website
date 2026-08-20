@@ -221,8 +221,10 @@ export default function MagicRings({
     mount.addEventListener('mouseleave', onMouseLeave);
     mount.addEventListener('click', onClick);
 
-    let frameId: number;
+    let frameId = 0;
+    let running = true;
     const animate = (t: number) => {
+      if (!running) return;
       frameId = requestAnimationFrame(animate);
       const p = propsRef.current;
       if (!p) return;
@@ -260,8 +262,25 @@ export default function MagicRings({
     };
     frameId = requestAnimationFrame(animate);
 
+    // Pause the render loop while the canvas is offscreen — keeps scrolling
+    // smooth once the user has scrolled past the splash.
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        if (!running) {
+          running = true;
+          frameId = requestAnimationFrame(animate);
+        }
+      } else if (running) {
+        running = false;
+        cancelAnimationFrame(frameId);
+      }
+    });
+    io.observe(mount);
+
     return () => {
+      running = false;
       cancelAnimationFrame(frameId);
+      io.disconnect();
       window.removeEventListener('resize', resize);
       ro.disconnect();
       mount.removeEventListener('mousemove', onMouseMove);
