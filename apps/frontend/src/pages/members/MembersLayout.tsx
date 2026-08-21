@@ -10,6 +10,7 @@ import ClubMeetsSection from "./ClubMeetsSection";
 import DepartmentMeetsSection from "./DepartmentMeetsSection";
 import InterDeptMeetsSection from "./InterDeptMeetsSection";
 import ProjectsSection from "./ProjectsSection";
+import TeamInstancesSection from "./TeamInstancesSection";
 import InstructionsSection from "./InstructionsSection";
 import ConsultingRequestsSection from "./ConsultingRequestsSection";
 import SendMailSection from "./SendMailSection";
@@ -371,6 +372,7 @@ export default function MembersLayout() {
     const managementItems: NavItem[] = [
       { id: "meets", label: "Meets", minPower: 0, icon: "event" },
       { id: "projects", label: "Projects", minPower: 0, icon: "account_tree" },
+      { id: "team-instances", label: "Teams", minPower: 0, icon: "diversity_3" },
       { id: "instructions", label: "Instructions", minPower: 0, icon: "menu_book" },
       { id: "transfers", label: "Transfers", minPower: 0, icon: "swap_horiz" },
       { id: "announcements", label: "Announcements", minPower: 0, icon: "campaign" },
@@ -735,6 +737,16 @@ export default function MembersLayout() {
 
           {activePanel === "projects" && (
             <ProjectsSection
+              authToken={authToken!}
+              departments={departments}
+              allUsers={allUsers}
+              powerLevel={powerLevel}
+              departmentId={departmentId}
+            />
+          )}
+
+          {activePanel === "team-instances" && (
+            <TeamInstancesSection
               authToken={authToken!}
               departments={departments}
               allUsers={allUsers}

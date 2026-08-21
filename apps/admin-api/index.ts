@@ -656,6 +656,10 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS project_departments (project_id TEXT NOT NULL, department_id TEXT NOT NULL, PRIMARY KEY (project_id, department_id), FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (department_id) REFERENCES departments(id));
     CREATE TABLE IF NOT EXISTS project_roles (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL, role_name TEXT NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (user_id) REFERENCES users(id));
     CREATE TABLE IF NOT EXISTS project_tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT, assigned_to TEXT, status TEXT DEFAULT 'pending', created_by TEXT, completed_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id));
+    CREATE TABLE IF NOT EXISTS team_instances (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS instance_departments (instance_id TEXT NOT NULL, department_id TEXT NOT NULL, PRIMARY KEY (instance_id, department_id), FOREIGN KEY (instance_id) REFERENCES team_instances(id), FOREIGN KEY (department_id) REFERENCES departments(id));
+    CREATE TABLE IF NOT EXISTS instance_teams (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT, member_limit INTEGER, min_members INTEGER, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (instance_id) REFERENCES team_instances(id));
+    CREATE TABLE IF NOT EXISTS instance_team_members (team_id TEXT NOT NULL, user_id TEXT NOT NULL, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (team_id, user_id), FOREIGN KEY (team_id) REFERENCES instance_teams(id), FOREIGN KEY (user_id) REFERENCES users(id));
     CREATE TABLE IF NOT EXISTS rate_limits (ip TEXT NOT NULL, endpoint TEXT NOT NULL, count INTEGER DEFAULT 1, window_start DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (ip, endpoint));
     CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, action TEXT NOT NULL, actor_email TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS daily_email_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
@@ -704,6 +708,7 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE users ADD COLUMN clerk_user_id TEXT"); } catch { console.warn("Migration: clerk_user_id may already exist"); }
   try { await db.exec("ALTER TABLE users ADD COLUMN oauth_enabled INTEGER DEFAULT 0"); } catch { console.warn("Migration: oauth_enabled may already exist"); }
   try { await db.exec("ALTER TABLE newsletters ADD COLUMN email_subject TEXT"); } catch { console.warn("Migration: newsletters.email_subject may already exist"); }
+  try { await db.exec("ALTER TABLE instance_teams ADD COLUMN min_members INTEGER"); } catch { console.warn("Migration: instance_teams.min_members may already exist"); }
 
   try { await db.exec("INSERT OR IGNORE INTO maintenance_mode (id, enabled, message) VALUES (1, 0, 'Site is under maintenance. Please check back later.')"); } catch { console.warn("Migration: maintenance_mode seed"); }
   try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletter_subscribers (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, active INTEGER DEFAULT 1, subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP, unsubscribed_at DATETIME)`); } catch { console.warn("Migration: newsletter_subscribers table"); }
@@ -4240,7 +4245,7 @@ app.get("/api/projects/completed", async (c) => {
   }
 });
 
-// Manual trigger Ã¢â‚¬â€ regenerate static JSON (board only)
+// Manual trigger — regenerate static JSON (board only)
 app.post("/api/projects/regenerate-completed", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
@@ -4252,6 +4257,411 @@ app.post("/api/projects/regenerate-completed", async (c) => {
     return errorResponse(c, e.message, 500);
   }
 });
+
+// ---------------------------------------------------------
+// TEAM INSTANCES (events / case comps / applications split into teams)
+// ---------------------------------------------------------
+
+// Board can always manage; directors manage instances their department belongs to
+async function canManageInstanceTeams(c: any, instanceId: string) {
+  const user: any = c.get("user");
+  if (user.power_level >= 100) return true;
+  if (user.power_level >= 50 && user.department_id) {
+    const check: any = await c.env.DB.prepare(
+      "SELECT 1 FROM instance_departments WHERE instance_id = ? AND department_id = ?",
+    ).bind(instanceId, user.department_id).first();
+    if (check) return true;
+  }
+  return false;
+}
+
+async function getInstanceWithTeams(c: any, instanceId: string) {
+  const db = c.env.DB;
+  const instance: any = await db.prepare("SELECT ti.*, u.name as created_by_name FROM team_instances ti LEFT JOIN users u ON ti.created_by = u.id WHERE ti.id = ?").bind(instanceId).first();
+  if (!instance) return null;
+  const depts = await db.prepare(
+    "SELECT d.id, d.name FROM instance_departments id2 JOIN departments d ON id2.department_id = d.id WHERE id2.instance_id = ?",
+  ).bind(instanceId).all();
+  const teams = await db.prepare("SELECT * FROM instance_teams WHERE instance_id = ? ORDER BY created_at ASC").bind(instanceId).all();
+  const teamsWithMembers = [];
+  for (const team of (teams.results || [])) {
+    const members = await db.prepare(
+      "SELECT tm.user_id, tm.added_by, u.name as user_name, u.email as user_email, u.department_id as user_department_id, r.name as user_role_name FROM instance_team_members tm JOIN users u ON tm.user_id = u.id LEFT JOIN roles r ON u.role_id = r.id WHERE tm.team_id = ? ORDER BY tm.created_at ASC",
+    ).bind(team.id).all();
+    const memberCount = (members.results || []).length;
+    const min = team.min_members != null ? team.min_members : null;
+    const max = team.member_limit != null ? team.member_limit : null;
+    teamsWithMembers.push({
+      ...team,
+      members: members.results || [],
+      member_count: memberCount,
+      requirement_met: min == null ? true : memberCount >= min,
+      is_full: max != null && memberCount >= max,
+    });
+  }
+  return { ...instance, departments: depts.results || [], teams: teamsWithMembers };
+}
+
+app.get("/api/team-instances", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    if (user.role_id === "advisory") {
+      return c.json({ error: "Advisory members do not have access to team instances" }, 403);
+    }
+    const instances = await c.env.DB.prepare("SELECT id FROM team_instances ORDER BY created_at DESC").all();
+    const results = [];
+    for (const row of (instances.results || [])) {
+      const full = await getInstanceWithTeams(c, row.id);
+      if (full) results.push(full);
+    }
+    return c.json({ success: true, data: results });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+app.post("/api/team-instances", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    if (user.power_level < 50) {
+      return c.json({ error: "Forbidden: Directors and board only" }, 403);
+    }
+    const rl = await checkRateLimit(c, "create_team_instance", 10, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many instances created. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    const name = sanitizeStr(body.name);
+    const description = sanitizeStr(body.description, MAX_PROJECT_DESC_LEN);
+    if (!name) return c.json({ error: "Missing instance name" }, 400);
+
+    let departmentIds: string[];
+    if (user.power_level >= 100) {
+      if (!Array.isArray(body.departmentIds) || body.departmentIds.length === 0) {
+        return c.json({ error: "Select at least one department" }, 400);
+      }
+      departmentIds = [...new Set(((body.departmentIds as any[]).map((d: any) => String(d).trim()).filter(Boolean) as string[]))];
+    } else {
+      if (!user.department_id) {
+        return c.json({ error: "You are not assigned to a department" }, 403);
+      }
+      departmentIds = [user.department_id];
+    }
+
+    const validDepts = await c.env.DB.prepare(
+      `SELECT id FROM departments WHERE id IN (${departmentIds.map(() => "?").join(",")})`,
+    ).bind(...departmentIds).all();
+    if ((validDepts.results || []).length !== departmentIds.length) {
+      return c.json({ error: "Invalid department selection" }, 400);
+    }
+
+    const instanceId = crypto.randomUUID().replace(/-/g, "");
+    await c.env.DB.prepare(
+      "INSERT INTO team_instances (id, name, description, created_by) VALUES (?, ?, ?, ?)",
+    ).bind(instanceId, name, description || null, user.id).run();
+    for (const deptId of departmentIds) {
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO instance_departments (instance_id, department_id) VALUES (?, ?)",
+      ).bind(instanceId, deptId).run();
+    }
+    await addAuditLog(c, "team_instance_created", "team_instance", instanceId, name);
+    return c.json({ success: true, message: "Instance created", instanceId });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+app.put("/api/team-instances/:id", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    const instanceId = c.req.param("id");
+    const existing: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    if (!existing) return c.json({ error: "Instance not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    const name = body.name !== undefined ? sanitizeStr(body.name) : undefined;
+    const description = body.description !== undefined ? sanitizeStr(body.description, MAX_PROJECT_DESC_LEN) : undefined;
+    if (name !== undefined && !name) return c.json({ error: "Instance name cannot be empty" }, 400);
+    if (name !== undefined) {
+      await c.env.DB.prepare("UPDATE team_instances SET name = ? WHERE id = ?").bind(name, instanceId).run();
+    }
+    if (description !== undefined) {
+      await c.env.DB.prepare("UPDATE team_instances SET description = ? WHERE id = ?").bind(description || null, instanceId).run();
+    }
+    await addAuditLog(c, "team_instance_updated", "team_instance", instanceId, name || null);
+    return c.json({ success: true, message: "Instance updated" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+app.delete("/api/team-instances/:id", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    const instanceId = c.req.param("id");
+    const existing: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    if (!existing) return c.json({ error: "Instance not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    const teams = await c.env.DB.prepare("SELECT id FROM instance_teams WHERE instance_id = ?").bind(instanceId).all();
+    for (const team of (teams.results || [])) {
+      await c.env.DB.prepare("DELETE FROM instance_team_members WHERE team_id = ?").bind(team.id).run();
+    }
+    await c.env.DB.prepare("DELETE FROM instance_teams WHERE instance_id = ?").bind(instanceId).run();
+    await c.env.DB.prepare("DELETE FROM instance_departments WHERE instance_id = ?").bind(instanceId).run();
+    await c.env.DB.prepare("DELETE FROM team_instances WHERE id = ?").bind(instanceId).run();
+    await addAuditLog(c, "team_instance_deleted", "team_instance", instanceId, null);
+    return c.json({ success: true, message: "Instance deleted" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// Validate a user can be added to a team: must be registered, non-advisory,
+// and (for directors) belong to the acting director's department.
+async function validateTeamMemberEligibility(c: any, user: any, userId: string) {
+  const target: any = await c.env.DB.prepare(
+    "SELECT u.id, u.name, u.email, u.department_id, u.role_id FROM users u WHERE u.id = ?",
+  ).bind(userId).first();
+  if (!target) return { error: `User ${userId} is not registered on the website` };
+  if (target.role_id === "advisory") return { error: "Advisory members cannot be added to teams" };
+  if (user.power_level < 100) {
+    if (target.department_id !== user.department_id) {
+      return { error: `Directors can only add members from their own department (${target.name} is not in your department)` };
+    }
+  }
+  return { user: target };
+}
+
+app.post("/api/team-instances/:id/teams", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    const instanceId = c.req.param("id");
+    const existing: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    if (!existing) return c.json({ error: "Instance not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    const rl = await checkRateLimit(c, "create_team", 30, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many teams created. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    const name = sanitizeStr(body.name);
+    const description = sanitizeStr(body.description, MAX_PROJECT_DESC_LEN);
+    if (!name) return c.json({ error: "Missing team name" }, 400);
+
+    // Parse minMembers (min required) and maxMembers (cap). `memberLimit` is
+    // accepted as a legacy alias for maxMembers. "Exactly N" is min = max = N.
+    let minMembers: number | null = null;
+    let maxMembers: number | null = null;
+    for (const [raw, label] of [[body.minMembers, "minMembers"], [body.maxMembers ?? body.memberLimit, "maxMembers"]] as [any, string][]) {
+      if (raw === undefined || raw === null || raw === "") continue;
+      const parsed = Number(raw);
+      if (!Number.isInteger(parsed) || parsed < 1) {
+        return c.json({ error: `${label} must be a positive integer` }, 400);
+      }
+      if (label === "minMembers") minMembers = parsed; else maxMembers = parsed;
+    }
+    if (minMembers !== null && maxMembers !== null && minMembers > maxMembers) {
+      return c.json({ error: `minMembers (${minMembers}) cannot be greater than maxMembers (${maxMembers})` }, 400);
+    }
+
+    const memberIds: string[] = Array.isArray(body.memberIds)
+      ? ([...new Set(((body.memberIds as any[]).map((m: any) => String(m).trim()).filter(Boolean) as string[]))] as string[])
+      : [];
+    if (maxMembers !== null && memberIds.length > maxMembers) {
+      return c.json({ error: `Member cap is ${maxMembers} but ${memberIds.length} members were selected` }, 400);
+    }
+    for (const memberId of memberIds) {
+      const check = await validateTeamMemberEligibility(c, user, memberId);
+      if (check.error) return c.json({ error: check.error }, 400);
+    }
+
+    const teamId = crypto.randomUUID().replace(/-/g, "");
+    await c.env.DB.prepare(
+      "INSERT INTO instance_teams (id, instance_id, name, description, member_limit, min_members, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(teamId, instanceId, name, description || null, maxMembers, minMembers, user.id).run();
+    for (const memberId of memberIds) {
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO instance_team_members (team_id, user_id, added_by) VALUES (?, ?, ?)",
+      ).bind(teamId, memberId, user.id).run();
+    }
+    await addAuditLog(c, "team_created", "team", teamId, `${name} in instance ${instanceId}`);
+    return c.json({ success: true, message: "Team created", teamId });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+app.put("/api/team-instances/:id/teams/:teamId", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    const instanceId = c.req.param("id");
+    const teamId = c.req.param("teamId");
+    const team: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
+    if (!team) return c.json({ error: "Team not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+
+    const name = body.name !== undefined ? sanitizeStr(body.name) : undefined;
+    const description = body.description !== undefined ? sanitizeStr(body.description, MAX_PROJECT_DESC_LEN) : undefined;
+    if (name !== undefined && !name) return c.json({ error: "Team name cannot be empty" }, 400);
+
+    // minMembers / maxMembers (memberLimit = legacy alias for max). Either can
+    // be nulled by sending null. min may exceed the current member count — the
+    // team is then flagged incomplete (red) until more members are added.
+    let minMembers: number | null | undefined = undefined;
+    if (body.minMembers !== undefined) {
+      if (body.minMembers === null || body.minMembers === "") {
+        minMembers = null;
+      } else {
+        const parsed = Number(body.minMembers);
+        if (!Number.isInteger(parsed) || parsed < 1) {
+          return c.json({ error: "minMembers must be a positive integer" }, 400);
+        }
+        minMembers = parsed;
+      }
+    }
+    let maxMembers: number | null | undefined = undefined;
+    if (body.maxMembers !== undefined || body.memberLimit !== undefined) {
+      const raw = body.maxMembers !== undefined ? body.maxMembers : body.memberLimit;
+      if (raw === null || raw === "") {
+        maxMembers = null;
+      } else {
+        const parsed = Number(raw);
+        if (!Number.isInteger(parsed) || parsed < 1) {
+          return c.json({ error: "maxMembers must be a positive integer" }, 400);
+        }
+        maxMembers = parsed;
+      }
+    }
+
+    const effectiveMin = minMembers !== undefined ? minMembers : (team.min_members != null ? team.min_members : null);
+    const effectiveMax = maxMembers !== undefined ? maxMembers : (team.member_limit != null ? team.member_limit : null);
+    if (effectiveMin !== null && effectiveMax !== null && effectiveMin > effectiveMax) {
+      return c.json({ error: `minMembers (${effectiveMin}) cannot be greater than maxMembers (${effectiveMax})` }, 400);
+    }
+    if (maxMembers !== undefined && maxMembers !== null) {
+      const count: any = await c.env.DB.prepare("SELECT COUNT(*) as n FROM instance_team_members WHERE team_id = ?").bind(teamId).first();
+      if ((count?.n || 0) > maxMembers) {
+        return c.json({ error: `Team already has ${count.n} members; cap cannot be lower than that` }, 400);
+      }
+    }
+
+    if (name !== undefined) {
+      await c.env.DB.prepare("UPDATE instance_teams SET name = ? WHERE id = ?").bind(name, teamId).run();
+    }
+    if (description !== undefined) {
+      await c.env.DB.prepare("UPDATE instance_teams SET description = ? WHERE id = ?").bind(description || null, teamId).run();
+    }
+    if (minMembers !== undefined) {
+      await c.env.DB.prepare("UPDATE instance_teams SET min_members = ? WHERE id = ?").bind(minMembers, teamId).run();
+    }
+    if (maxMembers !== undefined) {
+      await c.env.DB.prepare("UPDATE instance_teams SET member_limit = ? WHERE id = ?").bind(maxMembers, teamId).run();
+    }
+    await addAuditLog(c, "team_updated", "team", teamId, name || null);
+    return c.json({ success: true, message: "Team updated" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+app.delete("/api/team-instances/:id/teams/:teamId", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    const instanceId = c.req.param("id");
+    const teamId = c.req.param("teamId");
+    const team: any = await c.env.DB.prepare("SELECT id FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
+    if (!team) return c.json({ error: "Team not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    await c.env.DB.prepare("DELETE FROM instance_team_members WHERE team_id = ?").bind(teamId).run();
+    await c.env.DB.prepare("DELETE FROM instance_teams WHERE id = ?").bind(teamId).run();
+    await addAuditLog(c, "team_deleted", "team", teamId, null);
+    return c.json({ success: true, message: "Team deleted" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+app.post("/api/team-instances/:id/teams/:teamId/members", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    const instanceId = c.req.param("id");
+    const teamId = c.req.param("teamId");
+    const team: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
+    if (!team) return c.json({ error: "Team not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    const userId = sanitizeStr(body.userId);
+    if (!userId) return c.json({ error: "Missing userId" }, 400);
+
+    const eligibility = await validateTeamMemberEligibility(c, user, userId);
+    if (eligibility.error) return c.json({ error: eligibility.error }, 400);
+
+    const alreadyIn: any = await c.env.DB.prepare("SELECT 1 FROM instance_team_members WHERE team_id = ? AND user_id = ?").bind(teamId, userId).first();
+    if (alreadyIn) return c.json({ error: `${eligibility.user.name} is already in this team` }, 400);
+
+    if (team.member_limit !== null && team.member_limit !== undefined) {
+      const count: any = await c.env.DB.prepare("SELECT COUNT(*) as n FROM instance_team_members WHERE team_id = ?").bind(teamId).first();
+      if ((count?.n || 0) >= team.member_limit) {
+        return c.json({ error: `Team is full (limit ${team.member_limit})` }, 400);
+      }
+    }
+
+    await c.env.DB.prepare(
+      "INSERT INTO instance_team_members (team_id, user_id, added_by) VALUES (?, ?, ?)",
+    ).bind(teamId, userId, user.id).run();
+    await addAuditLog(c, "team_member_added", "team", teamId, eligibility.user.email);
+    return c.json({ success: true, message: "Member added" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+app.delete("/api/team-instances/:id/teams/:teamId/members/:userId", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    const instanceId = c.req.param("id");
+    const teamId = c.req.param("teamId");
+    const userId = c.req.param("userId");
+    const team: any = await c.env.DB.prepare("SELECT id FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
+    if (!team) return c.json({ error: "Team not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    await c.env.DB.prepare("DELETE FROM instance_team_members WHERE team_id = ? AND user_id = ?").bind(teamId, userId).run();
+    await addAuditLog(c, "team_member_removed", "team", teamId, userId);
+    return c.json({ success: true, message: "Member removed" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
 
 const ALLOWED_IMG_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_IMG_SIZE = 10 * 1024 * 1024; // 10 MB
