@@ -740,8 +740,6 @@ async function seedData(db: any, env?: any) {
     await db.prepare(roleSql).bind("member", "General Member", 10, "system").run();
     await db.prepare(roleSql).bind("advisory", "Advisory Member", 30, "system").run();
 
-    await db.prepare("INSERT OR IGNORE INTO users (id, name, email, role_id) VALUES (?, ?, ?, ?)").bind("anonymous", "Anonymous", "anonymous@180dcvitc.org", "member").run();
-
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("tech", "Technical", "Handles technical infrastructure, UI, and research & development").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("finance", "Finance", "Handles budgeting and financial planning").run();
     await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("crm", "Client Relationship Management", "Manages client relationships, partnerships, and sponsorships").run();
@@ -3592,7 +3590,9 @@ app.get("/api/departments/:id/instructions", async (c) => {
 app.get("/api/club-meets", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    const rows = await c.env.DB.prepare("SELECT * FROM club_meets ORDER BY scheduled_at ASC").all();
+    const rows = await c.env.DB.prepare(
+      "SELECT id, title, description, scheduled_at, created_by, created_at, CASE WHEN julianday(scheduled_at) >= julianday('now', '-1 day') THEN meet_link ELSE NULL END as meet_link FROM club_meets ORDER BY scheduled_at ASC",
+    ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -3651,7 +3651,9 @@ app.delete("/api/club-meets/:id", async (c) => {
 app.get("/api/inter-dept-meets", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    const rows = await c.env.DB.prepare("SELECT * FROM inter_dept_meets ORDER BY scheduled_at ASC").all();
+    const rows = await c.env.DB.prepare(
+      "SELECT id, title, description, scheduled_at, departments, created_by, created_at, CASE WHEN julianday(scheduled_at) >= julianday('now', '-1 day') THEN meet_link ELSE NULL END as meet_link FROM inter_dept_meets ORDER BY scheduled_at ASC",
+    ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -3795,11 +3797,11 @@ app.get("/api/department-meets", async (c) => {
     let rows: any;
     if (user.power_level >= 100) {
       rows = await c.env.DB.prepare(
-        "SELECT dm.*, d.name as department_name FROM department_meets dm JOIN departments d ON dm.department_id = d.id ORDER BY dm.scheduled_at ASC",
+        "SELECT dm.id, dm.department_id, dm.title, dm.description, dm.scheduled_at, dm.created_by, dm.created_at, CASE WHEN julianday(dm.scheduled_at) >= julianday('now', '-1 day') THEN dm.meet_link ELSE NULL END as meet_link, d.name as department_name FROM department_meets dm JOIN departments d ON dm.department_id = d.id ORDER BY dm.scheduled_at ASC",
       ).all();
     } else if (user.department_id) {
       rows = await c.env.DB.prepare(
-        "SELECT dm.*, d.name as department_name FROM department_meets dm JOIN departments d ON dm.department_id = d.id WHERE dm.department_id = ? ORDER BY dm.scheduled_at ASC",
+        "SELECT dm.id, dm.department_id, dm.title, dm.description, dm.scheduled_at, dm.created_by, dm.created_at, CASE WHEN julianday(dm.scheduled_at) >= julianday('now', '-1 day') THEN dm.meet_link ELSE NULL END as meet_link, d.name as department_name FROM department_meets dm JOIN departments d ON dm.department_id = d.id WHERE dm.department_id = ? ORDER BY dm.scheduled_at ASC",
       ).bind(user.department_id).all();
     } else {
       rows = { results: [] };
