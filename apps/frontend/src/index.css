@@ -1894,3 +1894,346 @@ html.lenis body {
     transform: none !important;
   }
 }
+
+/* ═══ REQUEST ACCOUNT PAGE ═══════════════════════════════════════════════ */
+
+.request-account-page {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(2rem, 6vh, 4rem) var(--container-px);
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+/* Soft green atmosphere — glow wash, echoing the portal's brand panel */
+.request-account-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 45% at 50% -10%, var(--accent-glow), transparent 65%),
+    radial-gradient(ellipse 45% 40% at 95% 110%, var(--accent-soft), transparent 60%);
+  pointer-events: none;
+}
+
+/* Faint concentric rings (homepage globe / login-brand motif) */
+.request-account-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid var(--border-green);
+  pointer-events: none;
+}
+
+.request-account-ring--one {
+  width: 520px;
+  height: 520px;
+  top: -200px;
+  right: -160px;
+}
+
+.request-account-ring--two {
+  width: 780px;
+  height: 780px;
+  top: -330px;
+  right: -290px;
+  opacity: 0.5;
+}
+
+.request-account-theme-toggle {
+  position: absolute;
+  top: var(--space-6);
+  right: var(--space-6);
+  z-index: 2;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-subtle);
+  transition: var(--transition-fast);
+}
+
+.request-account-theme-toggle:hover {
+  border-color: var(--border-green);
+  color: var(--primary-green);
+}
+
+.request-account-inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 480px;
+}
+
+/* ── Card ── */
+.request-account-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl); /* 24px */
+  padding: clamp(2rem, 5vw, 3rem);
+  box-shadow: var(--shadow-prominent);
+  animation: request-account-rise 600ms var(--ease-emphasis) both;
+}
+
+/* ── Header ── */
+.request-account-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: var(--space-8);
+}
+
+.request-account-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  margin-bottom: var(--space-5);
+}
+
+.request-account-kicker {
+  margin: 0 0 var(--space-3);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.request-account-title {
+  margin: 0;
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 300;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.request-account-title em {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--accent-hover);
+}
+
+.request-account-subtitle {
+  margin: var(--space-3) 0 0;
+  max-width: 36ch;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* ── Form ── */
+.request-account-form {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.request-account-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.request-account-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+.request-account-optional {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.request-account-input[aria-invalid="true"],
+.request-account-input[aria-invalid="true"]:focus {
+  border-color: var(--status-error);
+}
+
+select.request-account-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a8a8a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: var(--space-10);
+  cursor: pointer;
+}
+
+textarea.request-account-textarea {
+  resize: vertical;
+  min-height: 7.5rem;
+  line-height: 1.55;
+}
+
+/* ── Submit ── */
+.request-account-submit {
+  width: 100%;
+  padding: var(--space-4);
+  font-size: 0.9375rem;
+  box-shadow: var(--shadow-default);
+}
+
+.request-account-submit:hover:not(:disabled) {
+  box-shadow: var(--shadow-elevated);
+}
+
+.request-account-btn-icon {
+  font-size: 14px;
+}
+
+.request-account-spinner {
+  font-size: 20px;
+  animation: request-account-spin 900ms linear infinite;
+}
+
+/* ── Alerts ── */
+.request-account-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  animation: request-account-rise 400ms var(--ease-emphasis) both;
+}
+
+.request-account-alert .material-symbols-outlined {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.request-account-alert--error {
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  color: var(--status-error);
+}
+
+[data-theme="dark"] .request-account-alert--error {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* ── Success state ── */
+.request-account-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-8) var(--space-6);
+  background: var(--surface-green-tint);
+  border: 1px solid var(--border-green);
+  border-radius: var(--radius-lg);
+  animation: request-account-rise 500ms var(--ease-emphasis) both;
+}
+
+.request-account-success-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--primary-green);
+  margin-bottom: var(--space-5);
+}
+
+.request-account-success-icon .material-symbols-outlined {
+  font-size: 28px;
+}
+
+.request-account-success-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.request-account-success-copy {
+  margin: var(--space-3) 0 0;
+  max-width: 34ch;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.request-account-success-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  margin-top: var(--space-6);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.request-account-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+  transition: color 200ms ease-out;
+}
+
+.request-account-link-btn:hover {
+  color: var(--accent-hover);
+}
+
+/* ── Below the card ── */
+.request-account-back {
+  margin: var(--space-6) 0 0;
+  text-align: center;
+}
+
+.request-account-back a {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 200ms ease-out;
+}
+
+.request-account-back a:hover {
+  color: var(--primary-green);
+}
+
+.request-account-foot {
+  margin: var(--space-8) 0 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+/* ── Motion ── */
+@keyframes request-account-rise {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes request-account-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
