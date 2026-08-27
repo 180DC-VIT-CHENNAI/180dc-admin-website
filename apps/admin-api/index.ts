@@ -656,10 +656,14 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS project_departments (project_id TEXT NOT NULL, department_id TEXT NOT NULL, PRIMARY KEY (project_id, department_id), FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (department_id) REFERENCES departments(id));
     CREATE TABLE IF NOT EXISTS project_roles (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, user_id TEXT NOT NULL, role_name TEXT NOT NULL, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id), FOREIGN KEY (user_id) REFERENCES users(id));
     CREATE TABLE IF NOT EXISTS project_tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT, assigned_to TEXT, status TEXT DEFAULT 'pending', created_by TEXT, completed_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (project_id) REFERENCES projects(id));
-    CREATE TABLE IF NOT EXISTS team_instances (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS team_instances (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, group_label TEXT DEFAULT 'Company', level_count INTEGER DEFAULT 1, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS instance_departments (instance_id TEXT NOT NULL, department_id TEXT NOT NULL, PRIMARY KEY (instance_id, department_id), FOREIGN KEY (instance_id) REFERENCES team_instances(id), FOREIGN KEY (department_id) REFERENCES departments(id));
-    CREATE TABLE IF NOT EXISTS instance_teams (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT, member_limit INTEGER, min_members INTEGER, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (instance_id) REFERENCES team_instances(id));
+    CREATE TABLE IF NOT EXISTS instance_teams (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, group_id TEXT, name TEXT NOT NULL, description TEXT, member_limit INTEGER, min_members INTEGER, sort_order INTEGER DEFAULT 0, current_level INTEGER DEFAULT 1, status TEXT DEFAULT 'active', created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (instance_id) REFERENCES team_instances(id));
     CREATE TABLE IF NOT EXISTS instance_team_members (team_id TEXT NOT NULL, user_id TEXT NOT NULL, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (team_id, user_id), FOREIGN KEY (team_id) REFERENCES instance_teams(id), FOREIGN KEY (user_id) REFERENCES users(id));
+    CREATE TABLE IF NOT EXISTS instance_groups (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, name TEXT NOT NULL, organization TEXT, description TEXT, sort_order INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (instance_id) REFERENCES team_instances(id));
+    CREATE TABLE IF NOT EXISTS instance_levels (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL, FOREIGN KEY (instance_id) REFERENCES team_instances(id));
+    CREATE TABLE IF NOT EXISTS instance_external_members (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, organization TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (instance_id) REFERENCES team_instances(id));
+    CREATE TABLE IF NOT EXISTS instance_team_external_members (team_id TEXT NOT NULL, external_id TEXT NOT NULL, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (team_id, external_id), FOREIGN KEY (team_id) REFERENCES instance_teams(id), FOREIGN KEY (external_id) REFERENCES instance_external_members(id));
     CREATE TABLE IF NOT EXISTS rate_limits (ip TEXT NOT NULL, endpoint TEXT NOT NULL, count INTEGER DEFAULT 1, window_start DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (ip, endpoint));
     CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, action TEXT NOT NULL, actor_email TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS daily_email_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
@@ -709,6 +713,18 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE users ADD COLUMN oauth_enabled INTEGER DEFAULT 0"); } catch { console.warn("Migration: oauth_enabled may already exist"); }
   try { await db.exec("ALTER TABLE newsletters ADD COLUMN email_subject TEXT"); } catch { console.warn("Migration: newsletters.email_subject may already exist"); }
   try { await db.exec("ALTER TABLE instance_teams ADD COLUMN min_members INTEGER"); } catch { console.warn("Migration: instance_teams.min_members may already exist"); }
+
+  // Team instances: group layer (Instance -> Group -> Team) + outside (non-registered) members
+  try { await db.exec(`CREATE TABLE IF NOT EXISTS instance_groups (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, name TEXT NOT NULL, organization TEXT, description TEXT, sort_order INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (instance_id) REFERENCES team_instances(id))`); } catch { console.warn("Migration: instance_groups table"); }
+  try { await db.exec(`CREATE TABLE IF NOT EXISTS instance_external_members (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, organization TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (instance_id) REFERENCES team_instances(id))`); } catch { console.warn("Migration: instance_external_members table"); }
+  try { await db.exec(`CREATE TABLE IF NOT EXISTS instance_team_external_members (team_id TEXT NOT NULL, external_id TEXT NOT NULL, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (team_id, external_id), FOREIGN KEY (team_id) REFERENCES instance_teams(id), FOREIGN KEY (external_id) REFERENCES instance_external_members(id))`); } catch { console.warn("Migration: instance_team_external_members table"); }
+  try { await db.exec("ALTER TABLE instance_teams ADD COLUMN group_id TEXT"); } catch { console.warn("Migration: instance_teams.group_id may already exist"); }
+  try { await db.exec("ALTER TABLE instance_teams ADD COLUMN sort_order INTEGER DEFAULT 0"); } catch { console.warn("Migration: instance_teams.sort_order may already exist"); }
+  try { await db.exec("ALTER TABLE team_instances ADD COLUMN group_label TEXT DEFAULT 'Company'"); } catch { console.warn("Migration: team_instances.group_label may already exist"); }
+  try { await db.exec(`CREATE TABLE IF NOT EXISTS instance_levels (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL, FOREIGN KEY (instance_id) REFERENCES team_instances(id))`); } catch { console.warn("Migration: instance_levels table"); }
+  try { await db.exec("ALTER TABLE team_instances ADD COLUMN level_count INTEGER DEFAULT 1"); } catch { console.warn("Migration: team_instances.level_count may already exist"); }
+  try { await db.exec("ALTER TABLE instance_teams ADD COLUMN current_level INTEGER DEFAULT 1"); } catch { console.warn("Migration: instance_teams.current_level may already exist"); }
+  try { await db.exec("ALTER TABLE instance_teams ADD COLUMN status TEXT DEFAULT 'active'"); } catch { console.warn("Migration: instance_teams.status may already exist"); }
 
   try { await db.exec("INSERT OR IGNORE INTO maintenance_mode (id, enabled, message) VALUES (1, 0, 'Site is under maintenance. Please check back later.')"); } catch { console.warn("Migration: maintenance_mode seed"); }
   try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletter_subscribers (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, active INTEGER DEFAULT 1, subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP, unsubscribed_at DATETIME)`); } catch { console.warn("Migration: newsletter_subscribers table"); }
@@ -4277,31 +4293,228 @@ async function canManageInstanceTeams(c: any, instanceId: string) {
   return false;
 }
 
-async function getInstanceWithTeams(c: any, instanceId: string) {
+// Audit details always embed the instance id so the per-instance activity feed
+// can still find rows whose target (a team or group) has since been deleted.
+function instanceDetail(instanceId: string, text: string | null) {
+  return text ? `${text} in instance ${instanceId}` : `in instance ${instanceId}`;
+}
+
+// Replace an instance's level list. `names` may be shorter than `count`; the
+// gaps fall back to "Level N" when read back out.
+async function writeInstanceLevels(c: any, instanceId: string, count: number, names: string[]) {
+  await c.env.DB.prepare("DELETE FROM instance_levels WHERE instance_id = ?").bind(instanceId).run();
+  for (let i = 1; i <= count; i++) {
+    const name = sanitizeStr(names[i - 1], 60) || `Level ${i}`;
+    await c.env.DB.prepare(
+      "INSERT INTO instance_levels (id, instance_id, position, name) VALUES (?, ?, ?, ?)",
+    ).bind(crypto.randomUUID().replace(/-/g, ""), instanceId, i, name).run();
+  }
+}
+
+// Parse a levelCount payload value. Returns null when absent, throws-ish via
+// the `error` field when invalid.
+function parseLevelCount(raw: any): { value?: number; error?: string } {
+  if (raw === undefined || raw === null || raw === "") return {};
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 20) return { error: "levelCount must be a whole number between 1 and 20" };
+  return { value: n };
+}
+
+// Bulk-load the full instance tree (instance -> group -> team -> members).
+// Deliberately a fixed number of queries: the previous implementation issued one
+// query per team on top of three per instance, which reached ~80 sequential D1
+// round-trips for a modest number of instances.
+async function loadInstanceTree(c: any, onlyInstanceId?: string) {
   const db = c.env.DB;
-  const instance: any = await db.prepare("SELECT ti.*, u.name as created_by_name FROM team_instances ti LEFT JOIN users u ON ti.created_by = u.id WHERE ti.id = ?").bind(instanceId).first();
-  if (!instance) return null;
-  const depts = await db.prepare(
-    "SELECT d.id, d.name FROM instance_departments id2 JOIN departments d ON id2.department_id = d.id WHERE id2.instance_id = ?",
-  ).bind(instanceId).all();
-  const teams = await db.prepare("SELECT * FROM instance_teams WHERE instance_id = ? ORDER BY created_at ASC").bind(instanceId).all();
-  const teamsWithMembers = [];
-  for (const team of (teams.results || [])) {
-    const members = await db.prepare(
-      "SELECT tm.user_id, tm.added_by, u.name as user_name, u.email as user_email, u.department_id as user_department_id, r.name as user_role_name FROM instance_team_members tm JOIN users u ON tm.user_id = u.id LEFT JOIN roles r ON u.role_id = r.id WHERE tm.team_id = ? ORDER BY tm.created_at ASC",
-    ).bind(team.id).all();
-    const memberCount = (members.results || []).length;
-    const min = team.min_members != null ? team.min_members : null;
-    const max = team.member_limit != null ? team.member_limit : null;
-    teamsWithMembers.push({
-      ...team,
-      members: members.results || [],
-      member_count: memberCount,
-      requirement_met: min == null ? true : memberCount >= min,
-      is_full: max != null && memberCount >= max,
+
+  const instanceRows = onlyInstanceId
+    ? await db.prepare(
+        "SELECT ti.*, u.name as created_by_name FROM team_instances ti LEFT JOIN users u ON ti.created_by = u.id WHERE ti.id = ?",
+      ).bind(onlyInstanceId).all()
+    : await db.prepare(
+        "SELECT ti.*, u.name as created_by_name FROM team_instances ti LEFT JOIN users u ON ti.created_by = u.id ORDER BY ti.created_at DESC",
+      ).all();
+
+  const instances: any[] = instanceRows.results || [];
+  if (instances.length === 0) return [];
+
+  const instanceIds = instances.map((i: any) => i.id);
+  const iph = instanceIds.map(() => "?").join(",");
+
+  const [deptRows, groupRows, teamRows, externalRows, levelRows] = await Promise.all([
+    db.prepare(
+      `SELECT id2.instance_id, d.id, d.name FROM instance_departments id2 JOIN departments d ON id2.department_id = d.id WHERE id2.instance_id IN (${iph})`,
+    ).bind(...instanceIds).all(),
+    db.prepare(
+      `SELECT * FROM instance_groups WHERE instance_id IN (${iph}) ORDER BY sort_order ASC, created_at ASC`,
+    ).bind(...instanceIds).all(),
+    db.prepare(
+      `SELECT * FROM instance_teams WHERE instance_id IN (${iph}) ORDER BY sort_order ASC, created_at ASC`,
+    ).bind(...instanceIds).all(),
+    db.prepare(
+      `SELECT * FROM instance_external_members WHERE instance_id IN (${iph}) ORDER BY name ASC`,
+    ).bind(...instanceIds).all(),
+    db.prepare(
+      `SELECT * FROM instance_levels WHERE instance_id IN (${iph}) ORDER BY position ASC`,
+    ).bind(...instanceIds).all(),
+  ]);
+
+  const teams: any[] = teamRows.results || [];
+  const teamIds = teams.map((t: any) => t.id);
+
+  let internalRows: any[] = [];
+  let externalLinkRows: any[] = [];
+  if (teamIds.length > 0) {
+    const tph = teamIds.map(() => "?").join(",");
+    const [im, el] = await Promise.all([
+      db.prepare(
+        `SELECT tm.team_id, tm.user_id, tm.added_by, u.name as user_name, u.email as user_email, u.department_id as user_department_id, r.name as user_role_name FROM instance_team_members tm JOIN users u ON tm.user_id = u.id LEFT JOIN roles r ON u.role_id = r.id WHERE tm.team_id IN (${tph}) ORDER BY tm.created_at ASC`,
+      ).bind(...teamIds).all(),
+      db.prepare(
+        `SELECT te.team_id, te.external_id, te.added_by, em.name, em.email, em.organization FROM instance_team_external_members te JOIN instance_external_members em ON te.external_id = em.id WHERE te.team_id IN (${tph}) ORDER BY te.created_at ASC`,
+      ).bind(...teamIds).all(),
+    ]);
+    internalRows = im.results || [];
+    externalLinkRows = el.results || [];
+  }
+
+  const membersByTeam = new Map<string, any[]>();
+  for (const t of teams) membersByTeam.set(t.id, []);
+  for (const m of internalRows) {
+    membersByTeam.get(m.team_id)?.push({
+      kind: "internal",
+      user_id: m.user_id,
+      added_by: m.added_by,
+      user_name: m.user_name,
+      user_email: m.user_email,
+      user_department_id: m.user_department_id,
+      user_role_name: m.user_role_name,
     });
   }
-  return { ...instance, departments: depts.results || [], teams: teamsWithMembers };
+  for (const m of externalLinkRows) {
+    membersByTeam.get(m.team_id)?.push({
+      kind: "external",
+      external_id: m.external_id,
+      added_by: m.added_by,
+      name: m.name,
+      email: m.email,
+      organization: m.organization,
+    });
+  }
+
+  function buildTeam(team: any) {
+    const members = membersByTeam.get(team.id) || [];
+    const memberCount = members.length;
+    const min = team.min_members != null ? team.min_members : null;
+    const max = team.member_limit != null ? team.member_limit : null;
+    return {
+      ...team,
+      current_level: team.current_level && team.current_level > 0 ? team.current_level : 1,
+      status: team.status || "active",
+      members,
+      member_count: memberCount,
+      internal_count: members.filter((m: any) => m.kind === "internal").length,
+      external_count: members.filter((m: any) => m.kind === "external").length,
+      requirement_met: min == null ? true : memberCount >= min,
+      is_full: max != null && memberCount >= max,
+    };
+  }
+
+  const deptsByInstance = new Map<string, any[]>();
+  for (const d of (deptRows.results || []) as any[]) {
+    if (!deptsByInstance.has(d.instance_id)) deptsByInstance.set(d.instance_id, []);
+    deptsByInstance.get(d.instance_id)!.push({ id: d.id, name: d.name });
+  }
+  const externalsByInstance = new Map<string, any[]>();
+  for (const e of (externalRows.results || []) as any[]) {
+    if (!externalsByInstance.has(e.instance_id)) externalsByInstance.set(e.instance_id, []);
+    externalsByInstance.get(e.instance_id)!.push(e);
+  }
+  const levelsByInstance = new Map<string, any[]>();
+  for (const l of (levelRows.results || []) as any[]) {
+    if (!levelsByInstance.has(l.instance_id)) levelsByInstance.set(l.instance_id, []);
+    levelsByInstance.get(l.instance_id)!.push(l);
+  }
+  const groupsByInstance = new Map<string, any[]>();
+  for (const g of (groupRows.results || []) as any[]) {
+    if (!groupsByInstance.has(g.instance_id)) groupsByInstance.set(g.instance_id, []);
+    groupsByInstance.get(g.instance_id)!.push(g);
+  }
+  const teamsByInstance = new Map<string, any[]>();
+  for (const t of teams) {
+    if (!teamsByInstance.has(t.instance_id)) teamsByInstance.set(t.instance_id, []);
+    teamsByInstance.get(t.instance_id)!.push(buildTeam(t));
+  }
+
+  return instances.map((inst: any) => {
+    const instTeams = teamsByInstance.get(inst.id) || [];
+    const byGroup = new Map<string, any[]>();
+    const ungrouped: any[] = [];
+    for (const t of instTeams) {
+      if (t.group_id) {
+        if (!byGroup.has(t.group_id)) byGroup.set(t.group_id, []);
+        byGroup.get(t.group_id)!.push(t);
+      } else {
+        ungrouped.push(t);
+      }
+    }
+    const groups = (groupsByInstance.get(inst.id) || []).map((g: any) => {
+      const gTeams = byGroup.get(g.id) || [];
+      return {
+        ...g,
+        teams: gTeams,
+        stats: {
+          team_count: gTeams.length,
+          member_count: gTeams.reduce((n: number, t: any) => n + t.member_count, 0),
+          understaffed_count: gTeams.filter((t: any) => !t.requirement_met).length,
+        },
+      };
+    });
+    // A team whose group_id points at a deleted group would otherwise vanish.
+    const knownGroupIds = new Set(groups.map((g: any) => g.id));
+    for (const t of instTeams) {
+      if (t.group_id && !knownGroupIds.has(t.group_id)) ungrouped.push(t);
+    }
+
+    return {
+      ...inst,
+      group_label: inst.group_label || "Company",
+      level_count: inst.level_count && inst.level_count > 0 ? inst.level_count : 1,
+      // Named levels when they exist, otherwise synthesised "Level N" entries so
+      // the UI always has something to render columns from.
+      levels: (() => {
+        const stored = levelsByInstance.get(inst.id) || [];
+        const count = inst.level_count && inst.level_count > 0 ? inst.level_count : 1;
+        const out = [];
+        for (let i = 1; i <= count; i++) {
+          const match = stored.find((l: any) => l.position === i);
+          out.push({ position: i, name: match ? match.name : `Level ${i}` });
+        }
+        return out;
+      })(),
+      departments: deptsByInstance.get(inst.id) || [],
+      externals: externalsByInstance.get(inst.id) || [],
+      groups,
+      ungrouped_teams: ungrouped,
+      stats: {
+        group_count: groups.length,
+        team_count: instTeams.length,
+        member_count: instTeams.reduce((n: number, t: any) => n + t.member_count, 0),
+        internal_count: instTeams.reduce((n: number, t: any) => n + t.internal_count, 0),
+        external_count: instTeams.reduce((n: number, t: any) => n + t.external_count, 0),
+        understaffed_count: instTeams.filter((t: any) => !t.requirement_met).length,
+        active_count: instTeams.filter((t: any) => (t.status || "active") === "active").length,
+        eliminated_count: instTeams.filter((t: any) => t.status === "eliminated").length,
+      },
+    };
+  });
+}
+
+// Combined internal + external headcount for a team.
+async function teamMemberCount(c: any, teamId: string): Promise<number> {
+  const internal: any = await c.env.DB.prepare("SELECT COUNT(*) as n FROM instance_team_members WHERE team_id = ?").bind(teamId).first();
+  const external: any = await c.env.DB.prepare("SELECT COUNT(*) as n FROM instance_team_external_members WHERE team_id = ?").bind(teamId).first();
+  return (internal?.n || 0) + (external?.n || 0);
 }
 
 app.get("/api/team-instances", async (c) => {
@@ -4311,13 +4524,7 @@ app.get("/api/team-instances", async (c) => {
     if (user.role_id === "advisory") {
       return c.json({ error: "Advisory members do not have access to team instances" }, 403);
     }
-    const instances = await c.env.DB.prepare("SELECT id FROM team_instances ORDER BY created_at DESC").all();
-    const results = [];
-    for (const row of (instances.results || [])) {
-      const full = await getInstanceWithTeams(c, row.id);
-      if (full) results.push(full);
-    }
-    return c.json({ success: true, data: results });
+    return c.json({ success: true, data: await loadInstanceTree(c) });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -4338,6 +4545,7 @@ app.post("/api/team-instances", async (c) => {
     if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
     const name = sanitizeStr(body.name);
     const description = sanitizeStr(body.description, MAX_PROJECT_DESC_LEN);
+    const groupLabel = sanitizeStr(body.groupLabel, 40) || "Company";
     if (!name) return c.json({ error: "Missing instance name" }, 400);
 
     let departmentIds: string[];
@@ -4360,16 +4568,22 @@ app.post("/api/team-instances", async (c) => {
       return c.json({ error: "Invalid department selection" }, 400);
     }
 
+    const lc = parseLevelCount(body.levelCount);
+    if (lc.error) return c.json({ error: lc.error }, 400);
+    const levelCount = lc.value ?? 1;
+    const levelNames: string[] = Array.isArray(body.levelNames) ? body.levelNames.map((n: any) => String(n)) : [];
+
     const instanceId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
-      "INSERT INTO team_instances (id, name, description, created_by) VALUES (?, ?, ?, ?)",
-    ).bind(instanceId, name, description || null, user.id).run();
+      "INSERT INTO team_instances (id, name, description, group_label, level_count, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+    ).bind(instanceId, name, description || null, groupLabel, levelCount, user.id).run();
+    await writeInstanceLevels(c, instanceId, levelCount, levelNames);
     for (const deptId of departmentIds) {
       await c.env.DB.prepare(
         "INSERT OR IGNORE INTO instance_departments (instance_id, department_id) VALUES (?, ?)",
       ).bind(instanceId, deptId).run();
     }
-    await addAuditLog(c, "team_instance_created", "team_instance", instanceId, name);
+    await addAuditLog(c, "team_instance_created", "team_instance", instanceId, instanceDetail(instanceId, name));
     return c.json({ success: true, message: "Instance created", instanceId });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4379,7 +4593,6 @@ app.post("/api/team-instances", async (c) => {
 app.put("/api/team-instances/:id", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    const user: any = c.get("user");
     const instanceId = c.req.param("id");
     const existing: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
     if (!existing) return c.json({ error: "Instance not found" }, 404);
@@ -4390,14 +4603,34 @@ app.put("/api/team-instances/:id", async (c) => {
     if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
     const name = body.name !== undefined ? sanitizeStr(body.name) : undefined;
     const description = body.description !== undefined ? sanitizeStr(body.description, MAX_PROJECT_DESC_LEN) : undefined;
+    const groupLabel = body.groupLabel !== undefined ? sanitizeStr(body.groupLabel, 40) : undefined;
     if (name !== undefined && !name) return c.json({ error: "Instance name cannot be empty" }, 400);
+    if (groupLabel !== undefined && !groupLabel) return c.json({ error: "Group label cannot be empty" }, 400);
     if (name !== undefined) {
       await c.env.DB.prepare("UPDATE team_instances SET name = ? WHERE id = ?").bind(name, instanceId).run();
     }
     if (description !== undefined) {
       await c.env.DB.prepare("UPDATE team_instances SET description = ? WHERE id = ?").bind(description || null, instanceId).run();
     }
-    await addAuditLog(c, "team_instance_updated", "team_instance", instanceId, name || null);
+    if (groupLabel !== undefined) {
+      await c.env.DB.prepare("UPDATE team_instances SET group_label = ? WHERE id = ?").bind(groupLabel, instanceId).run();
+    }
+    if (body.levelCount !== undefined || body.levelNames !== undefined) {
+      const lc = parseLevelCount(body.levelCount);
+      if (lc.error) return c.json({ error: lc.error }, 400);
+      const current: any = await c.env.DB.prepare("SELECT level_count FROM team_instances WHERE id = ?").bind(instanceId).first();
+      const levelCount = lc.value ?? (current?.level_count && current.level_count > 0 ? current.level_count : 1);
+
+      // Shrinking the ladder would strand teams above the new top level, so
+      // pull them back down rather than leaving them unreachable.
+      await c.env.DB.prepare("UPDATE instance_teams SET current_level = ? WHERE instance_id = ? AND current_level > ?")
+        .bind(levelCount, instanceId, levelCount).run();
+
+      const levelNames: string[] = Array.isArray(body.levelNames) ? body.levelNames.map((n: any) => String(n)) : [];
+      await c.env.DB.prepare("UPDATE team_instances SET level_count = ? WHERE id = ?").bind(levelCount, instanceId).run();
+      await writeInstanceLevels(c, instanceId, levelCount, levelNames);
+    }
+    await addAuditLog(c, "team_instance_updated", "team_instance", instanceId, instanceDetail(instanceId, name || null));
     return c.json({ success: true, message: "Instance updated" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4407,7 +4640,6 @@ app.put("/api/team-instances/:id", async (c) => {
 app.delete("/api/team-instances/:id", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    const user: any = c.get("user");
     const instanceId = c.req.param("id");
     const existing: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
     if (!existing) return c.json({ error: "Instance not found" }, 404);
@@ -4415,14 +4647,218 @@ app.delete("/api/team-instances/:id", async (c) => {
       return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
     }
     const teams = await c.env.DB.prepare("SELECT id FROM instance_teams WHERE instance_id = ?").bind(instanceId).all();
-    for (const team of (teams.results || [])) {
+    for (const team of (teams.results || []) as any[]) {
       await c.env.DB.prepare("DELETE FROM instance_team_members WHERE team_id = ?").bind(team.id).run();
+      await c.env.DB.prepare("DELETE FROM instance_team_external_members WHERE team_id = ?").bind(team.id).run();
     }
     await c.env.DB.prepare("DELETE FROM instance_teams WHERE instance_id = ?").bind(instanceId).run();
+    await c.env.DB.prepare("DELETE FROM instance_groups WHERE instance_id = ?").bind(instanceId).run();
+    await c.env.DB.prepare("DELETE FROM instance_levels WHERE instance_id = ?").bind(instanceId).run();
+    await c.env.DB.prepare("DELETE FROM instance_external_members WHERE instance_id = ?").bind(instanceId).run();
     await c.env.DB.prepare("DELETE FROM instance_departments WHERE instance_id = ?").bind(instanceId).run();
     await c.env.DB.prepare("DELETE FROM team_instances WHERE id = ?").bind(instanceId).run();
-    await addAuditLog(c, "team_instance_deleted", "team_instance", instanceId, null);
+    await addAuditLog(c, "team_instance_deleted", "team_instance", instanceId, instanceDetail(instanceId, null));
     return c.json({ success: true, message: "Instance deleted" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// ---------------------------------------------------------
+// GROUPS — the classification layer between instance and team
+// (a client company, a competition, or whatever `group_label` says)
+// ---------------------------------------------------------
+
+app.post("/api/team-instances/:id/groups", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    const instanceId = c.req.param("id");
+    const instance: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    if (!instance) return c.json({ error: "Instance not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    const rl = await checkRateLimit(c, "create_instance_group", 40, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many groups created. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    const name = sanitizeStr(body.name);
+    if (!name) return c.json({ error: "Missing group name" }, 400);
+    const organization = body.organization !== undefined ? sanitizeStr(body.organization, 200) : null;
+    const description = body.description !== undefined ? sanitizeStr(body.description, MAX_PROJECT_DESC_LEN) : null;
+
+    const maxOrder: any = await c.env.DB.prepare("SELECT MAX(sort_order) as m FROM instance_groups WHERE instance_id = ?").bind(instanceId).first();
+    const groupId = crypto.randomUUID().replace(/-/g, "");
+    await c.env.DB.prepare(
+      "INSERT INTO instance_groups (id, instance_id, name, organization, description, sort_order, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(groupId, instanceId, name, organization, description, (maxOrder?.m ?? -1) + 1, user.id).run();
+    await addAuditLog(c, "instance_group_created", "instance_group", groupId, instanceDetail(instanceId, name));
+    return c.json({ success: true, message: "Group created", groupId });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+app.put("/api/team-instances/:id/groups/:groupId", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const instanceId = c.req.param("id");
+    const groupId = c.req.param("groupId");
+    const group: any = await c.env.DB.prepare("SELECT * FROM instance_groups WHERE id = ? AND instance_id = ?").bind(groupId, instanceId).first();
+    if (!group) return c.json({ error: "Group not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+
+    const name = body.name !== undefined ? sanitizeStr(body.name) : undefined;
+    if (name !== undefined && !name) return c.json({ error: "Group name cannot be empty" }, 400);
+    if (name !== undefined) {
+      await c.env.DB.prepare("UPDATE instance_groups SET name = ? WHERE id = ?").bind(name, groupId).run();
+    }
+    if (body.organization !== undefined) {
+      await c.env.DB.prepare("UPDATE instance_groups SET organization = ? WHERE id = ?").bind(sanitizeStr(body.organization, 200), groupId).run();
+    }
+    if (body.description !== undefined) {
+      await c.env.DB.prepare("UPDATE instance_groups SET description = ? WHERE id = ?").bind(sanitizeStr(body.description, MAX_PROJECT_DESC_LEN), groupId).run();
+    }
+    if (body.sortOrder !== undefined) {
+      const parsed = Number(body.sortOrder);
+      if (!Number.isInteger(parsed) || parsed < 0) return c.json({ error: "sortOrder must be a non-negative integer" }, 400);
+      await c.env.DB.prepare("UPDATE instance_groups SET sort_order = ? WHERE id = ?").bind(parsed, groupId).run();
+    }
+    await addAuditLog(c, "instance_group_updated", "instance_group", groupId, instanceDetail(instanceId, name || group.name));
+    return c.json({ success: true, message: "Group updated" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// Deleting a group does NOT delete its teams — they fall back to "Ungrouped",
+// so a mis-click can never destroy team rosters.
+app.delete("/api/team-instances/:id/groups/:groupId", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const instanceId = c.req.param("id");
+    const groupId = c.req.param("groupId");
+    const group: any = await c.env.DB.prepare("SELECT * FROM instance_groups WHERE id = ? AND instance_id = ?").bind(groupId, instanceId).first();
+    if (!group) return c.json({ error: "Group not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    await c.env.DB.prepare("UPDATE instance_teams SET group_id = NULL WHERE group_id = ?").bind(groupId).run();
+    await c.env.DB.prepare("DELETE FROM instance_groups WHERE id = ?").bind(groupId).run();
+    await addAuditLog(c, "instance_group_deleted", "instance_group", groupId, instanceDetail(instanceId, group.name));
+    return c.json({ success: true, message: "Group deleted; its teams are now ungrouped" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// ---------------------------------------------------------
+// OUTSIDE MEMBERS — people who are not registered website users
+// (other-college participants, client contacts, alumni)
+// ---------------------------------------------------------
+
+app.post("/api/team-instances/:id/externals", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    const instanceId = c.req.param("id");
+    const instance: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    if (!instance) return c.json({ error: "Instance not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    const rl = await checkRateLimit(c, "create_instance_external", 100, 3600);
+    if (!rl.allowed) {
+      return c.json({ error: "Too many outside members added. Try again later.", retryAfter: rl.retryAfter }, 429);
+    }
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    const name = sanitizeStr(body.name);
+    if (!name) return c.json({ error: "Missing name" }, 400);
+    const organization = body.organization !== undefined ? sanitizeStr(body.organization, 200) : null;
+
+    let email: string | null = null;
+    if (body.email !== undefined && body.email !== null && String(body.email).trim() !== "") {
+      email = validateEmail(body.email);
+      if (!email) return c.json({ error: "Invalid email address" }, 400);
+      const dupe: any = await c.env.DB.prepare(
+        "SELECT name FROM instance_external_members WHERE instance_id = ? AND lower(email) = lower(?)",
+      ).bind(instanceId, email).first();
+      if (dupe) return c.json({ error: `${dupe.name} is already added with that email` }, 400);
+    }
+
+    const externalId = crypto.randomUUID().replace(/-/g, "");
+    await c.env.DB.prepare(
+      "INSERT INTO instance_external_members (id, instance_id, name, email, organization, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+    ).bind(externalId, instanceId, name, email, organization, user.id).run();
+    await addAuditLog(c, "outside_member_created", "instance_external", externalId, instanceDetail(instanceId, `${name}${organization ? ` (${organization})` : ""}`));
+    return c.json({ success: true, message: "Outside member added", externalId });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+app.put("/api/team-instances/:id/externals/:externalId", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const instanceId = c.req.param("id");
+    const externalId = c.req.param("externalId");
+    const ext: any = await c.env.DB.prepare("SELECT * FROM instance_external_members WHERE id = ? AND instance_id = ?").bind(externalId, instanceId).first();
+    if (!ext) return c.json({ error: "Outside member not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+
+    const name = body.name !== undefined ? sanitizeStr(body.name) : undefined;
+    if (name !== undefined && !name) return c.json({ error: "Name cannot be empty" }, 400);
+    if (name !== undefined) {
+      await c.env.DB.prepare("UPDATE instance_external_members SET name = ? WHERE id = ?").bind(name, externalId).run();
+    }
+    if (body.organization !== undefined) {
+      await c.env.DB.prepare("UPDATE instance_external_members SET organization = ? WHERE id = ?").bind(sanitizeStr(body.organization, 200), externalId).run();
+    }
+    if (body.email !== undefined) {
+      let email: string | null = null;
+      if (body.email !== null && String(body.email).trim() !== "") {
+        email = validateEmail(body.email);
+        if (!email) return c.json({ error: "Invalid email address" }, 400);
+        const dupe: any = await c.env.DB.prepare(
+          "SELECT name FROM instance_external_members WHERE instance_id = ? AND lower(email) = lower(?) AND id != ?",
+        ).bind(instanceId, email, externalId).first();
+        if (dupe) return c.json({ error: `${dupe.name} is already added with that email` }, 400);
+      }
+      await c.env.DB.prepare("UPDATE instance_external_members SET email = ? WHERE id = ?").bind(email, externalId).run();
+    }
+    await addAuditLog(c, "outside_member_updated", "instance_external", externalId, instanceDetail(instanceId, name || ext.name));
+    return c.json({ success: true, message: "Outside member updated" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+app.delete("/api/team-instances/:id/externals/:externalId", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const instanceId = c.req.param("id");
+    const externalId = c.req.param("externalId");
+    const ext: any = await c.env.DB.prepare("SELECT * FROM instance_external_members WHERE id = ? AND instance_id = ?").bind(externalId, instanceId).first();
+    if (!ext) return c.json({ error: "Outside member not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    await c.env.DB.prepare("DELETE FROM instance_team_external_members WHERE external_id = ?").bind(externalId).run();
+    await c.env.DB.prepare("DELETE FROM instance_external_members WHERE id = ?").bind(externalId).run();
+    await addAuditLog(c, "outside_member_deleted", "instance_external", externalId, instanceDetail(instanceId, ext.name));
+    return c.json({ success: true, message: "Outside member removed from the instance" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -4464,6 +4900,13 @@ app.post("/api/team-instances/:id/teams", async (c) => {
     const description = sanitizeStr(body.description, MAX_PROJECT_DESC_LEN);
     if (!name) return c.json({ error: "Missing team name" }, 400);
 
+    let groupId: string | null = null;
+    if (body.groupId !== undefined && body.groupId !== null && String(body.groupId).trim() !== "") {
+      groupId = String(body.groupId).trim();
+      const group: any = await c.env.DB.prepare("SELECT id FROM instance_groups WHERE id = ? AND instance_id = ?").bind(groupId, instanceId).first();
+      if (!group) return c.json({ error: "Group does not belong to this instance" }, 400);
+    }
+
     // Parse minMembers (min required) and maxMembers (cap). `memberLimit` is
     // accepted as a legacy alias for maxMembers. "Exactly N" is min = max = N.
     let minMembers: number | null = null;
@@ -4483,24 +4926,39 @@ app.post("/api/team-instances/:id/teams", async (c) => {
     const memberIds: string[] = Array.isArray(body.memberIds)
       ? ([...new Set(((body.memberIds as any[]).map((m: any) => String(m).trim()).filter(Boolean) as string[]))] as string[])
       : [];
-    if (maxMembers !== null && memberIds.length > maxMembers) {
-      return c.json({ error: `Member cap is ${maxMembers} but ${memberIds.length} members were selected` }, 400);
+    const externalIds: string[] = Array.isArray(body.externalIds)
+      ? ([...new Set(((body.externalIds as any[]).map((m: any) => String(m).trim()).filter(Boolean) as string[]))] as string[])
+      : [];
+    if (maxMembers !== null && memberIds.length + externalIds.length > maxMembers) {
+      return c.json({ error: `Member cap is ${maxMembers} but ${memberIds.length + externalIds.length} members were selected` }, 400);
     }
     for (const memberId of memberIds) {
       const check = await validateTeamMemberEligibility(c, user, memberId);
       if (check.error) return c.json({ error: check.error }, 400);
     }
+    for (const externalId of externalIds) {
+      const ext: any = await c.env.DB.prepare("SELECT id FROM instance_external_members WHERE id = ? AND instance_id = ?").bind(externalId, instanceId).first();
+      if (!ext) return c.json({ error: "An outside member does not belong to this instance" }, 400);
+    }
 
+    const maxOrder: any = await c.env.DB.prepare(
+      "SELECT MAX(sort_order) as m FROM instance_teams WHERE instance_id = ? AND (group_id IS ? OR group_id = ?)",
+    ).bind(instanceId, groupId, groupId).first();
     const teamId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
-      "INSERT INTO instance_teams (id, instance_id, name, description, member_limit, min_members, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    ).bind(teamId, instanceId, name, description || null, maxMembers, minMembers, user.id).run();
+      "INSERT INTO instance_teams (id, instance_id, group_id, name, description, member_limit, min_members, sort_order, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(teamId, instanceId, groupId, name, description || null, maxMembers, minMembers, (maxOrder?.m ?? -1) + 1, user.id).run();
     for (const memberId of memberIds) {
       await c.env.DB.prepare(
         "INSERT OR IGNORE INTO instance_team_members (team_id, user_id, added_by) VALUES (?, ?, ?)",
       ).bind(teamId, memberId, user.id).run();
     }
-    await addAuditLog(c, "team_created", "team", teamId, `${name} in instance ${instanceId}`);
+    for (const externalId of externalIds) {
+      await c.env.DB.prepare(
+        "INSERT OR IGNORE INTO instance_team_external_members (team_id, external_id, added_by) VALUES (?, ?, ?)",
+      ).bind(teamId, externalId, user.id).run();
+    }
+    await addAuditLog(c, "team_created", "team", teamId, instanceDetail(instanceId, name));
     return c.json({ success: true, message: "Team created", teamId });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4510,7 +4968,6 @@ app.post("/api/team-instances/:id/teams", async (c) => {
 app.put("/api/team-instances/:id/teams/:teamId", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    const user: any = c.get("user");
     const instanceId = c.req.param("id");
     const teamId = c.req.param("teamId");
     const team: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
@@ -4524,6 +4981,19 @@ app.put("/api/team-instances/:id/teams/:teamId", async (c) => {
     const name = body.name !== undefined ? sanitizeStr(body.name) : undefined;
     const description = body.description !== undefined ? sanitizeStr(body.description, MAX_PROJECT_DESC_LEN) : undefined;
     if (name !== undefined && !name) return c.json({ error: "Team name cannot be empty" }, 400);
+
+    // groupId moves the team between groups (this backs the drag-and-drop);
+    // null / "" moves it to Ungrouped.
+    let groupId: string | null | undefined = undefined;
+    if (body.groupId !== undefined) {
+      if (body.groupId === null || String(body.groupId).trim() === "") {
+        groupId = null;
+      } else {
+        groupId = String(body.groupId).trim();
+        const group: any = await c.env.DB.prepare("SELECT id FROM instance_groups WHERE id = ? AND instance_id = ?").bind(groupId, instanceId).first();
+        if (!group) return c.json({ error: "Group does not belong to this instance" }, 400);
+      }
+    }
 
     // minMembers / maxMembers (memberLimit = legacy alias for max). Either can
     // be nulled by sending null. min may exceed the current member count — the
@@ -4560,9 +5030,9 @@ app.put("/api/team-instances/:id/teams/:teamId", async (c) => {
       return c.json({ error: `minMembers (${effectiveMin}) cannot be greater than maxMembers (${effectiveMax})` }, 400);
     }
     if (maxMembers !== undefined && maxMembers !== null) {
-      const count: any = await c.env.DB.prepare("SELECT COUNT(*) as n FROM instance_team_members WHERE team_id = ?").bind(teamId).first();
-      if ((count?.n || 0) > maxMembers) {
-        return c.json({ error: `Team already has ${count.n} members; cap cannot be lower than that` }, 400);
+      const n = await teamMemberCount(c, teamId);
+      if (n > maxMembers) {
+        return c.json({ error: `Team already has ${n} members; cap cannot be lower than that` }, 400);
       }
     }
 
@@ -4572,13 +5042,47 @@ app.put("/api/team-instances/:id/teams/:teamId", async (c) => {
     if (description !== undefined) {
       await c.env.DB.prepare("UPDATE instance_teams SET description = ? WHERE id = ?").bind(description || null, teamId).run();
     }
+    if (groupId !== undefined) {
+      await c.env.DB.prepare("UPDATE instance_teams SET group_id = ? WHERE id = ?").bind(groupId, teamId).run();
+    }
     if (minMembers !== undefined) {
       await c.env.DB.prepare("UPDATE instance_teams SET min_members = ? WHERE id = ?").bind(minMembers, teamId).run();
     }
     if (maxMembers !== undefined) {
       await c.env.DB.prepare("UPDATE instance_teams SET member_limit = ? WHERE id = ?").bind(maxMembers, teamId).run();
     }
-    await addAuditLog(c, "team_updated", "team", teamId, name || null);
+    if (body.sortOrder !== undefined) {
+      const parsed = Number(body.sortOrder);
+      if (!Number.isInteger(parsed) || parsed < 0) return c.json({ error: "sortOrder must be a non-negative integer" }, 400);
+      await c.env.DB.prepare("UPDATE instance_teams SET sort_order = ? WHERE id = ?").bind(parsed, teamId).run();
+    }
+
+    // currentLevel drives the progress board — dragging a team to the next
+    // level column advances it. Bounded by the instance's level_count.
+    let levelMoved: number | null = null;
+    if (body.currentLevel !== undefined) {
+      const inst: any = await c.env.DB.prepare("SELECT level_count FROM team_instances WHERE id = ?").bind(instanceId).first();
+      const maxLevel = inst?.level_count && inst.level_count > 0 ? inst.level_count : 1;
+      const parsed = Number(body.currentLevel);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > maxLevel) {
+        return c.json({ error: `currentLevel must be between 1 and ${maxLevel}` }, 400);
+      }
+      await c.env.DB.prepare("UPDATE instance_teams SET current_level = ? WHERE id = ?").bind(parsed, teamId).run();
+      levelMoved = parsed;
+    }
+    if (body.status !== undefined) {
+      const status = sanitizeStr(body.status, 20);
+      if (!status || !["active", "eliminated", "winner"].includes(status)) {
+        return c.json({ error: "status must be one of: active, eliminated, winner" }, 400);
+      }
+      await c.env.DB.prepare("UPDATE instance_teams SET status = ? WHERE id = ?").bind(status, teamId).run();
+      await addAuditLog(c, "team_status_changed", "team", teamId, instanceDetail(instanceId, `${team.name} -> ${status}`));
+    }
+    if (levelMoved !== null) {
+      await addAuditLog(c, "team_level_changed", "team", teamId, instanceDetail(instanceId, `${team.name} -> level ${levelMoved}`));
+      return c.json({ success: true, message: "Team updated" });
+    }
+    await addAuditLog(c, "team_updated", "team", teamId, instanceDetail(instanceId, name || team.name));
     return c.json({ success: true, message: "Team updated" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4588,17 +5092,17 @@ app.put("/api/team-instances/:id/teams/:teamId", async (c) => {
 app.delete("/api/team-instances/:id/teams/:teamId", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    const user: any = c.get("user");
     const instanceId = c.req.param("id");
     const teamId = c.req.param("teamId");
-    const team: any = await c.env.DB.prepare("SELECT id FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
+    const team: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
     if (!team) return c.json({ error: "Team not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
       return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
     }
     await c.env.DB.prepare("DELETE FROM instance_team_members WHERE team_id = ?").bind(teamId).run();
+    await c.env.DB.prepare("DELETE FROM instance_team_external_members WHERE team_id = ?").bind(teamId).run();
     await c.env.DB.prepare("DELETE FROM instance_teams WHERE id = ?").bind(teamId).run();
-    await addAuditLog(c, "team_deleted", "team", teamId, null);
+    await addAuditLog(c, "team_deleted", "team", teamId, instanceDetail(instanceId, team.name));
     return c.json({ success: true, message: "Team deleted" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4628,8 +5132,8 @@ app.post("/api/team-instances/:id/teams/:teamId/members", async (c) => {
     if (alreadyIn) return c.json({ error: `${eligibility.user.name} is already in this team` }, 400);
 
     if (team.member_limit !== null && team.member_limit !== undefined) {
-      const count: any = await c.env.DB.prepare("SELECT COUNT(*) as n FROM instance_team_members WHERE team_id = ?").bind(teamId).first();
-      if ((count?.n || 0) >= team.member_limit) {
+      const n = await teamMemberCount(c, teamId);
+      if (n >= team.member_limit) {
         return c.json({ error: `Team is full (limit ${team.member_limit})` }, 400);
       }
     }
@@ -4637,7 +5141,7 @@ app.post("/api/team-instances/:id/teams/:teamId/members", async (c) => {
     await c.env.DB.prepare(
       "INSERT INTO instance_team_members (team_id, user_id, added_by) VALUES (?, ?, ?)",
     ).bind(teamId, userId, user.id).run();
-    await addAuditLog(c, "team_member_added", "team", teamId, eligibility.user.email);
+    await addAuditLog(c, "team_member_added", "team", teamId, instanceDetail(instanceId, `${eligibility.user.email} -> ${team.name}`));
     return c.json({ success: true, message: "Member added" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4647,20 +5151,183 @@ app.post("/api/team-instances/:id/teams/:teamId/members", async (c) => {
 app.delete("/api/team-instances/:id/teams/:teamId/members/:userId", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    const user: any = c.get("user");
     const instanceId = c.req.param("id");
     const teamId = c.req.param("teamId");
     const userId = c.req.param("userId");
-    const team: any = await c.env.DB.prepare("SELECT id FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
+    const team: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
     if (!team) return c.json({ error: "Team not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
       return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
     }
     await c.env.DB.prepare("DELETE FROM instance_team_members WHERE team_id = ? AND user_id = ?").bind(teamId, userId).run();
-    await addAuditLog(c, "team_member_removed", "team", teamId, userId);
+    await addAuditLog(c, "team_member_removed", "team", teamId, instanceDetail(instanceId, `${userId} from ${team.name}`));
     return c.json({ success: true, message: "Member removed" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
+  }
+});
+
+app.post("/api/team-instances/:id/teams/:teamId/external-members", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    const instanceId = c.req.param("id");
+    const teamId = c.req.param("teamId");
+    const team: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
+    if (!team) return c.json({ error: "Team not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    const externalId = sanitizeStr(body.externalId);
+    if (!externalId) return c.json({ error: "Missing externalId" }, 400);
+
+    const ext: any = await c.env.DB.prepare(
+      "SELECT * FROM instance_external_members WHERE id = ? AND instance_id = ?",
+    ).bind(externalId, instanceId).first();
+    if (!ext) return c.json({ error: "That outside member does not belong to this instance" }, 400);
+
+    const alreadyIn: any = await c.env.DB.prepare(
+      "SELECT 1 FROM instance_team_external_members WHERE team_id = ? AND external_id = ?",
+    ).bind(teamId, externalId).first();
+    if (alreadyIn) return c.json({ error: `${ext.name} is already in this team` }, 400);
+
+    if (team.member_limit !== null && team.member_limit !== undefined) {
+      const n = await teamMemberCount(c, teamId);
+      if (n >= team.member_limit) {
+        return c.json({ error: `Team is full (limit ${team.member_limit})` }, 400);
+      }
+    }
+
+    await c.env.DB.prepare(
+      "INSERT INTO instance_team_external_members (team_id, external_id, added_by) VALUES (?, ?, ?)",
+    ).bind(teamId, externalId, user.id).run();
+    await addAuditLog(c, "team_outside_member_added", "team", teamId, instanceDetail(instanceId, `${ext.name} -> ${team.name}`));
+    return c.json({ success: true, message: "Outside member added" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+app.delete("/api/team-instances/:id/teams/:teamId/external-members/:externalId", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const instanceId = c.req.param("id");
+    const teamId = c.req.param("teamId");
+    const externalId = c.req.param("externalId");
+    const team: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
+    if (!team) return c.json({ error: "Team not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    await c.env.DB.prepare("DELETE FROM instance_team_external_members WHERE team_id = ? AND external_id = ?").bind(teamId, externalId).run();
+    await addAuditLog(c, "team_outside_member_removed", "team", teamId, instanceDetail(instanceId, `${externalId} from ${team.name}`));
+    return c.json({ success: true, message: "Outside member removed" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// One endpoint behind every member drag-and-drop: moves an internal user or an
+// outside member from one team to another within the same instance.
+app.post("/api/team-instances/:id/move-member", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    const instanceId = c.req.param("id");
+    const instance: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    if (!instance) return c.json({ error: "Instance not found" }, 404);
+    if (!(await canManageInstanceTeams(c, instanceId))) {
+      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+    }
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+
+    const kind = sanitizeStr(body.kind);
+    const memberId = sanitizeStr(body.memberId);
+    const fromTeamId = sanitizeStr(body.fromTeamId);
+    const toTeamId = sanitizeStr(body.toTeamId);
+    if (kind !== "internal" && kind !== "external") return c.json({ error: "kind must be 'internal' or 'external'" }, 400);
+    if (!memberId || !fromTeamId || !toTeamId) return c.json({ error: "Missing memberId, fromTeamId or toTeamId" }, 400);
+    if (fromTeamId === toTeamId) return c.json({ success: true, message: "No change" });
+
+    const fromTeam: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(fromTeamId, instanceId).first();
+    const toTeam: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(toTeamId, instanceId).first();
+    if (!fromTeam || !toTeam) return c.json({ error: "Both teams must belong to this instance" }, 400);
+
+    if (toTeam.member_limit !== null && toTeam.member_limit !== undefined) {
+      const n = await teamMemberCount(c, toTeamId);
+      if (n >= toTeam.member_limit) {
+        return c.json({ error: `${toTeam.name} is full (limit ${toTeam.member_limit})` }, 400);
+      }
+    }
+
+    let label = memberId;
+    if (kind === "internal") {
+      const inSource: any = await c.env.DB.prepare("SELECT 1 FROM instance_team_members WHERE team_id = ? AND user_id = ?").bind(fromTeamId, memberId).first();
+      if (!inSource) return c.json({ error: "That member is not in the source team" }, 400);
+      const eligibility = await validateTeamMemberEligibility(c, user, memberId);
+      if (eligibility.error) return c.json({ error: eligibility.error }, 400);
+      const alreadyIn: any = await c.env.DB.prepare("SELECT 1 FROM instance_team_members WHERE team_id = ? AND user_id = ?").bind(toTeamId, memberId).first();
+      if (alreadyIn) return c.json({ error: `${eligibility.user.name} is already in ${toTeam.name}` }, 400);
+      await c.env.DB.prepare("DELETE FROM instance_team_members WHERE team_id = ? AND user_id = ?").bind(fromTeamId, memberId).run();
+      await c.env.DB.prepare("INSERT INTO instance_team_members (team_id, user_id, added_by) VALUES (?, ?, ?)").bind(toTeamId, memberId, user.id).run();
+      label = eligibility.user.name;
+    } else {
+      const ext: any = await c.env.DB.prepare("SELECT * FROM instance_external_members WHERE id = ? AND instance_id = ?").bind(memberId, instanceId).first();
+      if (!ext) return c.json({ error: "That outside member does not belong to this instance" }, 400);
+      const inSource: any = await c.env.DB.prepare("SELECT 1 FROM instance_team_external_members WHERE team_id = ? AND external_id = ?").bind(fromTeamId, memberId).first();
+      if (!inSource) return c.json({ error: "That member is not in the source team" }, 400);
+      const alreadyIn: any = await c.env.DB.prepare("SELECT 1 FROM instance_team_external_members WHERE team_id = ? AND external_id = ?").bind(toTeamId, memberId).first();
+      if (alreadyIn) return c.json({ error: `${ext.name} is already in ${toTeam.name}` }, 400);
+      await c.env.DB.prepare("DELETE FROM instance_team_external_members WHERE team_id = ? AND external_id = ?").bind(fromTeamId, memberId).run();
+      await c.env.DB.prepare("INSERT INTO instance_team_external_members (team_id, external_id, added_by) VALUES (?, ?, ?)").bind(toTeamId, memberId, user.id).run();
+      label = ext.name;
+    }
+
+    await addAuditLog(c, "team_member_moved", "team", toTeamId, instanceDetail(instanceId, `${label}: ${fromTeam.name} -> ${toTeam.name}`));
+    return c.json({ success: true, message: "Member moved" });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
+// "What happened" — recent changes for one instance.
+app.get("/api/team-instances/:id/activity", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const user: any = c.get("user");
+    if (user.role_id === "advisory") {
+      return c.json({ error: "Advisory members do not have access to team instances" }, 403);
+    }
+    const instanceId = c.req.param("id");
+    const instance: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    if (!instance) return c.json({ error: "Instance not found" }, 404);
+
+    const [teams, groups, externals] = await Promise.all([
+      c.env.DB.prepare("SELECT id FROM instance_teams WHERE instance_id = ?").bind(instanceId).all(),
+      c.env.DB.prepare("SELECT id FROM instance_groups WHERE instance_id = ?").bind(instanceId).all(),
+      c.env.DB.prepare("SELECT id FROM instance_external_members WHERE instance_id = ?").bind(instanceId).all(),
+    ]);
+    const targetIds = [
+      instanceId,
+      ...((teams.results || []) as any[]).map((t: any) => t.id),
+      ...((groups.results || []) as any[]).map((g: any) => g.id),
+      ...((externals.results || []) as any[]).map((e: any) => e.id),
+    ];
+    const ph = targetIds.map(() => "?").join(",");
+    // Rows are also matched on `details` so that changes to a since-deleted team
+    // or group still show up — every audit call in this feature embeds the
+    // instance id via instanceDetail(). Rows written before that convention
+    // existed are only reachable by target_id.
+    const rows = await c.env.DB.prepare(
+      `SELECT action, actor_email, target_type, target_id, details, created_at FROM audit_log WHERE target_id IN (${ph}) OR details LIKE ? ORDER BY created_at DESC LIMIT 30`,
+    ).bind(...targetIds, `%instance ${instanceId}%`).all();
+
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
   }
 });
 
