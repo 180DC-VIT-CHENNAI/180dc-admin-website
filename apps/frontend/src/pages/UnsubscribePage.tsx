@@ -48,6 +48,7 @@ export default function UnsubscribePage() {
   };
 
   const messages: Record<string, { title: string; desc: string; icon: string }> = {
+    idle: { title: "Unsubscribe from Newsletter", desc: "Enter the email address you'd like to remove from the 180DC newsletter.", icon: "\u2713" },
     loading: { title: "Unsubscribing...", desc: "Please wait while we process your request.", icon: "..." },
     success: { title: "Successfully Unsubscribed", desc: "You have been unsubscribed from the 180DC newsletter. You will no longer receive newsletter emails from us.", icon: "\u2713" },
     already: { title: "Already Unsubscribed", desc: "You are not currently subscribed to the 180DC newsletter, or you have already unsubscribed.", icon: "\u2713" },
