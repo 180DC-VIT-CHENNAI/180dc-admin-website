@@ -1,6 +1,6 @@
-import { motion } from 'motion/react';
-import PillNav from '../components/PillNav';
-import './RecruitmentsPage.css';
+import { motion } from "motion/react";
+import PillNav from "../components/PillNav";
+import "./RecruitmentsPage.css";
 
 const navItems = [
   { label: "Home", href: "/" },
@@ -9,8 +9,12 @@ const navItems = [
 
 const pageVariants = {
   initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
-  exit: { opacity: 0, y: -20, transition: { duration: 0.3 } }
+  animate: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] },
+  },
+  exit: { opacity: 0, y: -20, transition: { duration: 0.3 } },
 };
 
 const PORTAL_URL = "https://vitc-180dc.org/portal";
@@ -42,7 +46,7 @@ const departments: Department[] = [
       "Build technical capabilities, reusable resources, and a skilled team that enable 180DC to deliver scalable and sustainable solutions.",
     ],
     roles: [
-      { name: "Tech Director" },
+      { name: "Technical Director" },
       { name: "DevOps Senior Consultant" },
       { name: "Product Senior Consultant" },
       { name: "AI/ML Senior Consultant" },
@@ -105,7 +109,11 @@ const departments: Department[] = [
 const RecruitmentsPage = () => {
   return (
     <div className="recruitments-page">
-      <PillNav items={navItems} activeHref="/recruitments" logo="/images/official-logo.png" />
+      <PillNav
+        items={navItems}
+        activeHref="/recruitments"
+        logo="/images/official-logo.png"
+      />
 
       <motion.section
         className="recruitments-hero"
@@ -133,9 +141,9 @@ const RecruitmentsPage = () => {
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.4 }}
         >
-          Become part of the world's largest student-led consultancy.
-          Help social enterprises create meaningful impact while building
-          skills that last a lifetime.
+          Become part of the world's largest student-led consultancy. Help
+          social enterprises create meaningful impact while building skills that
+          last a lifetime.
         </motion.p>
         <motion.div
           className="recruitments-hero-actions"
@@ -143,14 +151,24 @@ const RecruitmentsPage = () => {
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.5 }}
         >
-          <a className="apply-now-btn" href={PORTAL_URL} target="_blank" rel="noopener noreferrer">
+          <a
+            className="apply-now-btn"
+            href={PORTAL_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             Apply Now
             <span className="apply-arrow">→</span>
           </a>
         </motion.div>
       </motion.section>
 
-      <motion.div className="recruitments-content" variants={pageVariants} initial="initial" animate="animate">
+      <motion.div
+        className="recruitments-content"
+        variants={pageVariants}
+        initial="initial"
+        animate="animate"
+      >
         <div className="departments-header">
           <h2>Open Positions by Department</h2>
           <p>Explore each department to find where you fit best.</p>
@@ -198,12 +216,19 @@ const RecruitmentsPage = () => {
                 <div className="department-open-roles">
                   <h4>Open Roles</h4>
                   {dept.openRoles.map((role) => (
-                    <span key={role} className="open-role-pill">{role}</span>
+                    <span key={role} className="open-role-pill">
+                      {role}
+                    </span>
                   ))}
                 </div>
               )}
 
-              <a className="department-apply" href={PORTAL_URL} target="_blank" rel="noopener noreferrer">
+              <a
+                className="department-apply"
+                href={PORTAL_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Apply for {dept.name} →
               </a>
             </motion.div>
