@@ -47,7 +47,12 @@ const PillNav = ({
   const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     if (href.startsWith('#')) {
       e.preventDefault();
-      scrollTo(href);
+      window.dispatchEvent(new CustomEvent('force-mount-section', { detail: href }));
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollTo(href);
+        });
+      });
     }
   };
 
