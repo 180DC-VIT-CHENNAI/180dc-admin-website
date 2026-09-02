@@ -693,7 +693,6 @@ async function runMigrations(db: any) {
   try { await db.exec("ALTER TABLE case_studies ADD COLUMN created_by TEXT"); } catch { console.warn("Migration: case_studies.created_by may already exist"); }
   try { await db.exec("DELETE FROM case_studies WHERE id LIKE 'cs%' AND content IS NULL"); } catch { console.warn("Migration: could not remove seed case studies"); }
   try { await db.exec("ALTER TABLE case_studies ADD COLUMN source_file_url TEXT"); } catch { console.warn("Migration: case_studies.source_file_url may already exist"); }
-  try { await db.exec("DELETE FROM rate_limits WHERE endpoint IN ('dev_login', 'recruitment_login', 'recruitment_register')"); } catch (e: any) { console.warn("Migration: clear login rate limits"); }
   // Recruitment system removed — drop its tables if they still exist
   try {
     await db.exec(`
