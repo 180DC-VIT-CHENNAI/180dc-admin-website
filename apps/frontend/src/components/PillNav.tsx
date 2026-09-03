@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useLenisScroll } from '../context/LenisContext';
 import './PillNav.css';
@@ -29,6 +30,8 @@ const PillNav = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const { isDark, toggle } = useTheme();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 20);
@@ -47,20 +50,53 @@ const PillNav = ({
   const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     if (href.startsWith('#')) {
       e.preventDefault();
-      window.dispatchEvent(new CustomEvent('force-mount-section', { detail: href }));
-      requestAnimationFrame(() => {
+      if (location.pathname !== '/') {
+        navigate('/' + href);
+      } else {
+        window.dispatchEvent(new CustomEvent('force-mount-section', { detail: href }));
         requestAnimationFrame(() => {
-          scrollTo(href);
+          requestAnimationFrame(() => {
+            scrollTo(href);
+          });
         });
-      });
+      }
+    } else if (href.startsWith('/')) {
+      if (href.startsWith('/#')) {
+        e.preventDefault();
+        if (location.pathname !== '/') {
+          navigate(href);
+        } else {
+          const targetHash = href.replace('/', '');
+          window.dispatchEvent(new CustomEvent('force-mount-section', { detail: targetHash }));
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              scrollTo(targetHash);
+            });
+          });
+        }
+      } else {
+        e.preventDefault();
+        navigate(href);
+      }
     }
+  };
+
+  const isItemActive = (href: string) => {
+    if (activeHref) return activeHref === href;
+    if (href === '#' || href === '/') return location.pathname === '/';
+    return location.pathname === href;
   };
 
   return (
     <div className={`pill-nav-container${isScrolled ? ' scrolled' : ''}`}>
       <nav className={`pill-nav ${className}`} aria-label="Primary">
         <div className="pill-nav-left">
-          <a className="pill-logo" href={items?.[0]?.href || '#'} aria-label="Home">
+          <a
+            className="pill-logo"
+            href={items?.[0]?.href || '/'}
+            aria-label="Home"
+            onClick={(e) => handleNavClick(e, items?.[0]?.href || '/')}
+          >
             {logo ? (
               <img src={logo} alt={logoAlt} />
             ) : (
@@ -80,7 +116,7 @@ const PillNav = ({
                 <a
                   role="menuitem"
                   href={item.href}
-                  className={`pill${activeHref === item.href ? ' is-active' : ''}`}
+                  className={`pill${isItemActive(item.href) ? ' is-active' : ''}`}
                   aria-label={item.ariaLabel || item.label}
                   onClick={(e) => handleNavClick(e, item.href)}
                 >
@@ -120,7 +156,7 @@ const PillNav = ({
               <li key={item.href || `mobile-item-${i}`}>
                 <a
                   href={item.href}
-                  className={`mobile-menu-link${activeHref === item.href ? ' is-active' : ''}`}
+                  className={`mobile-menu-link${isItemActive(item.href) ? ' is-active' : ''}`}
                   onClick={(e) => {
                     setIsMobileMenuOpen(false);
                     handleNavClick(e, item.href);

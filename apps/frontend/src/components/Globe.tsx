@@ -1,16 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import GlobeGL from 'react-globe.gl';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { generateGlobeTexture } from '../utils/doodleGlobe';
 import { TOKENS } from '../lib/tokens';
 import './Globe.css';
-import { PolaroidGallery } from './gallery/PolaroidGallery';
 
 gsap.registerPlugin(ScrollTrigger);
 
 const Globe = () => {
+  const navigate = useNavigate();
   const globeRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [countries, setCountries] = useState<{ features: any[] }>({ features: [] });
@@ -18,7 +19,8 @@ const Globe = () => {
   const [globeSize, setGlobeSize] = useState(700);
 
   const [globeReady, setGlobeReady] = useState(false);
-  
+  const [showActionPopup, setShowActionPopup] = useState(false);
+  const [actionLocation, setActionLocation] = useState<any>(null);
   
   const [inkSplash, setInkSplash] = useState<{ lat: number; lng: number } | null>(null);
 
@@ -72,8 +74,6 @@ const Globe = () => {
     { id: "dxb", lat: 25.2048, lng: 55.2708, name: "Dubai", color: TOKENS.white },
     { id: "syd", lat: -33.8688, lng: 151.2093, name: "Sydney", color: TOKENS.white },
   ], []);
-
-  const [selectedLocation, setSelectedLocation] = useState<any>(null);
 
   useEffect(() => {
     const WORLD_URLS = [
@@ -163,6 +163,15 @@ const Globe = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!showActionPopup) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowActionPopup(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showActionPopup]);
+
   const handleGlobeClick = useCallback(() => {
     if (globeRef.current) {
       const chennai = allBranches.find(b => b.id === 'vit-chennai');
@@ -172,7 +181,8 @@ const Globe = () => {
           lng: chennai.lng,
           altitude: 1.8
         }, 1000);
-        setSelectedLocation(chennai);
+        setActionLocation(chennai);
+        setShowActionPopup(true);
         setInkSplash({ lat: chennai.lat, lng: chennai.lng });
         setTimeout(() => setInkSplash(null), 600);
       }
@@ -180,63 +190,92 @@ const Globe = () => {
   }, [allBranches]);
 
   const handlePointClick = useCallback((point: any) => {
-    if (point.mapSrc) {
-      setSelectedLocation(point);
+    if (point.googleMapsUrl || point.mapSrc) {
+      setActionLocation(point);
+      setShowActionPopup(true);
       setInkSplash({ lat: point.lat, lng: point.lng });
       setTimeout(() => setInkSplash(null), 600);
     }
   }, []);
 
   const handleLabelClick = useCallback((label: any) => {
-    if (label.mapSrc) {
-      setSelectedLocation(label);
+    if (label.googleMapsUrl || label.mapSrc) {
+      setActionLocation(label);
+      setShowActionPopup(true);
       setInkSplash({ lat: label.lat, lng: label.lng });
       setTimeout(() => setInkSplash(null), 600);
     }
   }, []);
 
+  const handleOpenGoogleMaps = useCallback(() => {
+    const url = actionLocation?.googleMapsUrl || 'https://www.google.com/maps/search/VIT+Chennai,+Chennai,+Tamil+Nadu,+India/@12.8406259,80.1533094,17z';
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [actionLocation]);
+
+  const handleOpenGallery = useCallback(() => {
+    setShowActionPopup(false);
+    navigate('/gallery');
+  }, [navigate]);
+
   return (
     <div className="globe-3d-wrapper" ref={containerRef}>
-      {selectedLocation && selectedLocation.id === 'vit-chennai' && (
+      {/* ── Two-Button Action Modal on Globe Click ── */}
+      {showActionPopup && (
         <div
-          className="campus-panel-overlay"
-          onClick={() => setSelectedLocation(null)}
+          className="globe-action-overlay"
+          onClick={() => setShowActionPopup(false)}
+          role="dialog"
+          aria-modal="true"
         >
           <div
-            className="campus-panel"
+            className="globe-action-card"
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              className="campus-panel-close"
-              onClick={() => setSelectedLocation(null)}
+              className="globe-action-close"
+              onClick={() => setShowActionPopup(false)}
+              aria-label="Close action menu"
             >
               ✕
             </button>
 
-            <div className="campus-panel-header">
-              <div className="campus-panel-image">
-                <img src="/images/VIT-chennai.png" alt="VIT Chennai Campus" />
-              </div>
-              <div className="campus-panel-info">
-                <h2>VIT Chennai</h2>
-                <p className="campus-panel-location">
-                  Vellore Institute of Technology, Chennai Campus
-                </p>
-                <p className="campus-panel-desc">
-                VIT Chennai is a campus of Vellore Institute of Technology, located in Kelambakkam, Chennai. Spread across 192 acres, it is home to approximately 13,000 students across engineering, science, and management programs, and hosts a wide range of student-led organizations — including the 180 Degrees Consulting VIT Chennai branch.
-                </p>
-                <a
-                  href={selectedLocation.googleMapsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn"
-                >
-                  View on Google Maps
-                </a>
-              </div>
+            <div className="globe-action-header">
+              <span className="globe-action-badge">
+                <span className="globe-action-dot" />
+                {actionLocation?.name ? `${actionLocation.name} Chapter` : 'VIT Chennai Chapter'}
+              </span>
+              <h3 className="globe-action-title">180 Degrees Consulting</h3>
+              <p className="globe-action-subtitle">
+                Choose an action to explore our chapter:
+              </p>
             </div>
 
-          <PolaroidGallery />
+            <div className="globe-action-buttons">
+              <button
+                className="globe-action-btn maps"
+                onClick={handleOpenGoogleMaps}
+                aria-label="Open Google Maps location"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                Google Maps
+              </button>
+
+              <button
+                className="globe-action-btn gallery"
+                onClick={handleOpenGallery}
+                aria-label="Navigate to 3D Gallery"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
+                </svg>
+                Gallery
+              </button>
+            </div>
           </div>
         </div>
       )}

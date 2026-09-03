@@ -133,6 +133,7 @@ function App() {
     { label: "Case Studies", href: "#case-studies" },
     { label: "Leadership", href: "#leadership" },
     { label: "Partners", href: "#partners" },
+    { label: "Gallery", href: "/gallery" },
     { label: "Recruitments", href: "/recruitments" },
   ];
 
