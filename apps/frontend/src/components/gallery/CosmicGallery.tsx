@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { GalleryItem } from '../../data/galleryData';
 import './CosmicGallery.css';
@@ -32,9 +32,10 @@ export default function CosmicGallery({
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredItem, setHoveredItem] = useState<GalleryItem | null>(null);
 
-  // Filter items by category
-  const filteredItems = items.filter(
-    (item) => selectedCategory === 'All' || item.category === selectedCategory
+  // Filter items by category (memoized to prevent Three.js scene rebuild on hover)
+  const filteredItems = useMemo(
+    () => items.filter((item) => selectedCategory === 'All' || item.category === selectedCategory),
+    [items, selectedCategory]
   );
 
   const onSelectItemRef = useRef(onSelectItem);
