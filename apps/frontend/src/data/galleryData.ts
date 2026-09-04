@@ -1,4 +1,4 @@
-import manifest from './galleryManifest.json';
+import manifest from "./galleryManifest.json";
 
 export interface GalleryItem {
   id: string;
@@ -11,10 +11,12 @@ export interface GalleryItem {
   featured?: boolean;
 }
 
-export type GalleryCategory = 'All' | '26-27' | '25-26' | '24-25';
-export const CATEGORIES: readonly GalleryCategory[] = ['All', '26-27', '25-26', '24-25'] as const;
+export type GalleryCategory = (typeof manifest.years)[number]["id"];
+export const CATEGORIES = manifest.years.map(
+  (year) => year.id,
+) as readonly GalleryCategory[];
 
-const ACCENT_COLORS = ['#8dc63f', '#75a633', '#5a8a1f', '#a8d96a'];
+const ACCENT_COLORS = ["#8dc63f", "#75a633", "#5a8a1f", "#a8d96a"];
 
 function buildGalleryItems(): GalleryItem[] {
   const items: GalleryItem[] = [];

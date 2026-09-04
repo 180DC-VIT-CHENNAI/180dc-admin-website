@@ -29,6 +29,7 @@ const FIXED_RADIUS = 6.0;
 const CARD_WIDTH = 2.0;
 const CARD_HEIGHT = 1.58;
 const RAYCAST_THROTTLE_MS = 33;
+const galleryTextureCache = new Map<string, THREE.Texture>();
 
 export default function CosmicGallery({
   items,
@@ -148,12 +149,12 @@ export default function CosmicGallery({
       CARD_HEIGHT + 0.3,
     );
 
-    const textureCache = new Map<string, THREE.Texture>();
     const textureUrls = [...new Set(filteredItems.map((i) => i.image))];
     const textureLoader = new THREE.TextureLoader();
 
     for (const url of textureUrls) {
       if (disposed) break;
+      if (galleryTextureCache.has(url)) continue;
       textureLoader.load(
         url,
         (tex) => {
@@ -164,7 +165,7 @@ export default function CosmicGallery({
           tex.colorSpace = THREE.SRGBColorSpace;
           tex.minFilter = THREE.LinearMipmapLinearFilter;
           tex.generateMipmaps = true;
-          textureCache.set(url, tex);
+          galleryTextureCache.set(url, tex);
         },
         undefined,
         () => {
@@ -409,7 +410,7 @@ export default function CosmicGallery({
         (card.glowMesh.material as THREE.MeshBasicMaterial).opacity =
           card.currentGlow;
 
-        const tex = textureCache.get(card.item.image);
+        const tex = galleryTextureCache.get(card.item.image);
         if (tex && !appliedSet.has(card.item.id)) {
           (card.frontMesh.material as THREE.MeshBasicMaterial).map = tex;
           (card.frontMesh.material as THREE.MeshBasicMaterial).needsUpdate =
@@ -443,8 +444,6 @@ export default function CosmicGallery({
       borderGeo.dispose();
       glowGeo.dispose();
       placeholderTex.dispose();
-      textureCache.forEach((tex) => tex.dispose());
-      textureCache.clear();
       renderer.dispose();
       if (renderer.domElement && container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);

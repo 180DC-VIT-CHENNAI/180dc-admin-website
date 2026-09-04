@@ -9,17 +9,15 @@ import "./GalleryPage.css";
 
 export default function GalleryPage() {
   const { isDark } = useTheme();
-  const [selectedCategory, setSelectedCategory] =
-    useState<GalleryCategory>("All");
+  const [selectedCategory, setSelectedCategory] = useState<GalleryCategory>(
+    CATEGORIES[0],
+  );
   const [activeModalItem, setActiveModalItem] = useState<GalleryItem | null>(
     null,
   );
 
   const filteredItems = useMemo(
-    () =>
-      selectedCategory === "All"
-        ? GALLERY_ITEMS
-        : GALLERY_ITEMS.filter((item) => item.category === selectedCategory),
+    () => GALLERY_ITEMS.filter((item) => item.category === selectedCategory),
     [selectedCategory],
   );
 
@@ -51,7 +49,6 @@ export default function GalleryPage() {
   }, [activeModalItem, filteredItems]);
 
   const getCategoryCount = useCallback((cat: GalleryCategory) => {
-    if (cat === "All") return GALLERY_ITEMS.length;
     return GALLERY_ITEMS.filter((i) => i.category === cat).length;
   }, []);
 
