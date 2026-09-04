@@ -1,22 +1,26 @@
-import { useState, useCallback, useMemo } from 'react';
-import { Link } from 'react-router-dom';
-import { useTheme } from '../context/ThemeContext';
-import CosmicGallery from '../components/gallery/CosmicGallery';
-import GalleryModal from '../components/gallery/GalleryModal';
-import { GALLERY_ITEMS, CATEGORIES } from '../data/galleryData';
-import type { GalleryCategory, GalleryItem } from '../data/galleryData';
-import './GalleryPage.css';
+import { useState, useCallback, useMemo } from "react";
+import { Link } from "react-router-dom";
+import { useTheme } from "../context/ThemeContext";
+import CosmicGallery from "../components/gallery/CosmicGallery";
+import GalleryModal from "../components/gallery/GalleryModal";
+import { GALLERY_ITEMS, CATEGORIES } from "../data/galleryData";
+import type { GalleryCategory, GalleryItem } from "../data/galleryData";
+import "./GalleryPage.css";
 
 export default function GalleryPage() {
   const { isDark } = useTheme();
-  const [selectedCategory, setSelectedCategory] = useState<GalleryCategory>('All');
-  const [activeModalItem, setActiveModalItem] = useState<GalleryItem | null>(null);
+  const [selectedCategory, setSelectedCategory] =
+    useState<GalleryCategory>("All");
+  const [activeModalItem, setActiveModalItem] = useState<GalleryItem | null>(
+    null,
+  );
 
   const filteredItems = useMemo(
-    () => selectedCategory === 'All'
-      ? GALLERY_ITEMS
-      : GALLERY_ITEMS.filter((item) => item.category === selectedCategory),
-    [selectedCategory]
+    () =>
+      selectedCategory === "All"
+        ? GALLERY_ITEMS
+        : GALLERY_ITEMS.filter((item) => item.category === selectedCategory),
+    [selectedCategory],
   );
 
   const handleSelectItem = useCallback((item: GalleryItem) => {
@@ -25,7 +29,9 @@ export default function GalleryPage() {
 
   const handleNextModalItem = useCallback(() => {
     if (!activeModalItem) return;
-    const currentIndex = filteredItems.findIndex((i) => i.id === activeModalItem.id);
+    const currentIndex = filteredItems.findIndex(
+      (i) => i.id === activeModalItem.id,
+    );
     if (currentIndex >= 0) {
       const nextIndex = (currentIndex + 1) % filteredItems.length;
       setActiveModalItem(filteredItems[nextIndex]);
@@ -34,15 +40,18 @@ export default function GalleryPage() {
 
   const handlePrevModalItem = useCallback(() => {
     if (!activeModalItem) return;
-    const currentIndex = filteredItems.findIndex((i) => i.id === activeModalItem.id);
+    const currentIndex = filteredItems.findIndex(
+      (i) => i.id === activeModalItem.id,
+    );
     if (currentIndex >= 0) {
-      const prevIndex = (currentIndex - 1 + filteredItems.length) % filteredItems.length;
+      const prevIndex =
+        (currentIndex - 1 + filteredItems.length) % filteredItems.length;
       setActiveModalItem(filteredItems[prevIndex]);
     }
   }, [activeModalItem, filteredItems]);
 
   const getCategoryCount = useCallback((cat: GalleryCategory) => {
-    if (cat === 'All') return GALLERY_ITEMS.length;
+    if (cat === "All") return GALLERY_ITEMS.length;
     return GALLERY_ITEMS.filter((i) => i.category === cat).length;
   }, []);
 
@@ -67,18 +76,21 @@ export default function GalleryPage() {
 
       <header className="gallery-hero-header">
         <h1 className="gallery-cosmos-quote">
-          The cosmos is within us. We are<br />
-          made of star-stuff. We are a way for<br />
-          the universe to know itself.
+          The faces and stories behind 180DC VIT Chennai
+          <br />
         </h1>
 
-        <div className="gallery-categories" role="tablist" aria-label="Gallery Categories">
+        <div
+          className="gallery-categories"
+          role="tablist"
+          aria-label="Gallery Categories"
+        >
           {CATEGORIES.map((cat) => (
             <button
               key={cat}
               role="tab"
               aria-selected={selectedCategory === cat}
-              className={`category-pill ${selectedCategory === cat ? 'active' : ''}`}
+              className={`category-pill ${selectedCategory === cat ? "active" : ""}`}
               onClick={() => setSelectedCategory(cat)}
             >
               {cat}
