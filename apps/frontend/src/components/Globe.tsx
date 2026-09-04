@@ -19,10 +19,6 @@ const Globe = () => {
   const [globeSize, setGlobeSize] = useState(700);
 
   const [globeReady, setGlobeReady] = useState(false);
-  const [showActionPopup, setShowActionPopup] = useState(false);
-  const [actionLocation, setActionLocation] = useState<any>(null);
-  
-  const [inkSplash, setInkSplash] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     function updateSize() {
@@ -163,123 +159,20 @@ const Globe = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (!showActionPopup) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowActionPopup(false);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showActionPopup]);
-
   const handleGlobeClick = useCallback(() => {
-    if (globeRef.current) {
-      const chennai = allBranches.find(b => b.id === 'vit-chennai');
-      if (chennai) {
-        globeRef.current.pointOfView({
-          lat: chennai.lat,
-          lng: chennai.lng,
-          altitude: 1.8
-        }, 1000);
-        setActionLocation(chennai);
-        setShowActionPopup(true);
-        setInkSplash({ lat: chennai.lat, lng: chennai.lng });
-        setTimeout(() => setInkSplash(null), 600);
-      }
-    }
-  }, [allBranches]);
+    navigate('/gallery');
+  }, [navigate]);
 
-  const handlePointClick = useCallback((point: any) => {
-    if (point.googleMapsUrl || point.mapSrc) {
-      setActionLocation(point);
-      setShowActionPopup(true);
-      setInkSplash({ lat: point.lat, lng: point.lng });
-      setTimeout(() => setInkSplash(null), 600);
-    }
-  }, []);
+  const handlePointClick = useCallback(() => {
+    navigate('/gallery');
+  }, [navigate]);
 
-  const handleLabelClick = useCallback((label: any) => {
-    if (label.googleMapsUrl || label.mapSrc) {
-      setActionLocation(label);
-      setShowActionPopup(true);
-      setInkSplash({ lat: label.lat, lng: label.lng });
-      setTimeout(() => setInkSplash(null), 600);
-    }
-  }, []);
-
-  const handleOpenGoogleMaps = useCallback(() => {
-    const url = actionLocation?.googleMapsUrl || 'https://www.google.com/maps/search/VIT+Chennai,+Chennai,+Tamil+Nadu,+India/@12.8406259,80.1533094,17z';
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }, [actionLocation]);
-
-  const handleOpenGallery = useCallback(() => {
-    setShowActionPopup(false);
+  const handleLabelClick = useCallback(() => {
     navigate('/gallery');
   }, [navigate]);
 
   return (
     <div className="globe-3d-wrapper" ref={containerRef}>
-      {/* ── Two-Button Action Modal on Globe Click ── */}
-      {showActionPopup && (
-        <div
-          className="globe-action-overlay"
-          onClick={() => setShowActionPopup(false)}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="globe-action-card"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              className="globe-action-close"
-              onClick={() => setShowActionPopup(false)}
-              aria-label="Close action menu"
-            >
-              ✕
-            </button>
-
-            <div className="globe-action-header">
-              <span className="globe-action-badge">
-                <span className="globe-action-dot" />
-                {actionLocation?.name ? `${actionLocation.name} Chapter` : 'VIT Chennai Chapter'}
-              </span>
-              <h3 className="globe-action-title">180 Degrees Consulting</h3>
-              <p className="globe-action-subtitle">
-                Choose an action to explore our chapter:
-              </p>
-            </div>
-
-            <div className="globe-action-buttons">
-              <button
-                className="globe-action-btn maps"
-                onClick={handleOpenGoogleMaps}
-                aria-label="Open Google Maps location"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                  <circle cx="12" cy="10" r="3" />
-                </svg>
-                Google Maps
-              </button>
-
-              <button
-                className="globe-action-btn gallery"
-                onClick={handleOpenGallery}
-                aria-label="Navigate to 3D Gallery"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <polyline points="21 15 16 10 5 21" />
-                </svg>
-                Gallery
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {globeReady && doodleTextureUrl && (
         <GlobeGL
           ref={globeRef}
@@ -361,17 +254,6 @@ const Globe = () => {
             />
           </svg>
           <span className="doodle-loading-text">Loading globe...</span>
-        </div>
-      )}
-
-      {inkSplash && (
-        <div
-          className="ink-splash-container"
-          style={{ pointerEvents: 'none', zIndex: 100 }}
-        >
-          <div className="ink-drop ink-drop-1" />
-          <div className="ink-drop ink-drop-2" />
-          <div className="ink-drop ink-drop-3" />
         </div>
       )}
 

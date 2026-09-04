@@ -24,20 +24,19 @@ interface CardObject {
   currentGlow: number;
 }
 
+const FIXED_RADIUS = 6.0;
+const CARD_WIDTH = 2.0;
+const CARD_HEIGHT = 1.58;
+const RAYCAST_THROTTLE_MS = 33;
+
 export default function CosmicGallery({
   items,
   onSelectItem,
-  selectedCategory,
+  isDark = true,
 }: CosmicGalleryProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredItem, setHoveredItem] = useState<GalleryItem | null>(null);
-
-  // Filter items by category (memoized to prevent Three.js scene rebuild on hover)
-  const filteredItems = useMemo(
-    () => items.filter((item) => selectedCategory === 'All' || item.category === selectedCategory),
-    [items, selectedCategory]
-  );
-
+  const filteredItems = useMemo(() => items, [items]);
   const onSelectItemRef = useRef(onSelectItem);
   onSelectItemRef.current = onSelectItem;
 
@@ -46,19 +45,25 @@ export default function CosmicGallery({
     if (!container) return;
 
     let animationFrameId: number;
+    let disposed = false;
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
 
-    // ── 1. Three.js Scene, Camera, Renderer ────────────────────────────────
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000);
+    const bgColor = isDark ? 0x0a0a0a : 0xffffff;
+    const starMainColor = isDark ? 0xffffff : 0x333333;
+    const starAccentColor = 0x8dc63f;
+    const borderColor = isDark ? 0x141e10 : 0xe0e0e0;
+    const placeholderBg = isDark ? '#0a1206' : '#f0f4e8';
+    const starOpacity = isDark ? 0.8 : 0.5;
+    const starBlending = isDark ? THREE.AdditiveBlending : THREE.NormalBlending;
+    const backFaceColor = isDark ? 0xe8e8e8 : 0xf5f5f5;
 
-    // Camera with zoomed-in, impactful perspective
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(bgColor);
+
     const camera = new THREE.PerspectiveCamera(46, width / height, 0.1, 100);
     const isMobile = width < 768;
-    const baseCamY = isMobile ? 2.5 : 1.6;
-    const baseCamZ = isMobile ? 14.8 : 12.6;
-    camera.position.set(0, baseCamY, baseCamZ);
+    camera.position.set(0, isMobile ? 2.5 : 1.1, isMobile ? 14.8 : 12.6);
     camera.lookAt(0, -0.25, 0);
 
     const renderer = new THREE.WebGLRenderer({
@@ -69,167 +74,114 @@ export default function CosmicGallery({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    renderer.toneMappingExposure = isDark ? 1.15 : 1.0;
     container.appendChild(renderer.domElement);
 
-    // ── 2. Deep Cosmic Starfield ───────────────────────────────────────────
-    // Multi-tier stars: brilliant sharp pinpoints and subtle twinkling stars
-    const starCount = 1400;
-    const starGeometry = new THREE.BufferGeometry();
-    const starPositions = new Float32Array(starCount * 3);
-    const starColors = new Float32Array(starCount * 3);
-    const starSizes = new Float32Array(starCount);
-
-    const colorWhite = new THREE.Color(0xffffff);
-    const colorDiamond = new THREE.Color(0xd6e8ff);
-    const colorBrand = new THREE.Color(0x8dc63f);
-    const colorWarm = new THREE.Color(0xfff0d8);
-
+    const starCount = 800;
+    const starGeo = new THREE.BufferGeometry();
+    const starPos = new Float32Array(starCount * 3);
+    const starCol = new Float32Array(starCount * 3);
+    const cMain = new THREE.Color(starMainColor);
+    const cAccent = new THREE.Color(starAccentColor);
     for (let i = 0; i < starCount; i++) {
       const i3 = i * 3;
-      starPositions[i3] = (Math.random() - 0.5) * 60;
-      starPositions[i3 + 1] = (Math.random() - 0.5) * 36;
-      starPositions[i3 + 2] = -25 + (Math.random() - 0.5) * 50;
-
-      // Color distribution: mostly pure white/celestial, subtle brand green & warm stars
-      const rand = Math.random();
-      let c = colorWhite;
-      if (rand > 0.85) c = colorDiamond;
-      else if (rand > 0.72) c = colorBrand;
-      else if (rand > 0.6) c = colorWarm;
-
-      starColors[i3] = c.r;
-      starColors[i3 + 1] = c.g;
-      starColors[i3 + 2] = c.b;
-
-      // Varied star brightness & size
-      starSizes[i] = Math.random() * 2.4 + 0.8;
+      starPos[i3] = (Math.random() - 0.5) * 60;
+      starPos[i3 + 1] = (Math.random() - 0.5) * 36;
+      starPos[i3 + 2] = -25 + (Math.random() - 0.5) * 50;
+      const c = Math.random() > 0.9 ? cAccent : cMain;
+      starCol[i3] = c.r; starCol[i3 + 1] = c.g; starCol[i3 + 2] = c.b;
     }
-
-    starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
-    starGeometry.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
-
-    // Crisp circular particle texture with glowing corona
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
     const starCanvas = document.createElement('canvas');
-    starCanvas.width = 32;
-    starCanvas.height = 32;
+    starCanvas.width = 32; starCanvas.height = 32;
     const sCtx = starCanvas.getContext('2d');
     if (sCtx) {
-      const grad = sCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
-      grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-      grad.addColorStop(0.2, 'rgba(255, 255, 255, 0.9)');
-      grad.addColorStop(0.5, 'rgba(180, 235, 120, 0.4)');
-      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      sCtx.fillStyle = grad;
+      const g = sCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
+      const sColor = isDark ? '255,255,255' : '60,60,60';
+      g.addColorStop(0, `rgba(${sColor},1)`);
+      g.addColorStop(0.3, `rgba(${sColor},0.7)`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      sCtx.fillStyle = g;
       sCtx.fillRect(0, 0, 32, 32);
     }
-    const starTexture = new THREE.CanvasTexture(starCanvas);
-
-    const starMaterial = new THREE.PointsMaterial({
-      size: 0.28,
-      vertexColors: true,
-      map: starTexture,
-      transparent: true,
-      opacity: 0.85,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const starField = new THREE.Points(starGeometry, starMaterial);
+    const starField = new THREE.Points(starGeo, new THREE.PointsMaterial({
+      size: 0.25, vertexColors: true, map: new THREE.CanvasTexture(starCanvas),
+      transparent: true, opacity: starOpacity, blending: starBlending, depthWrite: false,
+    }));
     scene.add(starField);
 
-    // ── 3. Texture Loader & Geometries ─────────────────────────────────────
-    const textureLoader = new THREE.TextureLoader();
-    const textureCache = new Map<string, THREE.Texture>();
-
-    // Dimensions matching the reference 3D cylinder proportion (zoomed-in & crisp)
-    const cardWidth = 2.2;
-    const cardHeight = 1.74;
-
-    const frontGeometry = new THREE.PlaneGeometry(cardWidth, cardHeight);
-    const backGeometry = new THREE.PlaneGeometry(cardWidth, cardHeight);
-    const borderGeometry = new THREE.PlaneGeometry(cardWidth + 0.04, cardHeight + 0.04);
-    const glowGeometry = new THREE.PlaneGeometry(cardWidth + 0.35, cardHeight + 0.35);
-
-    // Fallback dark placeholder texture
-    const placeholderCanvas = document.createElement('canvas');
-    placeholderCanvas.width = 64;
-    placeholderCanvas.height = 64;
-    const pCtx = placeholderCanvas.getContext('2d');
-    if (pCtx) {
-      pCtx.fillStyle = '#080d05';
-      pCtx.fillRect(0, 0, 64, 64);
+    const phCanvas = document.createElement('canvas');
+    phCanvas.width = 64; phCanvas.height = 64;
+    const phCtx = phCanvas.getContext('2d');
+    if (phCtx) {
+      phCtx.fillStyle = placeholderBg;
+      phCtx.fillRect(0, 0, 64, 64);
+      phCtx.strokeStyle = 'rgba(141,198,63,0.2)';
+      phCtx.lineWidth = 1;
+      phCtx.strokeRect(4, 4, 56, 56);
     }
-    const defaultTexture = new THREE.CanvasTexture(placeholderCanvas);
+    const placeholderTex = new THREE.CanvasTexture(phCanvas);
 
-    // ── 4. 360° Cylinder Ring Arrangement ──────────────────────────────────
+    const frontGeo = new THREE.PlaneGeometry(CARD_WIDTH, CARD_HEIGHT);
+    const backGeo = new THREE.PlaneGeometry(CARD_WIDTH, CARD_HEIGHT);
+    const borderGeo = new THREE.PlaneGeometry(CARD_WIDTH + 0.04, CARD_HEIGHT + 0.04);
+    const glowGeo = new THREE.PlaneGeometry(CARD_WIDTH + 0.3, CARD_HEIGHT + 0.3);
+
+    const textureCache = new Map<string, THREE.Texture>();
+    const textureUrls = [...new Set(filteredItems.map(i => i.image))];
+
+    for (const url of textureUrls) {
+      if (disposed) break;
+      fetch(url)
+        .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.blob(); })
+        .then(blob => createImageBitmap(blob))
+        .then(bitmap => {
+          if (disposed) { bitmap.close(); return; }
+          const tex = new THREE.CanvasTexture(bitmap);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.minFilter = THREE.LinearMipmapLinearFilter;
+          tex.generateMipmaps = true;
+          textureCache.set(url, tex);
+        })
+        .catch(() => {});
+    }
+
     const cardObjects: CardObject[] = [];
     const interactiveMeshes: THREE.Mesh[] = [];
     const totalCards = filteredItems.length;
-
-    // Radius dynamically scales to keep balanced card spacing in full 360° circle
-    const arcRadius = Math.max(6.0, (totalCards * 2.5) / (2 * Math.PI));
     const thetaStep = (2 * Math.PI) / Math.max(1, totalCards);
 
     filteredItems.forEach((item, index) => {
       const cardGroup = new THREE.Group();
 
-      // 1. Subtle Green Halo Glow (rendered behind all card content)
-      const glowMaterial = new THREE.MeshBasicMaterial({
-        color: new THREE.Color('#8dc63f'),
-        transparent: true,
-        opacity: 0,
-        blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        depthTest: true,
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: 0x8dc63f, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false,
       });
-      const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
-      glowMesh.position.z = 0;
+      const glowMesh = new THREE.Mesh(glowGeo, glowMat);
       glowMesh.renderOrder = 0;
       cardGroup.add(glowMesh);
 
-      // 2. Border backplate (rendered between glow and photo, no depth buffer pollution)
-      const borderMaterial = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(0x141e10),
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        depthTest: true,
+      const borderMat = new THREE.MeshBasicMaterial({
+        color: borderColor, side: THREE.DoubleSide, depthWrite: false,
       });
-      const borderMesh = new THREE.Mesh(borderGeometry, borderMaterial);
-      borderMesh.position.z = 0;
+      const borderMesh = new THREE.Mesh(borderGeo, borderMat);
       borderMesh.renderOrder = 1;
       cardGroup.add(borderMesh);
 
-      // Load texture
-      let texture = textureCache.get(item.image);
-      if (!texture) {
-        texture = textureLoader.load(item.image, (loadedTex) => {
-          loadedTex.colorSpace = THREE.SRGBColorSpace;
-          loadedTex.generateMipmaps = true;
-          loadedTex.minFilter = THREE.LinearMipmapLinearFilter;
-        });
-        textureCache.set(item.image, texture);
-      }
-
-      // 3. Front Mesh (Facing outwards from cylinder, rendered in front with highest order)
-      const frontMaterial = new THREE.MeshBasicMaterial({
-        map: texture || defaultTexture,
-        side: THREE.FrontSide,
-      });
-      const frontMesh = new THREE.Mesh(frontGeometry, frontMaterial);
+      const frontMat = new THREE.MeshBasicMaterial({ map: placeholderTex, side: THREE.FrontSide });
+      const frontMesh = new THREE.Mesh(frontGeo, frontMat);
       frontMesh.position.z = 0.02;
       frontMesh.renderOrder = 2;
       frontMesh.userData = { galleryItem: item, cardIndex: index };
       cardGroup.add(frontMesh);
       interactiveMeshes.push(frontMesh);
 
-      // 4. Back Mesh (Facing inwards towards cylinder center, rendered in front from the rear)
-      const backMaterial = new THREE.MeshBasicMaterial({
-        map: texture || defaultTexture,
-        side: THREE.FrontSide,
-        color: new THREE.Color(0xe8e8e8),
+      const backMat = new THREE.MeshBasicMaterial({
+        map: placeholderTex, side: THREE.FrontSide, color: backFaceColor,
       });
-      const backMesh = new THREE.Mesh(backGeometry, backMaterial);
+      const backMesh = new THREE.Mesh(backGeo, backMat);
       backMesh.rotation.y = Math.PI;
       backMesh.position.z = -0.02;
       backMesh.renderOrder = 2;
@@ -237,27 +189,16 @@ export default function CosmicGallery({
       cardGroup.add(backMesh);
       interactiveMeshes.push(backMesh);
 
-      // Position around the 360° cylinder
       const baseTheta = index * thetaStep;
-
       scene.add(cardGroup);
 
       cardObjects.push({
-        group: cardGroup,
-        frontMesh,
-        backMesh,
-        borderMesh,
-        glowMesh,
-        item,
-        baseTheta,
-        isHovered: false,
-        currentZOffset: 0,
-        currentScale: 1,
-        currentGlow: 0,
+        group: cardGroup, frontMesh, backMesh, borderMesh, glowMesh,
+        item, baseTheta, isHovered: false,
+        currentZOffset: 0, currentScale: 1, currentGlow: 0,
       });
     });
 
-    // ── 5. User Interaction (Orbit, Momentum, Drag, Wheel, Raycast) ─────────
     let panOffset = 0;
     let targetPanOffset = 0;
     let isDragging = false;
@@ -267,10 +208,12 @@ export default function CosmicGallery({
     let lastPointerX = 0;
     let lastPointerTime = 0;
     let velocity = 0;
-    const autoRotateSpeed = 0.0012; // slow celestial auto-spin
+    const autoRotateSpeed = 0.0012;
 
     const raycaster = new THREE.Raycaster();
     const pointerNDC = new THREE.Vector2(-999, -999);
+    let lastRaycastTime = 0;
+    const appliedSet = new Set<string>();
 
     const updatePointer = (clientX: number, clientY: number) => {
       const rect = container.getBoundingClientRect();
@@ -280,18 +223,14 @@ export default function CosmicGallery({
 
     const onPointerMove = (e: PointerEvent) => {
       updatePointer(e.clientX, e.clientY);
-
       if (isDragging) {
         const deltaX = e.clientX - pointerStartX;
         pointerMovedDistance += Math.abs(e.clientX - lastPointerX);
-
         const now = performance.now();
         const dt = Math.max(1, now - lastPointerTime);
         velocity = (e.clientX - lastPointerX) / dt * 0.015;
-
         lastPointerX = e.clientX;
         lastPointerTime = now;
-
         targetPanOffset = panStartOffset + deltaX * 0.0038;
       }
     };
@@ -308,15 +247,12 @@ export default function CosmicGallery({
 
     const onPointerUp = (e: PointerEvent) => {
       if (isDragging && pointerMovedDistance < 8) {
-        // Treat as click: raycast to open modal
         updatePointer(e.clientX, e.clientY);
         raycaster.setFromCamera(pointerNDC, camera);
         const intersects = raycaster.intersectObjects(interactiveMeshes, false);
         if (intersects.length > 0) {
           const clickedItem = intersects[0].object.userData.galleryItem as GalleryItem;
-          if (clickedItem) {
-            onSelectItemRef.current(clickedItem);
-          }
+          if (clickedItem) onSelectItemRef.current(clickedItem);
         }
       }
       isDragging = false;
@@ -334,127 +270,98 @@ export default function CosmicGallery({
     window.addEventListener('pointerup', onPointerUp);
     container.addEventListener('wheel', onWheel, { passive: false });
 
-    // ── 6. Window Resize ───────────────────────────────────────────────────
     const handleResize = () => {
-      if (!container) return;
+      if (!container || disposed) return;
       const w = container.clientWidth || window.innerWidth;
       const h = container.clientHeight || window.innerHeight;
       camera.aspect = w / h;
       const mobile = w < 768;
       camera.fov = mobile ? 48 : 46;
-      const bY = mobile ? 2.0 : 1.1;
-      const bZ = mobile ? 14.8 : 12.6;
-      camera.position.set(0, bY, bZ);
+      camera.position.set(0, mobile ? 2.0 : 1.1, mobile ? 14.8 : 12.6);
       camera.lookAt(0, -0.25, 0);
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
     };
     window.addEventListener('resize', handleResize);
 
-    // ── 7. Animation Loop ──────────────────────────────────────────────────
     let lastHoveredId: string | null = null;
     const clock = new THREE.Clock();
 
     const animate = () => {
+      if (disposed) return;
       animationFrameId = requestAnimationFrame(animate);
-      const elapsedTime = clock.getElapsedTime();
+      const t = clock.getElapsedTime();
 
-      // Inertia and gentle continuous auto-spin
       if (!isDragging) {
         if (Math.abs(velocity) > 0.00008) {
           targetPanOffset += velocity;
-          velocity *= 0.94; // friction deceleration
+          velocity *= 0.94;
         } else {
-          targetPanOffset += autoRotateSpeed; // celestial orbit
+          targetPanOffset += autoRotateSpeed;
         }
       }
-
-      // Smooth pan lerp
       panOffset += (targetPanOffset - panOffset) * 0.08;
 
-      // Camera stays fixed — no mouse parallax
-      const curWidth = container.clientWidth || window.innerWidth;
-      const isMob = curWidth < 768;
-      const bCamY = isMob ? 2.0 : 1.1;
-      const bCamZ = isMob ? 14.8 : 12.6;
-      camera.position.set(0, bCamY, bCamZ);
+      const cw = container.clientWidth || window.innerWidth;
+      const mob = cw < 768;
+      camera.position.set(0, mob ? 2.0 : 1.1, mob ? 14.8 : 12.6);
       camera.lookAt(0, -0.25, 0);
 
-      // Starfield subtle cosmic drift (time-based only)
-      starField.rotation.y = elapsedTime * 0.008;
-      starField.rotation.x = elapsedTime * 0.004;
+      starField.rotation.y = t * 0.006;
+      starField.rotation.x = t * 0.003;
 
-      // Raycasting for hover state
-      if (!isDragging) {
+      const now = performance.now();
+      if (now - lastRaycastTime > RAYCAST_THROTTLE_MS) {
+        lastRaycastTime = now;
         raycaster.setFromCamera(pointerNDC, camera);
         const intersects = raycaster.intersectObjects(interactiveMeshes, false);
         let foundHoverId: string | null = null;
-
         cardObjects.forEach((card) => {
-          const isIntersect =
-            intersects.length > 0 &&
+          const hit = intersects.length > 0 &&
             (intersects[0].object === card.frontMesh || intersects[0].object === card.backMesh);
-
-          card.isHovered = isIntersect;
-          if (isIntersect) {
-            foundHoverId = card.item.id;
-          }
+          card.isHovered = hit;
+          if (hit) foundHoverId = card.item.id;
         });
-
         if (foundHoverId !== lastHoveredId) {
           lastHoveredId = foundHoverId;
           const matched = cardObjects.find((c) => c.item.id === foundHoverId);
           setHoveredItem(matched ? matched.item : null);
-          if (container) {
-            if (matched) {
-              container.classList.add('is-hovering');
-            } else {
-              container.classList.remove('is-hovering');
-            }
-          }
+          container.classList.toggle('is-hovering', !!matched);
         }
       }
 
-      // Update 360° Cylinder Positions & Rotations
       cardObjects.forEach((card) => {
-        const currentAngle = card.baseTheta + panOffset;
+        const angle = card.baseTheta + panOffset;
+        const x = Math.sin(angle) * FIXED_RADIUS;
+        const z = Math.cos(angle) * FIXED_RADIUS;
 
-        // Position on horizontal circle
-        const x = Math.sin(currentAngle) * arcRadius;
-        const z = Math.cos(currentAngle) * arcRadius;
+        card.group.rotation.y = angle;
 
-        // Rotation around Y axis tangent to cylinder
-        card.group.rotation.y = currentAngle;
+        const ts = card.isHovered ? 1.12 : 1.0;
+        card.currentScale += (ts - card.currentScale) * 0.12;
+        card.group.scale.setScalar(card.currentScale);
 
-        // Hover scale and normal offset
-        const targetScale = card.isHovered ? 1.1 : 1.0;
-        card.currentScale += (targetScale - card.currentScale) * 0.12;
-        card.group.scale.set(card.currentScale, card.currentScale, card.currentScale);
+        const tz = card.isHovered ? 0.5 : 0;
+        card.currentZOffset += (tz - card.currentZOffset) * 0.14;
 
-        const targetZBoost = card.isHovered ? 0.45 : 0;
-        card.currentZOffset += (targetZBoost - card.currentZOffset) * 0.14;
+        const nx = Math.sin(angle);
+        const nz = Math.cos(angle);
+        const wy = 1.1 + Math.sin(t * 0.8 + card.baseTheta * 2) * 0.04;
 
-        // Offset outward along cylinder normal
-        const normalX = Math.sin(currentAngle);
-        const normalZ = Math.cos(currentAngle);
+        card.group.position.set(x + nx * card.currentZOffset, wy, z + nz * card.currentZOffset);
 
-        // Subtle floating cosmic wave oscillation
-        const galleryY = 1.1;
-        const waveY =
-          galleryY +
-          Math.sin(elapsedTime * 0.8 + card.baseTheta * 2) * 0.04;
+        const tg = card.isHovered ? 0.35 : 0;
+        card.currentGlow += (tg - card.currentGlow) * 0.15;
+        (card.glowMesh.material as THREE.MeshBasicMaterial).opacity = card.currentGlow;
 
-        card.group.position.set(
-          x + normalX * card.currentZOffset,
-          waveY,
-          z + normalZ * card.currentZOffset
-        );
-
-        // Glow halo on hover (subtle 0.25 - 0.35 opacity)
-        const targetGlow = card.isHovered ? 0.32 : 0;
-        card.currentGlow += (targetGlow - card.currentGlow) * 0.15;
-        const glowMat = card.glowMesh.material as THREE.MeshBasicMaterial;
-        glowMat.opacity = card.currentGlow;
+        const tex = textureCache.get(card.item.image);
+        if (tex && !appliedSet.has(card.item.id)) {
+          (card.frontMesh.material as THREE.MeshBasicMaterial).map = tex;
+          (card.frontMesh.material as THREE.MeshBasicMaterial).needsUpdate = true;
+          (card.backMesh.material as THREE.MeshBasicMaterial).map = tex;
+          (card.backMesh.material as THREE.MeshBasicMaterial).needsUpdate = true;
+          appliedSet.add(card.item.id);
+        }
       });
 
       renderer.render(scene, camera);
@@ -462,8 +369,8 @@ export default function CosmicGallery({
 
     animate();
 
-    // ── Cleanup ────────────────────────────────────────────────────────────
     return () => {
+      disposed = true;
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('resize', handleResize);
       container.removeEventListener('pointermove', onPointerMove);
@@ -471,49 +378,25 @@ export default function CosmicGallery({
       window.removeEventListener('pointerup', onPointerUp);
       container.removeEventListener('wheel', onWheel);
 
-      starGeometry.dispose();
-      starMaterial.dispose();
-      starTexture.dispose();
-      frontGeometry.dispose();
-      backGeometry.dispose();
-      borderGeometry.dispose();
-      glowGeometry.dispose();
-
-      cardObjects.forEach((card) => {
-        scene.remove(card.group);
-      });
-
+      starGeo.dispose();
+      starField.material.dispose();
+      (starField.material.map as THREE.Texture)?.dispose();
+      frontGeo.dispose();
+      backGeo.dispose();
+      borderGeo.dispose();
+      glowGeo.dispose();
+      placeholderTex.dispose();
       textureCache.forEach((tex) => tex.dispose());
+      textureCache.clear();
       renderer.dispose();
-
       if (renderer.domElement && container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
     };
-  }, [filteredItems]);
+  }, [filteredItems, isDark]);
 
   return (
     <div className="cosmic-gallery-viewport" ref={containerRef}>
-      {/* Subtle overlay hint */}
-      <div className="cosmic-gallery-hint">
-        <span className="hint-pill">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3" />
-          </svg>
-          Drag or scroll to rotate orbit · Click card to inspect
-        </span>
-      </div>
-
-      {/* Dynamic Hover Card HUD */}
       {hoveredItem && (
         <div className="cosmic-hover-badge" key={hoveredItem.id}>
           <span className="hover-badge-category">{hoveredItem.category}</span>

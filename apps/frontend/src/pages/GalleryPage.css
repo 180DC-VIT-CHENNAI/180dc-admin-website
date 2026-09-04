@@ -6,12 +6,13 @@
   position: relative;
   height: 100vh;
   width: 100%;
-  background: #000000;
-  color: #ffffff;
+  background: var(--surface-canvas);
+  color: var(--text-primary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   box-sizing: border-box;
+  transition: background 300ms ease, color 300ms ease;
 }
 
 /* ── Back to Home Button ─────────────────────────────────────────────────── */
@@ -26,26 +27,26 @@
   gap: 8px;
   padding: 8px 18px;
   border-radius: var(--radius-full);
-  background: rgba(15, 22, 12, 0.72);
+  background: var(--accent-soft);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(141, 198, 63, 0.28);
-  color: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--border-green);
+  color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   text-decoration: none;
   transition: all 250ms cubic-bezier(0.32, 0.72, 0, 1);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-subtle);
 }
 
 .gallery-back-btn:hover {
-  background: rgba(141, 198, 63, 0.18);
-  border-color: #8dc63f;
-  color: #a8d96a;
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #050a02;
   transform: translateX(-3px);
-  box-shadow: 0 4px 24px rgba(141, 198, 63, 0.25);
+  box-shadow: 0 4px 24px var(--accent-glow);
 }
 
 .back-btn-icon {
@@ -78,12 +79,13 @@
   font-family: var(--font-serif), "Instrument Serif", Georgia, serif;
   font-size: clamp(1.7rem, 3.2vw, 2.75rem);
   font-weight: 400;
-  color: #ffffff;
+  color: var(--text-primary);
   letter-spacing: -0.012em;
   line-height: 1.16;
   text-align: center;
-  text-shadow: 0 0 35px rgba(255, 255, 255, 0.18);
+  text-shadow: 0 0 35px var(--accent-glow);
   max-width: 880px;
+  transition: color 300ms ease;
 }
 
 /* ── Category Filter Pills ───────────────────────────────────────────────── */
@@ -105,11 +107,11 @@
   height: 28px;
   padding: 0 12px;
   border-radius: var(--radius-full);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-default);
+  background: var(--accent-soft);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-secondary);
   font-family: var(--font-sans);
   font-size: 0.72rem;
   font-weight: 500;
@@ -118,24 +120,24 @@
 }
 
 .category-pill:hover {
-  background: rgba(141, 198, 63, 0.15);
-  color: #a8d96a;
-  border-color: rgba(141, 198, 63, 0.35);
+  background: var(--accent-glow);
+  color: var(--accent-primary);
+  border-color: var(--border-green);
 }
 
 .category-pill.active {
-  background: #8dc63f;
-  border-color: #8dc63f;
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
   color: #050a02;
   font-weight: 700;
-  box-shadow: 0 2px 12px rgba(141, 198, 63, 0.35);
+  box-shadow: 0 2px 12px var(--accent-glow);
 }
 
 .category-count {
   font-size: 0.625rem;
   padding: 1px 5px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .category-pill.active .category-count {

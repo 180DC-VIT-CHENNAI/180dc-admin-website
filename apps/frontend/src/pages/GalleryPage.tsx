@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import CosmicGallery from '../components/gallery/CosmicGallery';
@@ -12,8 +12,11 @@ export default function GalleryPage() {
   const [selectedCategory, setSelectedCategory] = useState<GalleryCategory>('All');
   const [activeModalItem, setActiveModalItem] = useState<GalleryItem | null>(null);
 
-  const filteredItems = GALLERY_ITEMS.filter(
-    (item) => selectedCategory === 'All' || item.category === selectedCategory
+  const filteredItems = useMemo(
+    () => selectedCategory === 'All'
+      ? GALLERY_ITEMS
+      : GALLERY_ITEMS.filter((item) => item.category === selectedCategory),
+    [selectedCategory]
   );
 
   const handleSelectItem = useCallback((item: GalleryItem) => {
@@ -38,9 +41,13 @@ export default function GalleryPage() {
     }
   }, [activeModalItem, filteredItems]);
 
+  const getCategoryCount = useCallback((cat: GalleryCategory) => {
+    if (cat === 'All') return GALLERY_ITEMS.length;
+    return GALLERY_ITEMS.filter((i) => i.category === cat).length;
+  }, []);
+
   return (
     <div className="gallery-page">
-      {/* Back to Home Button */}
       <Link to="/" className="gallery-back-btn" aria-label="Back to home page">
         <svg
           width="16"
@@ -58,7 +65,6 @@ export default function GalleryPage() {
         <span>Back to Home</span>
       </Link>
 
-      {/* Hero Header with Carl Sagan Quote */}
       <header className="gallery-hero-header">
         <h1 className="gallery-cosmos-quote">
           The cosmos is within us. We are<br />
@@ -66,7 +72,6 @@ export default function GalleryPage() {
           the universe to know itself.
         </h1>
 
-        {/* Category Pill Filters */}
         <div className="gallery-categories" role="tablist" aria-label="Gallery Categories">
           {CATEGORIES.map((cat) => (
             <button
@@ -77,17 +82,12 @@ export default function GalleryPage() {
               onClick={() => setSelectedCategory(cat)}
             >
               {cat}
-              <span className="category-count">
-                {cat === 'All'
-                  ? GALLERY_ITEMS.length
-                  : GALLERY_ITEMS.filter((i) => i.category === cat).length}
-              </span>
+              <span className="category-count">{getCategoryCount(cat)}</span>
             </button>
           ))}
         </div>
       </header>
 
-      {/* Main 3D Canvas Viewport */}
       <main className="gallery-scene-container" aria-label="3D Image Gallery">
         <CosmicGallery
           items={filteredItems}
@@ -97,7 +97,6 @@ export default function GalleryPage() {
         />
       </main>
 
-      {/* Lightbox / Details Modal */}
       <GalleryModal
         item={activeModalItem}
         onClose={() => setActiveModalItem(null)}

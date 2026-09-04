@@ -32,6 +32,11 @@ binding = "CASE_STUDIES"
 bucket_name = "180dc-case-studies"
 preview_bucket_name = "preview-180dc-case-studies"
 
+[[r2_buckets]]
+binding = "GALLERY_CDN"
+bucket_name = "cdn"
+preview_bucket_name = "preview-cdn"
+
 [[queues.producers]]
 binding = "QUEUE"
 queue = "jobs-queue"
