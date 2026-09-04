@@ -7,6 +7,7 @@ import { ThemeProvider } from "./context/ThemeContext.tsx";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 const RecruitmentsPage = lazy(() => import("./pages/RecruitmentsPage.tsx"));
+const GalleryPage = lazy(() => import("./pages/GalleryPage.tsx"));
 const RequestAccount = lazy(() => import("./pages/RequestAccount.tsx"));
 const MembersLayout = lazy(() => import("./pages/members/MembersLayout.tsx"));
 const SubscriberPage = lazy(() => import("./pages/SubscriberPage.tsx"));
@@ -49,6 +50,16 @@ createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<App />} />
+          <Route
+            path="/gallery"
+            element={
+              <ErrorBoundary fallback={PageError}>
+                <Suspense fallback={PageLoader}>
+                  <GalleryPage />
+                </Suspense>
+              </ErrorBoundary>
+            }
+          />
           <Route
             path="/recruitments"
             element={

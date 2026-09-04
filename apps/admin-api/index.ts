@@ -8,6 +8,7 @@ type Bindings = {
   CLUB_FILES: R2Bucket;
   BLOG_IMAGES: R2Bucket;
   CASE_STUDIES: R2Bucket;
+  GALLERY_CDN: R2Bucket;
   AUTH_SESSIONS: any;
   ENVIRONMENT?: string;
   RESEND_API_KEY?: string;
@@ -48,8 +49,9 @@ function isPublicRoute(pathname: string, method: string): boolean {
     if (pathname === route && (!requiredMethod || method === requiredMethod)) return true;
   }
 
-  if (pathname.startsWith("/api/content") && method === "GET") return true;
-  if (pathname.startsWith("/api/case-studies/images/") && method === "GET") return true;
+    if (pathname.startsWith("/api/content") && method === "GET") return true;
+    if (pathname.startsWith("/api/case-studies/images/") && method === "GET") return true;
+    if (pathname.startsWith("/api/gallery-cdn/") && method === "GET") return true;
   if (pathname === "/api/admin/maintenance" && method === "GET") return true;
   if (pathname === "/api/newsletter" && method === "GET") return true;
 
@@ -914,7 +916,8 @@ app.use(
 );
 
 app.use("*", csrf({
-  origin: (origin) => {
+  origin: (origin, c) => {
+    if (c.req.method === "GET" || c.req.method === "HEAD" || c.req.method === "OPTIONS") return true;
     if (!origin) return false;
     if (isDevOrigin(origin) || ALLOWED_ORIGINS.includes(origin)) return true;
     return false;
@@ -6446,6 +6449,28 @@ app.post("/api/admin/maintenance", async (c) => {
       "Maintenance mode " + (enabled ? "enabled" : "disabled"));
 
     return c.json({ success: true, enabled: enabled === 1, message });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// GALLERY CDN — serves images from R2 with CORS headers
+app.get("/api/gallery-cdn/*", async (c) => {
+  try {
+    const url = new URL(c.req.url);
+    let key = url.pathname.replace(/^\/api\/gallery-cdn\//, "");
+    if (!key || key.includes("..")) return c.json({ error: "Invalid key" }, 400);
+
+    const obj = await c.env.GALLERY_CDN.get(key);
+    if (!obj) return c.json({ error: "Image not found" }, 404);
+
+    const headers = new Headers();
+    headers.set("Content-Type", obj.httpMetadata?.contentType || "image/webp");
+    headers.set("Cache-Control", "public, max-age=31536000, immutable");
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("X-Content-Type-Options", "nosniff");
+
+    return new Response(obj.body, { headers });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }

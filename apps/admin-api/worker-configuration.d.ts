@@ -8,5 +8,7 @@ interface Env {
 	DB: D1Database;
 	CLUB_FILES: R2Bucket;
 	BLOG_IMAGES: R2Bucket;
+	CASE_STUDIES: R2Bucket;
+	GALLERY_CDN: R2Bucket;
 	QUEUE: Queue;
 }
