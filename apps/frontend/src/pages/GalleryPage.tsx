@@ -106,6 +106,7 @@ export default function GalleryPage() {
           onSelectItem={handleSelectItem}
           selectedCategory={selectedCategory}
           isDark={isDark}
+          isModalOpen={activeModalItem !== null}
         />
       </main>
 

@@ -13,6 +13,8 @@
   overflow: hidden;
   box-sizing: border-box;
   transition: background 300ms ease, color 300ms ease;
+  transform: none;
+  perspective: none;
 }
 
 /* ── Back to Home Button ─────────────────────────────────────────────────── */
@@ -154,6 +156,8 @@
   display: flex;
   position: relative;
   width: 100%;
+  transform: none;
+  perspective: none;
 }
 
 /* ── Responsive Adjustments ──────────────────────────────────────────────── */

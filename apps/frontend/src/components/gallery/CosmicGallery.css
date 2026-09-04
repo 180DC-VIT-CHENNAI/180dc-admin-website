@@ -13,6 +13,8 @@
   user-select: none;
   background: var(--surface-canvas);
   transition: background 300ms ease;
+  z-index: 1;
+  transform: none;
 }
 
 .cosmic-gallery-viewport:active {
@@ -31,6 +33,15 @@
   height: 100% !important;
   display: block;
   outline: none;
+}
+
+/* Hide canvas when modal is open to prevent 3D content showing through */
+.cosmic-gallery-viewport.modal-open canvas {
+  display: none !important;
+}
+
+.cosmic-gallery-viewport.modal-open {
+  pointer-events: none;
 }
 
 /* Subtle Cosmic Vignettes — adapt to theme */

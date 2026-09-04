@@ -8,6 +8,7 @@ interface CosmicGalleryProps {
   onSelectItem: (item: GalleryItem) => void;
   selectedCategory: string;
   isDark?: boolean;
+  isModalOpen?: boolean;
 }
 
 interface CardObject {
@@ -33,6 +34,7 @@ export default function CosmicGallery({
   items,
   onSelectItem,
   isDark = true,
+  isModalOpen = false,
 }: CosmicGalleryProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredItem, setHoveredItem] = useState<GalleryItem | null>(null);
@@ -336,6 +338,7 @@ export default function CosmicGallery({
         const z = Math.cos(angle) * FIXED_RADIUS;
 
         card.group.lookAt(camera.position);
+        card.group.rotateY(Math.PI);
 
         const ts = card.isHovered ? 1.12 : 1.0;
         card.currentScale += (ts - card.currentScale) * 0.12;
@@ -396,7 +399,7 @@ export default function CosmicGallery({
   }, [filteredItems, isDark]);
 
   return (
-    <div className="cosmic-gallery-viewport" ref={containerRef}>
+    <div className={`cosmic-gallery-viewport ${isModalOpen ? 'modal-open' : ''}`} ref={containerRef}>
       {hoveredItem && (
         <div className="cosmic-hover-badge" key={hoveredItem.id}>
           <span className="hover-badge-category">{hoveredItem.category}</span>
