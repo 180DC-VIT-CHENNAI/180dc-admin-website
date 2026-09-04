@@ -337,8 +337,9 @@ export default function CosmicGallery({
         const x = Math.sin(angle) * FIXED_RADIUS;
         const z = Math.cos(angle) * FIXED_RADIUS;
 
-        card.group.lookAt(camera.position);
-        card.group.rotateY(Math.PI);
+        const dx = camera.position.x - x;
+        const dz = camera.position.z - z;
+        card.group.rotation.set(0, Math.atan2(dx, dz), 0);
 
         const ts = card.isHovered ? 1.12 : 1.0;
         card.currentScale += (ts - card.currentScale) * 0.12;
