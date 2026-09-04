@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import * as THREE from 'three';
-import type { GalleryItem } from '../../data/galleryData';
-import './CosmicGallery.css';
+import { useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
+import type { GalleryItem } from "../../data/galleryData";
+import "./CosmicGallery.css";
 
 interface CosmicGalleryProps {
   items: GalleryItem[];
@@ -55,7 +55,7 @@ export default function CosmicGallery({
     const starMainColor = isDark ? 0xffffff : 0x333333;
     const starAccentColor = 0x8dc63f;
     const borderColor = isDark ? 0x141e10 : 0xe0e0e0;
-    const placeholderBg = isDark ? '#0a1206' : '#f0f4e8';
+    const placeholderBg = isDark ? "#0a1206" : "#f0f4e8";
     const starOpacity = isDark ? 0.8 : 0.5;
     const starBlending = isDark ? THREE.AdditiveBlending : THREE.NormalBlending;
     const backFaceColor = isDark ? 0xe8e8e8 : 0xf5f5f5;
@@ -71,7 +71,7 @@ export default function CosmicGallery({
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: false,
-      powerPreference: 'high-performance',
+      powerPreference: "high-performance",
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
@@ -91,35 +91,47 @@ export default function CosmicGallery({
       starPos[i3 + 1] = (Math.random() - 0.5) * 36;
       starPos[i3 + 2] = -25 + (Math.random() - 0.5) * 50;
       const c = Math.random() > 0.9 ? cAccent : cMain;
-      starCol[i3] = c.r; starCol[i3 + 1] = c.g; starCol[i3 + 2] = c.b;
+      starCol[i3] = c.r;
+      starCol[i3 + 1] = c.g;
+      starCol[i3 + 2] = c.b;
     }
-    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-    starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
-    const starCanvas = document.createElement('canvas');
-    starCanvas.width = 32; starCanvas.height = 32;
-    const sCtx = starCanvas.getContext('2d');
+    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
+    starGeo.setAttribute("color", new THREE.BufferAttribute(starCol, 3));
+    const starCanvas = document.createElement("canvas");
+    starCanvas.width = 32;
+    starCanvas.height = 32;
+    const sCtx = starCanvas.getContext("2d");
     if (sCtx) {
       const g = sCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
-      const sColor = isDark ? '255,255,255' : '60,60,60';
+      const sColor = isDark ? "255,255,255" : "60,60,60";
       g.addColorStop(0, `rgba(${sColor},1)`);
       g.addColorStop(0.3, `rgba(${sColor},0.7)`);
-      g.addColorStop(1, 'rgba(0,0,0,0)');
+      g.addColorStop(1, "rgba(0,0,0,0)");
       sCtx.fillStyle = g;
       sCtx.fillRect(0, 0, 32, 32);
     }
-    const starField = new THREE.Points(starGeo, new THREE.PointsMaterial({
-      size: 0.25, vertexColors: true, map: new THREE.CanvasTexture(starCanvas),
-      transparent: true, opacity: starOpacity, blending: starBlending, depthWrite: false,
-    }));
+    const starField = new THREE.Points(
+      starGeo,
+      new THREE.PointsMaterial({
+        size: 0.25,
+        vertexColors: true,
+        map: new THREE.CanvasTexture(starCanvas),
+        transparent: true,
+        opacity: starOpacity,
+        blending: starBlending,
+        depthWrite: false,
+      }),
+    );
     scene.add(starField);
 
-    const phCanvas = document.createElement('canvas');
-    phCanvas.width = 64; phCanvas.height = 64;
-    const phCtx = phCanvas.getContext('2d');
+    const phCanvas = document.createElement("canvas");
+    phCanvas.width = 64;
+    phCanvas.height = 64;
+    const phCtx = phCanvas.getContext("2d");
     if (phCtx) {
       phCtx.fillStyle = placeholderBg;
       phCtx.fillRect(0, 0, 64, 64);
-      phCtx.strokeStyle = 'rgba(141,198,63,0.2)';
+      phCtx.strokeStyle = "rgba(141,198,63,0.2)";
       phCtx.lineWidth = 1;
       phCtx.strokeRect(4, 4, 56, 56);
     }
@@ -127,19 +139,33 @@ export default function CosmicGallery({
 
     const frontGeo = new THREE.PlaneGeometry(CARD_WIDTH, CARD_HEIGHT);
     const backGeo = new THREE.PlaneGeometry(CARD_WIDTH, CARD_HEIGHT);
-    const borderGeo = new THREE.PlaneGeometry(CARD_WIDTH + 0.04, CARD_HEIGHT + 0.04);
-    const glowGeo = new THREE.PlaneGeometry(CARD_WIDTH + 0.3, CARD_HEIGHT + 0.3);
+    const borderGeo = new THREE.PlaneGeometry(
+      CARD_WIDTH + 0.04,
+      CARD_HEIGHT + 0.04,
+    );
+    const glowGeo = new THREE.PlaneGeometry(
+      CARD_WIDTH + 0.3,
+      CARD_HEIGHT + 0.3,
+    );
 
     const textureCache = new Map<string, THREE.Texture>();
-    const textureUrls = [...new Set(filteredItems.map(i => i.image))];
+    const textureUrls = [...new Set(filteredItems.map((i) => i.image))];
 
     for (const url of textureUrls) {
       if (disposed) break;
       fetch(url)
-        .then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.blob(); })
-        .then(blob => createImageBitmap(blob))
-        .then(bitmap => {
-          if (disposed) { bitmap.close(); return; }
+        .then((r) => {
+          if (!r.ok) throw new Error(`${r.status}`);
+          return r.blob();
+        })
+        .then((blob) =>
+          createImageBitmap(blob, { imageOrientation: "from-image" }),
+        )
+        .then((bitmap) => {
+          if (disposed) {
+            bitmap.close();
+            return;
+          }
           const tex = new THREE.CanvasTexture(bitmap);
           tex.colorSpace = THREE.SRGBColorSpace;
           tex.minFilter = THREE.LinearMipmapLinearFilter;
@@ -158,21 +184,30 @@ export default function CosmicGallery({
       const cardGroup = new THREE.Group();
 
       const glowMat = new THREE.MeshBasicMaterial({
-        color: 0x8dc63f, transparent: true, opacity: 0,
-        blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false,
+        color: 0x8dc63f,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        depthWrite: false,
       });
       const glowMesh = new THREE.Mesh(glowGeo, glowMat);
       glowMesh.renderOrder = 0;
       cardGroup.add(glowMesh);
 
       const borderMat = new THREE.MeshBasicMaterial({
-        color: borderColor, side: THREE.DoubleSide, depthWrite: false,
+        color: borderColor,
+        side: THREE.DoubleSide,
+        depthWrite: false,
       });
       const borderMesh = new THREE.Mesh(borderGeo, borderMat);
       borderMesh.renderOrder = 1;
       cardGroup.add(borderMesh);
 
-      const frontMat = new THREE.MeshBasicMaterial({ map: placeholderTex, side: THREE.FrontSide });
+      const frontMat = new THREE.MeshBasicMaterial({
+        map: placeholderTex,
+        side: THREE.FrontSide,
+      });
       const frontMesh = new THREE.Mesh(frontGeo, frontMat);
       frontMesh.position.z = 0.02;
       frontMesh.renderOrder = 2;
@@ -181,7 +216,9 @@ export default function CosmicGallery({
       interactiveMeshes.push(frontMesh);
 
       const backMat = new THREE.MeshBasicMaterial({
-        map: placeholderTex, side: THREE.FrontSide, color: backFaceColor,
+        map: placeholderTex,
+        side: THREE.FrontSide,
+        color: backFaceColor,
       });
       const backMesh = new THREE.Mesh(backGeo, backMat);
       backMesh.rotation.y = Math.PI;
@@ -195,9 +232,17 @@ export default function CosmicGallery({
       scene.add(cardGroup);
 
       cardObjects.push({
-        group: cardGroup, frontMesh, backMesh, borderMesh, glowMesh,
-        item, baseTheta, isHovered: false,
-        currentZOffset: 0, currentScale: 1, currentGlow: 0,
+        group: cardGroup,
+        frontMesh,
+        backMesh,
+        borderMesh,
+        glowMesh,
+        item,
+        baseTheta,
+        isHovered: false,
+        currentZOffset: 0,
+        currentScale: 1,
+        currentGlow: 0,
       });
     });
 
@@ -230,7 +275,7 @@ export default function CosmicGallery({
         pointerMovedDistance += Math.abs(e.clientX - lastPointerX);
         const now = performance.now();
         const dt = Math.max(1, now - lastPointerTime);
-        velocity = (e.clientX - lastPointerX) / dt * 0.015;
+        velocity = ((e.clientX - lastPointerX) / dt) * 0.015;
         lastPointerX = e.clientX;
         lastPointerTime = now;
         targetPanOffset = panStartOffset + deltaX * 0.0038;
@@ -253,7 +298,8 @@ export default function CosmicGallery({
         raycaster.setFromCamera(pointerNDC, camera);
         const intersects = raycaster.intersectObjects(interactiveMeshes, false);
         if (intersects.length > 0) {
-          const clickedItem = intersects[0].object.userData.galleryItem as GalleryItem;
+          const clickedItem = intersects[0].object.userData
+            .galleryItem as GalleryItem;
           if (clickedItem) onSelectItemRef.current(clickedItem);
         }
       }
@@ -267,10 +313,10 @@ export default function CosmicGallery({
       velocity = -delta * 0.0003;
     };
 
-    container.addEventListener('pointermove', onPointerMove);
-    container.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('pointerup', onPointerUp);
-    container.addEventListener('wheel', onWheel, { passive: false });
+    container.addEventListener("pointermove", onPointerMove);
+    container.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointerup", onPointerUp);
+    container.addEventListener("wheel", onWheel, { passive: false });
 
     const handleResize = () => {
       if (!container || disposed) return;
@@ -284,7 +330,7 @@ export default function CosmicGallery({
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
     };
-    window.addEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
 
     let lastHoveredId: string | null = null;
     const clock = new THREE.Clock();
@@ -319,8 +365,10 @@ export default function CosmicGallery({
         const intersects = raycaster.intersectObjects(interactiveMeshes, false);
         let foundHoverId: string | null = null;
         cardObjects.forEach((card) => {
-          const hit = intersects.length > 0 &&
-            (intersects[0].object === card.frontMesh || intersects[0].object === card.backMesh);
+          const hit =
+            intersects.length > 0 &&
+            (intersects[0].object === card.frontMesh ||
+              intersects[0].object === card.backMesh);
           card.isHovered = hit;
           if (hit) foundHoverId = card.item.id;
         });
@@ -328,7 +376,7 @@ export default function CosmicGallery({
           lastHoveredId = foundHoverId;
           const matched = cardObjects.find((c) => c.item.id === foundHoverId);
           setHoveredItem(matched ? matched.item : null);
-          container.classList.toggle('is-hovering', !!matched);
+          container.classList.toggle("is-hovering", !!matched);
         }
       }
 
@@ -352,18 +400,25 @@ export default function CosmicGallery({
         const nz = Math.cos(angle);
         const wy = 1.1 + Math.sin(t * 0.8 + card.baseTheta * 2) * 0.04;
 
-        card.group.position.set(x + nx * card.currentZOffset, wy, z + nz * card.currentZOffset);
+        card.group.position.set(
+          x + nx * card.currentZOffset,
+          wy,
+          z + nz * card.currentZOffset,
+        );
 
         const tg = card.isHovered ? 0.35 : 0;
         card.currentGlow += (tg - card.currentGlow) * 0.15;
-        (card.glowMesh.material as THREE.MeshBasicMaterial).opacity = card.currentGlow;
+        (card.glowMesh.material as THREE.MeshBasicMaterial).opacity =
+          card.currentGlow;
 
         const tex = textureCache.get(card.item.image);
         if (tex && !appliedSet.has(card.item.id)) {
           (card.frontMesh.material as THREE.MeshBasicMaterial).map = tex;
-          (card.frontMesh.material as THREE.MeshBasicMaterial).needsUpdate = true;
+          (card.frontMesh.material as THREE.MeshBasicMaterial).needsUpdate =
+            true;
           (card.backMesh.material as THREE.MeshBasicMaterial).map = tex;
-          (card.backMesh.material as THREE.MeshBasicMaterial).needsUpdate = true;
+          (card.backMesh.material as THREE.MeshBasicMaterial).needsUpdate =
+            true;
           appliedSet.add(card.item.id);
         }
       });
@@ -376,11 +431,11 @@ export default function CosmicGallery({
     return () => {
       disposed = true;
       cancelAnimationFrame(animationFrameId);
-      window.removeEventListener('resize', handleResize);
-      container.removeEventListener('pointermove', onPointerMove);
-      container.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('pointerup', onPointerUp);
-      container.removeEventListener('wheel', onWheel);
+      window.removeEventListener("resize", handleResize);
+      container.removeEventListener("pointermove", onPointerMove);
+      container.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
+      container.removeEventListener("wheel", onWheel);
 
       starGeo.dispose();
       starField.material.dispose();
@@ -400,7 +455,10 @@ export default function CosmicGallery({
   }, [filteredItems, isDark]);
 
   return (
-    <div className={`cosmic-gallery-viewport ${isModalOpen ? 'modal-open' : ''}`} ref={containerRef}>
+    <div
+      className={`cosmic-gallery-viewport ${isModalOpen ? "modal-open" : ""}`}
+      ref={containerRef}
+    >
       {hoveredItem && (
         <div className="cosmic-hover-badge" key={hoveredItem.id}>
           <span className="hover-badge-category">{hoveredItem.category}</span>
