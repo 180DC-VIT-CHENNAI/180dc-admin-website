@@ -150,28 +150,31 @@ export default function CosmicGallery({
     );
 
     const textureUrls = [...new Set(filteredItems.map((i) => i.image))];
-    const textureLoader = new THREE.TextureLoader();
 
     for (const url of textureUrls) {
       if (disposed) break;
       if (galleryTextureCache.has(url)) continue;
-      textureLoader.load(
-        url,
-        (tex) => {
+      fetch(url)
+        .then((response) => {
+          if (!response.ok) throw new Error(`${response.status}`);
+          return response.blob();
+        })
+        .then((blob) =>
+          createImageBitmap(blob, { imageOrientation: "from-image" }),
+        )
+        .then((bitmap) => {
           if (disposed) {
-            tex.dispose();
+            bitmap.close();
             return;
           }
+          const tex = new THREE.CanvasTexture(bitmap);
+          tex.flipY = false;
           tex.colorSpace = THREE.SRGBColorSpace;
           tex.minFilter = THREE.LinearMipmapLinearFilter;
           tex.generateMipmaps = true;
           galleryTextureCache.set(url, tex);
-        },
-        undefined,
-        () => {
-          // Keep the placeholder when a gallery image cannot be loaded.
-        },
-      );
+        })
+        .catch(() => {});
     }
 
     const cardObjects: CardObject[] = [];
