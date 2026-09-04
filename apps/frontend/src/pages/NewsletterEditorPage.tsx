@@ -423,8 +423,8 @@ export default function NewsletterEditorPage() {
 
         <div style={{ maxWidth: 420, width: "100%" }}>
           <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
-            <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--accent)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 800, margin: "0 auto 1rem", boxShadow: "0 4px 12px rgba(141, 198, 63, 0.3)" }}>180</div>
-            <h1 style={{ fontSize: "1.75rem", fontWeight: 800, margin: 0, color: "var(--text-primary)" }}>Newsletter Editor</h1>
+            <img src="/images/official-logo.png" alt="180 Degrees Consulting" style={{ width: 56, height: 56, objectFit: "contain", margin: "0 auto 0.875rem", display: "block" }} />
+            <h1 style={{ fontSize: "1.6rem", fontWeight: 700, margin: 0, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Newsletter Editor</h1>
             <p style={{ color: "var(--text-secondary)", fontSize: 15, marginTop: 8 }}>Sign in with an authorized email to manage newsletters.</p>
           </div>
 
@@ -463,8 +463,8 @@ export default function NewsletterEditorPage() {
 
         <div style={{ maxWidth: 420, width: "100%" }}>
           <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
-            <div style={{ width: 64, height: 64, borderRadius: 16, background: "var(--accent)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 800, margin: "0 auto 1rem", boxShadow: "0 4px 12px rgba(141, 198, 63, 0.3)" }}>180</div>
-            <h1 style={{ fontSize: "1.75rem", fontWeight: 800, margin: 0, color: "var(--text-primary)" }}>Enter OTP</h1>
+            <img src="/images/official-logo.png" alt="180 Degrees Consulting" style={{ width: 56, height: 56, objectFit: "contain", margin: "0 auto 0.875rem", display: "block" }} />
+            <h1 style={{ fontSize: "1.6rem", fontWeight: 700, margin: 0, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Enter OTP</h1>
             <p style={{ color: "var(--text-secondary)", fontSize: 15, marginTop: 8 }}>Sent to {email}</p>
           </div>
 

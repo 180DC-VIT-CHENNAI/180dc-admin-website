@@ -91,47 +91,44 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
   };
 
   return (
-    <div
-      style={{
-        background: "var(--bg-primary)",
-        minHeight: "100vh",
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "1.5rem",
-      }}
-    >
+    <div className="login-page">
       <button
         onClick={toggleTheme}
-        style={{
-          position: "absolute", top: 24, right: 24,
-          padding: "10px", border: "1px solid var(--border-light)",
-          background: "var(--bg-card)", color: "var(--text-primary)", cursor: "pointer",
-          borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "var(--shadow-sm)",
-        }}
+        className="login-theme-toggle"
         title="Toggle Theme"
+        aria-label="Toggle Theme"
       >
         <span className="material-symbols-outlined">{isDark ? "light_mode" : "dark_mode"}</span>
       </button>
 
+      {/* Brand panel */}
+      <aside className="login-brand">
+        <div className="login-brand-inner">
+          <img src="/images/official-logo.png" alt="180 Degrees Consulting" className="login-brand-logo" />
+          <p className="login-brand-kicker">180 Degrees Consulting · VIT Chennai</p>
+          <h2 className="login-brand-headline">
+            Consulting with <em>purpose</em>, delivering <em>impact</em>.
+          </h2>
+          <p className="login-brand-copy">
+            Part of the world's largest university-based consultancy — connecting students
+            with social enterprises to achieve meaningful change.
+          </p>
+        </div>
+        <p className="login-brand-foot">Member Portal</p>
+      </aside>
+
+      {/* Form panel */}
+      <main className="login-panel">
       <div style={{ maxWidth: 420, width: "100%" }}>
-        <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
-          <div
-            style={{
-              width: 64, height: 64, borderRadius: 16,
-              background: "var(--accent)", color: "white",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 24, fontWeight: 800, margin: "0 auto 1rem",
-              boxShadow: "0 4px 12px rgba(141, 198, 63, 0.3)",
-            }}
-          >
-            180
-          </div>
-          <h1 style={{ fontSize: "1.75rem", fontWeight: 800, margin: 0 }}>Portal Login</h1>
+        <div style={{ textAlign: "center", marginBottom: "2.25rem" }}>
+          <img
+            src="/images/official-logo.png"
+            alt="180 Degrees Consulting"
+            style={{ width: 56, height: 56, objectFit: "contain", margin: "0 auto 0.875rem", display: "block" }}
+          />
+          <h1 style={{ fontSize: "1.6rem", fontWeight: 700, margin: 0, letterSpacing: "-0.02em" }}>Welcome back</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: "15px", marginTop: "8px" }}>
-            Welcome back! Please enter your details.
+            Sign in to the member portal to continue.
           </p>
         </div>
 
@@ -234,11 +231,12 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
             )}
           </div>
         </div>
-        
+
         <p style={{ textAlign: "center", marginTop: "2rem", color: "var(--text-tertiary)", fontSize: "13px" }}>
-          &copy; 2026 180 Degrees Consulting. All rights reserved.
+          &copy; 2026 180 Degrees Consulting · VIT Chennai
         </p>
       </div>
+      </main>
 
       {oauthError && (
         <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 999, background: "var(--bg-card)", padding: "1.5rem 2rem", borderRadius: 16, border: "2px solid var(--danger, #e74c3c)", boxShadow: "var(--shadow-lg)", color: "var(--text-primary)", fontSize: 15, maxWidth: 500, textAlign: "center", lineHeight: 1.5 }}>

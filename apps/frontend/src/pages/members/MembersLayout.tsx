@@ -435,7 +435,10 @@ export default function MembersLayout() {
       {/* HEADER */}
       <header className="members-header">
         <div className="header-left">
-          <a href="#" className="header-logo" onClick={(e) => { e.preventDefault(); setActivePanel("dashboard"); }}>180DC Portal</a>
+          <a href="#" className="header-logo" onClick={(e) => { e.preventDefault(); setActivePanel("dashboard"); }}>
+            <img src="/images/official-logo.png" alt="180 Degrees Consulting logo" />
+            <span className="header-logo-word">180DC <em>Portal</em></span>
+          </a>
           <div className="search-container">
             <span className="material-symbols-outlined search-icon">search</span>
             <input type="text" className="search-input" placeholder="Search..." />
