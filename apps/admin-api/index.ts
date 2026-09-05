@@ -46,12 +46,14 @@ function isPublicRoute(pathname: string, method: string): boolean {
     ["/api/newsletter-editor/otp/verify", "POST"],
   ];
   for (const [route, requiredMethod] of PUBLIC_ROUTES) {
-    if (pathname === route && (!requiredMethod || method === requiredMethod)) return true;
+    if (pathname === route && (!requiredMethod || method === requiredMethod))
+      return true;
   }
 
-    if (pathname.startsWith("/api/content") && method === "GET") return true;
-    if (pathname.startsWith("/api/case-studies/images/") && method === "GET") return true;
-    if (pathname.startsWith("/api/gallery-cdn/") && method === "GET") return true;
+  if (pathname.startsWith("/api/content") && method === "GET") return true;
+  if (pathname.startsWith("/api/case-studies/images/") && method === "GET")
+    return true;
+  if (pathname.startsWith("/api/gallery-cdn/") && method === "GET") return true;
   if (pathname === "/api/admin/maintenance" && method === "GET") return true;
   if (pathname === "/api/newsletter" && method === "GET") return true;
 
@@ -108,13 +110,61 @@ function escapeHtml(str: string): string {
     .replace(/'/g, "&#x27;");
 }
 
-const SAFE_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "pre", "code", "strong", "b", "em", "i", "u", "br", "div", "span", "a", "img", "hr", "sub", "sup", "table", "thead", "tbody", "tr", "th", "td", "caption", "col", "colgroup"]);
-const SAFE_ATTRS = new Set(["href", "src", "alt", "title", "class", "target", "rel", "width", "height"]);
+const SAFE_TAGS = new Set([
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "ul",
+  "ol",
+  "li",
+  "blockquote",
+  "pre",
+  "code",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "u",
+  "br",
+  "div",
+  "span",
+  "a",
+  "img",
+  "hr",
+  "sub",
+  "sup",
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
+  "caption",
+  "col",
+  "colgroup",
+]);
+const SAFE_ATTRS = new Set([
+  "href",
+  "src",
+  "alt",
+  "title",
+  "class",
+  "target",
+  "rel",
+  "width",
+  "height",
+]);
 
 function decodeEntities(str: string): string {
   return str
     .replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(parseInt(c)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) =>
+      String.fromCodePoint(parseInt(h, 16)),
+    )
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -125,31 +175,48 @@ function decodeEntities(str: string): string {
 function sanitizeBlogHtml(input: string): string {
   let s = input
     .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<[^>]*on\w+\s*=[^>]*>/gi, (m) => m.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, ""));
+    .replace(/<[^>]*on\w+\s*=[^>]*>/gi, (m) =>
+      m.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, ""),
+    );
 
-  s = s.replace(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g, (match, slash, tagName, attrs) => {
-    const lower = tagName.toLowerCase();
-    if (!SAFE_TAGS.has(lower)) return escapeHtml(match);
+  s = s.replace(
+    /<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g,
+    (match, slash, tagName, attrs) => {
+      const lower = tagName.toLowerCase();
+      if (!SAFE_TAGS.has(lower)) return escapeHtml(match);
 
-    const safe = attrs.replace(/([a-zA-Z:-]+)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/g, (attr) => {
-      const an = attr.match(/^([a-zA-Z:-]+)/i)?.[1]?.toLowerCase();
-      if (!an || !SAFE_ATTRS.has(an)) return "";
-      if (an === "href" || an === "src") {
-        const v = decodeEntities(attr.replace(/^[^=]*=\s*/, "").replace(/^["']|["']$/g, "").toLowerCase());
-        if (/^(javascript|data|vbscript):/.test(v)) return "";
-      }
-      return attr;
-    });
+      const safe = attrs.replace(
+        /([a-zA-Z:-]+)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/g,
+        (attr) => {
+          const an = attr.match(/^([a-zA-Z:-]+)/i)?.[1]?.toLowerCase();
+          if (!an || !SAFE_ATTRS.has(an)) return "";
+          if (an === "href" || an === "src") {
+            const v = decodeEntities(
+              attr
+                .replace(/^[^=]*=\s*/, "")
+                .replace(/^["']|["']$/g, "")
+                .toLowerCase(),
+            );
+            if (/^(javascript|data|vbscript):/.test(v)) return "";
+          }
+          return attr;
+        },
+      );
 
-    const selfClose = /\/$/.test(attrs.trim()) ? " /" : "";
-    return "<" + slash + lower + (safe ? " " + safe.trim() : "") + selfClose + ">";
-  });
+      const selfClose = /\/$/.test(attrs.trim()) ? " /" : "";
+      return (
+        "<" + slash + lower + (safe ? " " + safe.trim() : "") + selfClose + ">"
+      );
+    },
+  );
 
   s = s.replace(/<[^>]*>/g, (match) => {
     const inner = match.slice(1, -1).trim();
     if (!inner) return "";
     const isClose = inner.startsWith("/");
-    const name = (isClose ? inner.slice(1) : inner.split(/\s+/)[0]).toLowerCase();
+    const name = (
+      isClose ? inner.slice(1) : inner.split(/\s+/)[0]
+    ).toLowerCase();
     if (!SAFE_TAGS.has(name)) return "";
     return match;
   });
@@ -160,33 +227,58 @@ function sanitizeBlogHtml(input: string): string {
 function isValidUrl(val: unknown): boolean {
   if (typeof val !== "string") return false;
   if (!URL_RE.test(val)) return false;
-  try { new URL(val); return true; } catch { return false; }
+  try {
+    new URL(val);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function getClientIp(c: any): string {
   return c.req.header("CF-Connecting-IP") || "unknown";
 }
 
-async function checkRateLimit(c: any, endpoint: string, maxRequests: number, windowSeconds = 60): Promise<{ allowed: boolean; retryAfter: number }> {
+async function checkRateLimit(
+  c: any,
+  endpoint: string,
+  maxRequests: number,
+  windowSeconds = 60,
+): Promise<{ allowed: boolean; retryAfter: number }> {
   const ip = getClientIp(c);
   try {
     const row: any = await c.env.DB.prepare(
       "SELECT count, window_start FROM rate_limits WHERE ip = ? AND endpoint = ?",
-    ).bind(ip, endpoint).first();
+    )
+      .bind(ip, endpoint)
+      .first();
     const now = new Date();
     if (!row) {
-      await c.env.DB.prepare("INSERT INTO rate_limits (ip, endpoint, count, window_start) VALUES (?, ?, 1, ?)").bind(ip, endpoint, now.toISOString()).run();
+      await c.env.DB.prepare(
+        "INSERT INTO rate_limits (ip, endpoint, count, window_start) VALUES (?, ?, 1, ?)",
+      )
+        .bind(ip, endpoint, now.toISOString())
+        .run();
       return { allowed: true, retryAfter: 0 };
     }
-    const elapsed = (now.getTime() - new Date(row.window_start).getTime()) / 1000;
+    const elapsed =
+      (now.getTime() - new Date(row.window_start).getTime()) / 1000;
     if (elapsed > windowSeconds) {
-      await c.env.DB.prepare("UPDATE rate_limits SET count = 1, window_start = ? WHERE ip = ? AND endpoint = ?").bind(now.toISOString(), ip, endpoint).run();
+      await c.env.DB.prepare(
+        "UPDATE rate_limits SET count = 1, window_start = ? WHERE ip = ? AND endpoint = ?",
+      )
+        .bind(now.toISOString(), ip, endpoint)
+        .run();
       return { allowed: true, retryAfter: 0 };
     }
     if (row.count >= maxRequests) {
       return { allowed: false, retryAfter: Math.ceil(windowSeconds - elapsed) };
     }
-    await c.env.DB.prepare("UPDATE rate_limits SET count = count + 1 WHERE ip = ? AND endpoint = ?").bind(ip, endpoint).run();
+    await c.env.DB.prepare(
+      "UPDATE rate_limits SET count = count + 1 WHERE ip = ? AND endpoint = ?",
+    )
+      .bind(ip, endpoint)
+      .run();
     return { allowed: true, retryAfter: 0 };
   } catch {
     console.error("checkRateLimit failed for endpoint: " + endpoint);
@@ -194,17 +286,29 @@ async function checkRateLimit(c: any, endpoint: string, maxRequests: number, win
   }
 }
 
-async function checkLoginRateLimit(c: any, endpoint: string, maxRequests: number, windowSeconds = 60): Promise<{ allowed: boolean; retryAfter: number }> {
+async function checkLoginRateLimit(
+  c: any,
+  endpoint: string,
+  maxRequests: number,
+  windowSeconds = 60,
+): Promise<{ allowed: boolean; retryAfter: number }> {
   const ip = getClientIp(c);
   try {
     const row: any = await c.env.DB.prepare(
       "SELECT count, window_start FROM rate_limits WHERE ip = ? AND endpoint = ?",
-    ).bind(ip, endpoint).first();
+    )
+      .bind(ip, endpoint)
+      .first();
     const now = new Date();
     if (!row) return { allowed: true, retryAfter: 0 };
-    const elapsed = (now.getTime() - new Date(row.window_start).getTime()) / 1000;
+    const elapsed =
+      (now.getTime() - new Date(row.window_start).getTime()) / 1000;
     if (elapsed > windowSeconds) {
-      await c.env.DB.prepare("DELETE FROM rate_limits WHERE ip = ? AND endpoint = ?").bind(ip, endpoint).run();
+      await c.env.DB.prepare(
+        "DELETE FROM rate_limits WHERE ip = ? AND endpoint = ?",
+      )
+        .bind(ip, endpoint)
+        .run();
       return { allowed: true, retryAfter: 0 };
     }
     if (row.count >= maxRequests) {
@@ -223,29 +327,65 @@ async function incrementLoginRateLimit(c: any, endpoint: string) {
   try {
     const row: any = await c.env.DB.prepare(
       "SELECT count FROM rate_limits WHERE ip = ? AND endpoint = ?",
-    ).bind(ip, endpoint).first();
+    )
+      .bind(ip, endpoint)
+      .first();
     if (!row) {
-      await c.env.DB.prepare("INSERT INTO rate_limits (ip, endpoint, count, window_start) VALUES (?, ?, 1, ?)").bind(ip, endpoint, now.toISOString()).run();
+      await c.env.DB.prepare(
+        "INSERT INTO rate_limits (ip, endpoint, count, window_start) VALUES (?, ?, 1, ?)",
+      )
+        .bind(ip, endpoint, now.toISOString())
+        .run();
     } else {
-      await c.env.DB.prepare("UPDATE rate_limits SET count = count + 1 WHERE ip = ? AND endpoint = ?").bind(ip, endpoint).run();
+      await c.env.DB.prepare(
+        "UPDATE rate_limits SET count = count + 1 WHERE ip = ? AND endpoint = ?",
+      )
+        .bind(ip, endpoint)
+        .run();
     }
-  } catch { console.error("incrementLoginRateLimit failed"); }
+  } catch {
+    console.error("incrementLoginRateLimit failed");
+  }
 }
 
 async function resetLoginRateLimit(c: any, endpoint: string) {
   const ip = getClientIp(c);
   try {
-    await c.env.DB.prepare("DELETE FROM rate_limits WHERE ip = ? AND endpoint = ?").bind(ip, endpoint).run();
-  } catch { /* ignore cleanup errors */ }
+    await c.env.DB.prepare(
+      "DELETE FROM rate_limits WHERE ip = ? AND endpoint = ?",
+    )
+      .bind(ip, endpoint)
+      .run();
+  } catch {
+    /* ignore cleanup errors */
+  }
 }
 
-async function addAuditLog(c: any, action: string, targetType: string | null, targetId: string | null, details: string | null, instanceId?: string) {
+async function addAuditLog(
+  c: any,
+  action: string,
+  targetType: string | null,
+  targetId: string | null,
+  details: string | null,
+  instanceId?: string,
+) {
   try {
     const actorEmail = (c.get("user") as any)?.email || "system";
     await c.env.DB.prepare(
       "INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details, instance_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?)",
-    ).bind(action, actorEmail, targetType, targetId, details, instanceId || null).run();
-  } catch (e) { console.error("audit_log_write_failed:", e); }
+    )
+      .bind(
+        action,
+        actorEmail,
+        targetType,
+        targetId,
+        details,
+        instanceId || null,
+      )
+      .run();
+  } catch (e) {
+    console.error("audit_log_write_failed:", e);
+  }
 }
 
 function maskToken(token: string): string {
@@ -286,7 +426,7 @@ function tokenEmailHtml(token: string, name: string): string {
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">This is the only time this token will be shown in full. Keep it safe and don't share it with anyone.</p>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:16px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai<br><span style="color:#777777;font-weight:400">Didn't request this? Contact your club admin immediately.</span></p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting @ VIT Chennai<br><span style="color:#777777;font-weight:400">Didn't request this? Contact your club admin immediately.</span></p>
 </td></tr>
 </table>
 </td></tr></table>
@@ -294,17 +434,27 @@ function tokenEmailHtml(token: string, name: string): string {
 </html>`;
 }
 
-async function sendTokenEmail(c: any, email: string, token: string, name: string): Promise<{ ok: boolean; status?: number; error?: string }> {
+async function sendTokenEmail(
+  c: any,
+  email: string,
+  token: string,
+  name: string,
+): Promise<{ ok: boolean; status?: number; error?: string }> {
   const apiKey = c.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn("RESEND_API_KEY not configured Ã¢â‚¬â€ skipping email to " + email);
+    console.warn(
+      "RESEND_API_KEY not configured Ã¢â‚¬â€ skipping email to " + email,
+    );
     return { ok: false, error: "RESEND_API_KEY not configured" };
   }
   const from = "180DC Admin <team@180dcvitc.org>";
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+      headers: {
+        Authorization: "Bearer " + apiKey,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         from,
         to: email,
@@ -314,7 +464,9 @@ async function sendTokenEmail(c: any, email: string, token: string, name: string
     });
     const body = await res.text();
     if (!res.ok) {
-      console.error(`[email] Resend FAILED (${res.status}) to=${email}: ${body}`);
+      console.error(
+        `[email] Resend FAILED (${res.status}) to=${email}: ${body}`,
+      );
       return { ok: false, status: res.status, error: body };
     }
     console.log(`[email] Resend OK (${res.status}) to=${email}: ${body}`);
@@ -325,7 +477,13 @@ async function sendTokenEmail(c: any, email: string, token: string, name: string
   }
 }
 
-function meetEmailHtml(title: string, description: string | null, meetLink: string | null, scheduledAt: string, meetType: string): string {
+function meetEmailHtml(
+  title: string,
+  description: string | null,
+  meetLink: string | null,
+  scheduledAt: string,
+  meetType: string,
+): string {
   const dateStr = scheduledAt.slice(0, 16).replace("T", " ");
   const safeTitle = escapeHtml(title);
   const safeDescription = description ? escapeHtml(description) : null;
@@ -355,7 +513,7 @@ ${safeDescription ? `<p style="font-size:14px;color:#555555;margin:0 0 16px;line
 ${safeMeetLink ? `<table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto 16px"><tr><td style="padding:10px 24px;text-align:center"><a href="${safeMeetLink}" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Join Meet</a></td></tr></table>` : `<p style="font-size:13px;color:#777777;margin:0 0 16px;text-align:center;font-style:italic">Venue to be announced</p>`}
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting @ VIT Chennai</p>
 </td></tr>
 </table>
 </td></tr></table>
@@ -367,32 +525,66 @@ const DEV_ADMIN_EMAIL = "admin@vitstudent.ac.in";
 
 async function getTodayEmailCount(db: any): Promise<number> {
   const today = new Date().toISOString().slice(0, 10);
-  const row: any = await db.prepare("SELECT count FROM daily_email_count WHERE date = ?").bind(today).first();
+  const row: any = await db
+    .prepare("SELECT count FROM daily_email_count WHERE date = ?")
+    .bind(today)
+    .first();
   return row ? row.count : 0;
 }
 
 async function incrementEmailCount(db: any) {
   const today = new Date().toISOString().slice(0, 10);
-  await db.prepare("INSERT INTO daily_email_count (date, count) VALUES (?, 1) ON CONFLICT(date) DO UPDATE SET count = count + 1").bind(today).run();
+  await db
+    .prepare(
+      "INSERT INTO daily_email_count (date, count) VALUES (?, 1) ON CONFLICT(date) DO UPDATE SET count = count + 1",
+    )
+    .bind(today)
+    .run();
 }
 
-async function sendMeetEmail(c: any, to: string, name: string, title: string, description: string | null, meetLink: string | null, scheduledAt: string, meetType: string): Promise<boolean> {
+async function sendMeetEmail(
+  c: any,
+  to: string,
+  name: string,
+  title: string,
+  description: string | null,
+  meetLink: string | null,
+  scheduledAt: string,
+  meetType: string,
+): Promise<boolean> {
   const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) { console.warn("[email] RESEND_API_KEY not configured Ã¢â‚¬â€ skipping meet email to " + to); return false; }
+  if (!apiKey) {
+    console.warn(
+      "[email] RESEND_API_KEY not configured Ã¢â‚¬â€ skipping meet email to " +
+        to,
+    );
+    return false;
+  }
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+      headers: {
+        Authorization: "Bearer " + apiKey,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         from: "180DC Admin <team@180dcvitc.org>",
         to,
         subject: "New Meet: " + title,
-        html: meetEmailHtml(title, description, meetLink, scheduledAt, meetType),
+        html: meetEmailHtml(
+          title,
+          description,
+          meetLink,
+          scheduledAt,
+          meetType,
+        ),
       }),
     });
     const body = await res.text();
     if (!res.ok) {
-      console.error("[email] Meet email FAILED (" + res.status + ") to=" + to + ": " + body);
+      console.error(
+        "[email] Meet email FAILED (" + res.status + ") to=" + to + ": " + body,
+      );
       return false;
     }
     console.log("[email] Meet email OK (" + res.status + ") to=" + to);
@@ -403,11 +595,27 @@ async function sendMeetEmail(c: any, to: string, name: string, title: string, de
   }
 }
 
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
-async function queueOrSendMeetEmails(c: any, recipients: { email: string; name: string }[], meetId: string, meetType: string, title: string, description: string | null, meetLink: string | null, scheduledAt: string) {
+async function queueOrSendMeetEmails(
+  c: any,
+  recipients: { email: string; name: string }[],
+  meetId: string,
+  meetType: string,
+  title: string,
+  description: string | null,
+  meetLink: string | null,
+  scheduledAt: string,
+) {
   const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) { console.warn("[email] RESEND_API_KEY not configured Ã¢â‚¬â€ skipping meet emails"); return { sent: 0, queued: 0 }; }
+  if (!apiKey) {
+    console.warn(
+      "[email] RESEND_API_KEY not configured Ã¢â‚¬â€ skipping meet emails",
+    );
+    return { sent: 0, queued: 0 };
+  }
 
   let count = await getTodayEmailCount(c.env.DB);
   const MAX_DAILY = 100;
@@ -417,46 +625,99 @@ async function queueOrSendMeetEmails(c: any, recipients: { email: string; name: 
 
   for (const r of recipients) {
     if (count < MAX_DAILY) {
-      const ok = await sendMeetEmail(c, r.email, r.name, title, description, meetLink, scheduledAt, meetType);
-      if (ok) { await incrementEmailCount(c.env.DB); count++; sent++; }
-      else { failed++; }
+      const ok = await sendMeetEmail(
+        c,
+        r.email,
+        r.name,
+        title,
+        description,
+        meetLink,
+        scheduledAt,
+        meetType,
+      );
+      if (ok) {
+        await incrementEmailCount(c.env.DB);
+        count++;
+        sent++;
+      } else {
+        failed++;
+      }
       await sleep(550);
     } else {
       await c.env.DB.prepare(
         "INSERT INTO pending_emails (id, meet_id, meet_type, recipient_email, recipient_name, meet_title, meet_description, meet_link, scheduled_at) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)",
-      ).bind(meetId, meetType, r.email, r.name, title, description, meetLink, scheduledAt).run();
+      )
+        .bind(
+          meetId,
+          meetType,
+          r.email,
+          r.name,
+          title,
+          description,
+          meetLink,
+          scheduledAt,
+        )
+        .run();
       queued++;
     }
   }
-  console.log(`[email] Meet emails: sent=${sent}, queued=${queued}, failed=${failed}, total_recipients=${recipients.length}`);
+  console.log(
+    `[email] Meet emails: sent=${sent}, queued=${queued}, failed=${failed}, total_recipients=${recipients.length}`,
+  );
   return { sent, queued, failed };
 }
 
-async function getMeetRecipients(db: any, meetType: string, departmentId?: string, departments?: string[]): Promise<{ email: string; name: string }[]> {
-  const advisoryFilter = " AND NOT (role_id = 'advisory' AND department_id IS NULL)";
+async function getMeetRecipients(
+  db: any,
+  meetType: string,
+  departmentId?: string,
+  departments?: string[],
+): Promise<{ email: string; name: string }[]> {
+  const advisoryFilter =
+    " AND NOT (role_id = 'advisory' AND department_id IS NULL)";
   if (meetType === "department_meet" && departmentId) {
-    const rows: any = await db.prepare("SELECT email, name FROM users WHERE department_id = ?" + advisoryFilter).bind(departmentId).all();
+    const rows: any = await db
+      .prepare(
+        "SELECT email, name FROM users WHERE department_id = ?" +
+          advisoryFilter,
+      )
+      .bind(departmentId)
+      .all();
     return rows.results || [];
   }
   if (meetType === "club_meet") {
-    const rows: any = await db.prepare("SELECT email, name FROM users WHERE 1=1" + advisoryFilter).all();
+    const rows: any = await db
+      .prepare("SELECT email, name FROM users WHERE 1=1" + advisoryFilter)
+      .all();
     return rows.results || [];
   }
   if (meetType === "inter_dept_meet" && departments && departments.length > 0) {
     const placeholders = departments.map(() => "?").join(",");
-    const rows: any = await db.prepare(`SELECT email, name FROM users WHERE department_id IN (${placeholders})` + advisoryFilter).bind(...departments).all();
+    const rows: any = await db
+      .prepare(
+        `SELECT email, name FROM users WHERE department_id IN (${placeholders})` +
+          advisoryFilter,
+      )
+      .bind(...departments)
+      .all();
     return rows.results || [];
   }
   return [];
 }
 
-async function sendProjectAssignmentEmail(c: any, projectName: string, departmentIds: string[]) {
+async function sendProjectAssignmentEmail(
+  c: any,
+  projectName: string,
+  departmentIds: string[],
+) {
   const apiKey = c.env.RESEND_API_KEY;
   if (!apiKey) return;
   const safeProjectName = escapeHtml(projectName);
   const rows: any = await c.env.DB.prepare(
-    `SELECT u.email, u.name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id IN (${departmentIds.map(() => "?").join(",")}) AND r.power_level >= 50 AND NOT (u.role_id = 'advisory' AND u.department_id IS NULL)`
-  ).bind(...departmentIds).all();
+    `SELECT u.email, u.name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id IN (${departmentIds.map(() => "?").join(",")}) AND r.power_level >= 50 AND NOT (u.role_id = 'advisory' AND u.department_id IS NULL)`,
+  )
+    .bind(...departmentIds)
+    .all();
   const leads = rows.results || [];
   let count = await getTodayEmailCount(c.env.DB);
   const MAX_DAILY = 100;
@@ -465,7 +726,10 @@ async function sendProjectAssignmentEmail(c: any, projectName: string, departmen
     try {
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
-        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+        headers: {
+          Authorization: "Bearer " + apiKey,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           from: "180DC Admin <team@180dcvitc.org>",
           to: lead.email,
@@ -487,20 +751,31 @@ async function sendProjectAssignmentEmail(c: any, projectName: string, departmen
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Check the 180DC Admin Portal for more information.</p>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting @ VIT Chennai</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
         }),
       });
-      if (!res.ok) { const body = await res.text(); console.error("Project email failed (" + res.status + "): " + body); }
-    } catch (e: any) { console.error("Project email error: " + e.message); }
+      if (!res.ok) {
+        const body = await res.text();
+        console.error("Project email failed (" + res.status + "): " + body);
+      }
+    } catch (e: any) {
+      console.error("Project email error: " + e.message);
+    }
     await incrementEmailCount(c.env.DB);
     count++;
   }
 }
 
-async function sendRoleAssignmentEmail(c: any, email: string, name: string, roleName: string, projectName: string) {
+async function sendRoleAssignmentEmail(
+  c: any,
+  email: string,
+  name: string,
+  roleName: string,
+  projectName: string,
+) {
   const apiKey = c.env.RESEND_API_KEY;
   if (!apiKey) return;
   const count = await getTodayEmailCount(c.env.DB);
@@ -511,7 +786,10 @@ async function sendRoleAssignmentEmail(c: any, email: string, name: string, role
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+      headers: {
+        Authorization: "Bearer " + apiKey,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         from: "180DC Admin <team@180dcvitc.org>",
         to: email,
@@ -533,18 +811,28 @@ async function sendRoleAssignmentEmail(c: any, email: string, name: string, role
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Log in to the 180DC Admin Portal to view your project dashboard and tasks.</p>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting @ VIT Chennai</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
       }),
     });
-    if (!res.ok) { const body = await res.text(); console.error("Role email failed (" + res.status + "): " + body); }
-  } catch (e: any) { console.error("Role email error: " + e.message); }
+    if (!res.ok) {
+      const body = await res.text();
+      console.error("Role email failed (" + res.status + "): " + body);
+    }
+  } catch (e: any) {
+    console.error("Role email error: " + e.message);
+  }
   await incrementEmailCount(c.env.DB);
 }
 
-async function sendRoleChangeEmail(c: any, email: string, name: string, roleName: string) {
+async function sendRoleChangeEmail(
+  c: any,
+  email: string,
+  name: string,
+  roleName: string,
+) {
   const apiKey = c.env.RESEND_API_KEY;
   if (!apiKey) return;
   const count = await getTodayEmailCount(c.env.DB);
@@ -554,7 +842,10 @@ async function sendRoleChangeEmail(c: any, email: string, name: string, roleName
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+      headers: {
+        Authorization: "Bearer " + apiKey,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         from: "180DC Admin <team@180dcvitc.org>",
         to: email,
@@ -576,41 +867,78 @@ async function sendRoleChangeEmail(c: any, email: string, name: string, roleName
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Log in to the 180DC Admin Portal to view your updated access and responsibilities.</p>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting @ VIT Chennai</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
       }),
     });
-    if (!res.ok) { const body = await res.text(); console.error("Role change email failed (" + res.status + "): " + body); }
-  } catch (e: any) { console.error("Role change email error: " + e.message); }
+    if (!res.ok) {
+      const body = await res.text();
+      console.error("Role change email failed (" + res.status + "): " + body);
+    }
+  } catch (e: any) {
+    console.error("Role change email error: " + e.message);
+  }
   await incrementEmailCount(c.env.DB);
 }
 
-async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
+async function hashPassword(
+  password: string,
+): Promise<{ hash: string; salt: string }> {
   const saltBytes = new Uint8Array(16);
   crypto.getRandomValues(saltBytes);
-  const salt = Array.from(saltBytes).map(b => b.toString(16).padStart(2, "0")).join("");
+  const salt = Array.from(saltBytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
   const encoder = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
   const derivedBits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: encoder.encode(salt), iterations: 600000, hash: "SHA-256" },
-    keyMaterial, 256,
+    {
+      name: "PBKDF2",
+      salt: encoder.encode(salt),
+      iterations: 600000,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    256,
   );
   const hashArray = Array.from(new Uint8Array(derivedBits));
-  const hash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  const hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   return { hash, salt };
 }
 
-async function verifyPassword(password: string, salt: string, storedHash: string): Promise<boolean> {
+async function verifyPassword(
+  password: string,
+  salt: string,
+  storedHash: string,
+): Promise<boolean> {
   const encoder = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
   const derivedBits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: encoder.encode(salt), iterations: 600000, hash: "SHA-256" },
-    keyMaterial, 256,
+    {
+      name: "PBKDF2",
+      salt: encoder.encode(salt),
+      iterations: 600000,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    256,
   );
   const hashArray = Array.from(new Uint8Array(derivedBits));
-  const hash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  const hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   if (hash.length !== storedHash.length) return false;
   let result = 0;
   for (let i = 0; i < hash.length; i++) {
@@ -683,18 +1011,76 @@ async function ensureTables(db: any) {
 }
 
 async function runMigrations(db: any) {
-  try { await db.exec("ALTER TABLE role_transfers ADD COLUMN from_user_accepted INTEGER DEFAULT 0"); } catch { console.warn("Migration: from_user_accepted may already exist"); }
-  try { await db.exec("ALTER TABLE role_transfers ADD COLUMN to_user_accepted INTEGER DEFAULT 0"); } catch { console.warn("Migration: to_user_accepted may already exist"); }
-  try { await db.exec("ALTER TABLE signup_requests ADD COLUMN department_id TEXT"); } catch { console.warn("Migration: department_id may already exist"); }
-  try { await db.exec("ALTER TABLE projects ADD COLUMN company_org TEXT"); } catch { console.warn("Migration: company_org may already exist"); }
-  try { await db.exec("ALTER TABLE projects ADD COLUMN year TEXT"); } catch { console.warn("Migration: year may already exist"); }
-  try { await db.exec("ALTER TABLE admin_tokens ADD COLUMN expires_at DATETIME"); } catch { console.warn("Migration: expires_at may already exist"); }
-  try { await db.exec("ALTER TABLE case_studies ADD COLUMN content TEXT DEFAULT ''"); } catch { console.warn("Migration: case_studies.content may already exist"); }
-  try { await db.exec("ALTER TABLE case_studies ADD COLUMN image_url TEXT"); } catch { console.warn("Migration: case_studies.image_url may already exist"); }
-  try { await db.exec("ALTER TABLE case_studies ADD COLUMN author_name TEXT DEFAULT 'Anonymous'"); } catch { console.warn("Migration: case_studies.author_name may already exist"); }
-  try { await db.exec("ALTER TABLE case_studies ADD COLUMN created_by TEXT"); } catch { console.warn("Migration: case_studies.created_by may already exist"); }
-  try { await db.exec("DELETE FROM case_studies WHERE id LIKE 'cs%' AND content IS NULL"); } catch { console.warn("Migration: could not remove seed case studies"); }
-  try { await db.exec("ALTER TABLE case_studies ADD COLUMN source_file_url TEXT"); } catch { console.warn("Migration: case_studies.source_file_url may already exist"); }
+  try {
+    await db.exec(
+      "ALTER TABLE role_transfers ADD COLUMN from_user_accepted INTEGER DEFAULT 0",
+    );
+  } catch {
+    console.warn("Migration: from_user_accepted may already exist");
+  }
+  try {
+    await db.exec(
+      "ALTER TABLE role_transfers ADD COLUMN to_user_accepted INTEGER DEFAULT 0",
+    );
+  } catch {
+    console.warn("Migration: to_user_accepted may already exist");
+  }
+  try {
+    await db.exec("ALTER TABLE signup_requests ADD COLUMN department_id TEXT");
+  } catch {
+    console.warn("Migration: department_id may already exist");
+  }
+  try {
+    await db.exec("ALTER TABLE projects ADD COLUMN company_org TEXT");
+  } catch {
+    console.warn("Migration: company_org may already exist");
+  }
+  try {
+    await db.exec("ALTER TABLE projects ADD COLUMN year TEXT");
+  } catch {
+    console.warn("Migration: year may already exist");
+  }
+  try {
+    await db.exec("ALTER TABLE admin_tokens ADD COLUMN expires_at DATETIME");
+  } catch {
+    console.warn("Migration: expires_at may already exist");
+  }
+  try {
+    await db.exec(
+      "ALTER TABLE case_studies ADD COLUMN content TEXT DEFAULT ''",
+    );
+  } catch {
+    console.warn("Migration: case_studies.content may already exist");
+  }
+  try {
+    await db.exec("ALTER TABLE case_studies ADD COLUMN image_url TEXT");
+  } catch {
+    console.warn("Migration: case_studies.image_url may already exist");
+  }
+  try {
+    await db.exec(
+      "ALTER TABLE case_studies ADD COLUMN author_name TEXT DEFAULT 'Anonymous'",
+    );
+  } catch {
+    console.warn("Migration: case_studies.author_name may already exist");
+  }
+  try {
+    await db.exec("ALTER TABLE case_studies ADD COLUMN created_by TEXT");
+  } catch {
+    console.warn("Migration: case_studies.created_by may already exist");
+  }
+  try {
+    await db.exec(
+      "DELETE FROM case_studies WHERE id LIKE 'cs%' AND content IS NULL",
+    );
+  } catch {
+    console.warn("Migration: could not remove seed case studies");
+  }
+  try {
+    await db.exec("ALTER TABLE case_studies ADD COLUMN source_file_url TEXT");
+  } catch {
+    console.warn("Migration: case_studies.source_file_url may already exist");
+  }
   // Recruitment system removed — drop its tables if they still exist
   try {
     await db.exec(`
@@ -706,34 +1092,164 @@ async function runMigrations(db: any) {
       DROP TABLE IF EXISTS recruitment_rounds;
       DROP TABLE IF EXISTS recruitment_domain_settings;
     `);
-  } catch (e: any) { logError("Migration: drop recruitment tables", e); }
-  try { await db.exec("ALTER TABLE users ADD COLUMN secondary_role_id TEXT"); } catch { console.warn("Migration: secondary_role_id may already exist"); }
-  try { await db.exec("ALTER TABLE admin_tokens ADD COLUMN active_role_id TEXT"); } catch { console.warn("Migration: active_role_id may already exist"); }
-  try { await db.exec("ALTER TABLE users ADD COLUMN ex_title TEXT"); } catch { console.warn("Migration: ex_title may already exist"); }
-  try { await db.exec("ALTER TABLE users ADD COLUMN clerk_user_id TEXT"); } catch { console.warn("Migration: clerk_user_id may already exist"); }
-  try { await db.exec("ALTER TABLE users ADD COLUMN oauth_enabled INTEGER DEFAULT 0"); } catch { console.warn("Migration: oauth_enabled may already exist"); }
-  try { await db.exec("ALTER TABLE newsletters ADD COLUMN email_subject TEXT"); } catch { console.warn("Migration: newsletters.email_subject may already exist"); }
-  try { await db.exec("ALTER TABLE instance_teams ADD COLUMN min_members INTEGER"); } catch { console.warn("Migration: instance_teams.min_members may already exist"); }
+  } catch (e: any) {
+    logError("Migration: drop recruitment tables", e);
+  }
+  try {
+    await db.exec("ALTER TABLE users ADD COLUMN secondary_role_id TEXT");
+  } catch {
+    console.warn("Migration: secondary_role_id may already exist");
+  }
+  try {
+    await db.exec("ALTER TABLE admin_tokens ADD COLUMN active_role_id TEXT");
+  } catch {
+    console.warn("Migration: active_role_id may already exist");
+  }
+  try {
+    await db.exec("ALTER TABLE users ADD COLUMN ex_title TEXT");
+  } catch {
+    console.warn("Migration: ex_title may already exist");
+  }
+  try {
+    await db.exec("ALTER TABLE users ADD COLUMN clerk_user_id TEXT");
+  } catch {
+    console.warn("Migration: clerk_user_id may already exist");
+  }
+  try {
+    await db.exec(
+      "ALTER TABLE users ADD COLUMN oauth_enabled INTEGER DEFAULT 0",
+    );
+  } catch {
+    console.warn("Migration: oauth_enabled may already exist");
+  }
+  try {
+    await db.exec("ALTER TABLE newsletters ADD COLUMN email_subject TEXT");
+  } catch {
+    console.warn("Migration: newsletters.email_subject may already exist");
+  }
+  try {
+    await db.exec("ALTER TABLE instance_teams ADD COLUMN min_members INTEGER");
+  } catch {
+    console.warn("Migration: instance_teams.min_members may already exist");
+  }
 
   // Team instances: group layer (Instance -> Group -> Team) + outside (non-registered) members
-  try { await db.exec(`CREATE TABLE IF NOT EXISTS instance_groups (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, name TEXT NOT NULL, organization TEXT, description TEXT, sort_order INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (instance_id) REFERENCES team_instances(id))`); } catch { console.warn("Migration: instance_groups table"); }
-  try { await db.exec(`CREATE TABLE IF NOT EXISTS instance_external_members (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, organization TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (instance_id) REFERENCES team_instances(id))`); } catch { console.warn("Migration: instance_external_members table"); }
-  try { await db.exec(`CREATE TABLE IF NOT EXISTS instance_team_external_members (team_id TEXT NOT NULL, external_id TEXT NOT NULL, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (team_id, external_id), FOREIGN KEY (team_id) REFERENCES instance_teams(id), FOREIGN KEY (external_id) REFERENCES instance_external_members(id))`); } catch { console.warn("Migration: instance_team_external_members table"); }
-  try { await db.exec("ALTER TABLE instance_teams ADD COLUMN group_id TEXT"); } catch { console.warn("Migration: instance_teams.group_id may already exist"); }
-  try { await db.exec("ALTER TABLE instance_teams ADD COLUMN sort_order INTEGER DEFAULT 0"); } catch { console.warn("Migration: instance_teams.sort_order may already exist"); }
-  try { await db.exec("ALTER TABLE team_instances ADD COLUMN group_label TEXT DEFAULT 'Company'"); } catch { console.warn("Migration: team_instances.group_label may already exist"); }
-  try { await db.exec(`CREATE TABLE IF NOT EXISTS instance_levels (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL, FOREIGN KEY (instance_id) REFERENCES team_instances(id))`); } catch { console.warn("Migration: instance_levels table"); }
-  try { await db.exec("ALTER TABLE team_instances ADD COLUMN level_count INTEGER DEFAULT 1"); } catch { console.warn("Migration: team_instances.level_count may already exist"); }
-  try { await db.exec("ALTER TABLE instance_teams ADD COLUMN current_level INTEGER DEFAULT 1"); } catch { console.warn("Migration: instance_teams.current_level may already exist"); }
-  try { await db.exec("ALTER TABLE instance_teams ADD COLUMN status TEXT DEFAULT 'active'"); } catch { console.warn("Migration: instance_teams.status may already exist"); }
+  try {
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS instance_groups (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, name TEXT NOT NULL, organization TEXT, description TEXT, sort_order INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (instance_id) REFERENCES team_instances(id))`,
+    );
+  } catch {
+    console.warn("Migration: instance_groups table");
+  }
+  try {
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS instance_external_members (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, organization TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (instance_id) REFERENCES team_instances(id))`,
+    );
+  } catch {
+    console.warn("Migration: instance_external_members table");
+  }
+  try {
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS instance_team_external_members (team_id TEXT NOT NULL, external_id TEXT NOT NULL, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (team_id, external_id), FOREIGN KEY (team_id) REFERENCES instance_teams(id), FOREIGN KEY (external_id) REFERENCES instance_external_members(id))`,
+    );
+  } catch {
+    console.warn("Migration: instance_team_external_members table");
+  }
+  try {
+    await db.exec("ALTER TABLE instance_teams ADD COLUMN group_id TEXT");
+  } catch {
+    console.warn("Migration: instance_teams.group_id may already exist");
+  }
+  try {
+    await db.exec(
+      "ALTER TABLE instance_teams ADD COLUMN sort_order INTEGER DEFAULT 0",
+    );
+  } catch {
+    console.warn("Migration: instance_teams.sort_order may already exist");
+  }
+  try {
+    await db.exec(
+      "ALTER TABLE team_instances ADD COLUMN group_label TEXT DEFAULT 'Company'",
+    );
+  } catch {
+    console.warn("Migration: team_instances.group_label may already exist");
+  }
+  try {
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS instance_levels (id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, position INTEGER NOT NULL, name TEXT NOT NULL, FOREIGN KEY (instance_id) REFERENCES team_instances(id))`,
+    );
+  } catch {
+    console.warn("Migration: instance_levels table");
+  }
+  try {
+    await db.exec(
+      "ALTER TABLE team_instances ADD COLUMN level_count INTEGER DEFAULT 1",
+    );
+  } catch {
+    console.warn("Migration: team_instances.level_count may already exist");
+  }
+  try {
+    await db.exec(
+      "ALTER TABLE instance_teams ADD COLUMN current_level INTEGER DEFAULT 1",
+    );
+  } catch {
+    console.warn("Migration: instance_teams.current_level may already exist");
+  }
+  try {
+    await db.exec(
+      "ALTER TABLE instance_teams ADD COLUMN status TEXT DEFAULT 'active'",
+    );
+  } catch {
+    console.warn("Migration: instance_teams.status may already exist");
+  }
 
-  try { await db.exec("INSERT OR IGNORE INTO maintenance_mode (id, enabled, message) VALUES (1, 0, 'Site is under maintenance. Please check back later.')"); } catch { console.warn("Migration: maintenance_mode seed"); }
-  try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletter_subscribers (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, active INTEGER DEFAULT 1, subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP, unsubscribed_at DATETIME)`); } catch { console.warn("Migration: newsletter_subscribers table"); }
-  try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletters (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '', content TEXT DEFAULT '', source_file_url TEXT, image_url TEXT, sent_at DATETIME, recipient_count INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`); } catch { console.warn("Migration: newsletters table"); }
-  try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletter_authorized_emails (email TEXT PRIMARY KEY, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`); } catch { console.warn("Migration: newsletter_authorized_emails table"); }
-  try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletter_otp_codes (id TEXT PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, expires_at DATETIME NOT NULL, used INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`); } catch { console.warn("Migration: newsletter_otp_codes table"); }
-  try { await db.exec(`CREATE TABLE IF NOT EXISTS newsletter_sessions (id TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`); } catch { console.warn("Migration: newsletter_sessions table"); }
-  try { await db.exec("ALTER TABLE audit_log ADD COLUMN instance_id TEXT"); } catch { console.warn("Migration: audit_log.instance_id may already exist"); }
+  try {
+    await db.exec(
+      "INSERT OR IGNORE INTO maintenance_mode (id, enabled, message) VALUES (1, 0, 'Site is under maintenance. Please check back later.')",
+    );
+  } catch {
+    console.warn("Migration: maintenance_mode seed");
+  }
+  try {
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS newsletter_subscribers (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, active INTEGER DEFAULT 1, subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP, unsubscribed_at DATETIME)`,
+    );
+  } catch {
+    console.warn("Migration: newsletter_subscribers table");
+  }
+  try {
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS newsletters (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '', content TEXT DEFAULT '', source_file_url TEXT, image_url TEXT, sent_at DATETIME, recipient_count INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+    );
+  } catch {
+    console.warn("Migration: newsletters table");
+  }
+  try {
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS newsletter_authorized_emails (email TEXT PRIMARY KEY, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+    );
+  } catch {
+    console.warn("Migration: newsletter_authorized_emails table");
+  }
+  try {
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS newsletter_otp_codes (id TEXT PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, expires_at DATETIME NOT NULL, used INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+    );
+  } catch {
+    console.warn("Migration: newsletter_otp_codes table");
+  }
+  try {
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS newsletter_sessions (id TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+    );
+  } catch {
+    console.warn("Migration: newsletter_sessions table");
+  }
+  try {
+    await db.exec("ALTER TABLE audit_log ADD COLUMN instance_id TEXT");
+  } catch {
+    console.warn("Migration: audit_log.instance_id may already exist");
+  }
 }
 
 let currentEnv: any = null;
@@ -741,46 +1257,186 @@ let currentEnv: any = null;
 async function seedData(db: any, env?: any) {
   if (env) currentEnv = env;
   try {
-    const roleSql = "INSERT OR IGNORE INTO roles (id, name, power_level, created_by) VALUES (?, ?, ?, ?)";
+    const roleSql =
+      "INSERT OR IGNORE INTO roles (id, name, power_level, created_by) VALUES (?, ?, ?, ?)";
     // Board (power 100)
-    await db.prepare(roleSql).bind("chairperson", "Chairperson", 100, "system").run();
-    await db.prepare(roleSql).bind("vice_chairperson", "Vice Chairperson", 100, "system").run();
-    await db.prepare(roleSql).bind("secretary", "Secretary", 100, "system").run();
-    await db.prepare(roleSql).bind("co_secretary", "Co-Secretary", 100, "system").run();
-    await db.prepare(roleSql).bind("technical_director", "Technical Director", 100, "system").run();
+    await db
+      .prepare(roleSql)
+      .bind("chairperson", "Chairperson", 100, "system")
+      .run();
+    await db
+      .prepare(roleSql)
+      .bind("vice_chairperson", "Vice Chairperson", 100, "system")
+      .run();
+    await db
+      .prepare(roleSql)
+      .bind("secretary", "Secretary", 100, "system")
+      .run();
+    await db
+      .prepare(roleSql)
+      .bind("co_secretary", "Co-Secretary", 100, "system")
+      .run();
+    await db
+      .prepare(roleSql)
+      .bind("technical_director", "Technical Director", 100, "system")
+      .run();
     // Department Directors (power 50 — manage their own department only)
-    await db.prepare(roleSql).bind("finance_director", "Finance Director", 50, "system").run();
-    await db.prepare(roleSql).bind("crm_director", "Client Relationship Director", 50, "system").run();
-    await db.prepare(roleSql).bind("operations_director", "Operations Director", 50, "system").run();
-    await db.prepare(roleSql).bind("business_strategy_director", "Business Strategy Director", 50, "system").run();
-    await db.prepare(roleSql).bind("marketing_director", "Marketing Director", 50, "system").run();
+    await db
+      .prepare(roleSql)
+      .bind("finance_director", "Finance Director", 50, "system")
+      .run();
+    await db
+      .prepare(roleSql)
+      .bind("crm_director", "Client Relationship Director", 50, "system")
+      .run();
+    await db
+      .prepare(roleSql)
+      .bind("operations_director", "Operations Director", 50, "system")
+      .run();
+    await db
+      .prepare(roleSql)
+      .bind(
+        "business_strategy_director",
+        "Business Strategy Director",
+        50,
+        "system",
+      )
+      .run();
+    await db
+      .prepare(roleSql)
+      .bind("marketing_director", "Marketing Director", 50, "system")
+      .run();
     // Members
-    await db.prepare(roleSql).bind("member", "General Member", 10, "system").run();
-    await db.prepare(roleSql).bind("advisory", "Advisory Member", 30, "system").run();
+    await db
+      .prepare(roleSql)
+      .bind("member", "General Member", 10, "system")
+      .run();
+    await db
+      .prepare(roleSql)
+      .bind("advisory", "Advisory Member", 30, "system")
+      .run();
 
-    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("tech", "Technical", "Handles technical infrastructure, UI, and research & development").run();
-    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("finance", "Finance", "Handles budgeting and financial planning").run();
-    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("crm", "Client Relationship Management", "Manages client relationships, partnerships, and sponsorships").run();
-    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("operations", "Operations", "Plans and executes events and club initiatives").run();
-    await db.prepare("INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("business_strategy", "Business Strategy", "Handles business strategy and organizational planning").run();
-    await db.prepare("INSERT OR REPLACE INTO departments (id, name, description) VALUES (?, ?, ?)").bind("marketing", "Marketing", "Handles marketing, outreach, communications, and social media").run();
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)",
+      )
+      .bind(
+        "tech",
+        "Technical",
+        "Handles technical infrastructure, UI, and research & development",
+      )
+      .run();
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)",
+      )
+      .bind("finance", "Finance", "Handles budgeting and financial planning")
+      .run();
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)",
+      )
+      .bind(
+        "crm",
+        "Client Relationship Management",
+        "Manages client relationships, partnerships, and sponsorships",
+      )
+      .run();
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)",
+      )
+      .bind(
+        "operations",
+        "Operations",
+        "Plans and executes events and club initiatives",
+      )
+      .run();
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO departments (id, name, description) VALUES (?, ?, ?)",
+      )
+      .bind(
+        "business_strategy",
+        "Business Strategy",
+        "Handles business strategy and organizational planning",
+      )
+      .run();
+    await db
+      .prepare(
+        "INSERT OR REPLACE INTO departments (id, name, description) VALUES (?, ?, ?)",
+      )
+      .bind(
+        "marketing",
+        "Marketing",
+        "Handles marketing, outreach, communications, and social media",
+      )
+      .run();
 
     // ── Org restructure migration (idempotent) ──
     // 1. Role id/name/power fixes for retained roles
-    await db.prepare("UPDATE roles SET name = 'Advisory Member' WHERE id = 'advisory' AND name != 'Advisory Member'").run();
-    await db.prepare("UPDATE roles SET name = 'General Member' WHERE id = 'member' AND name != 'General Member'").run();
-    await db.prepare("UPDATE roles SET power_level = 100 WHERE id IN ('secretary', 'technical_director') AND power_level != 100").run();
-    await db.prepare("UPDATE roles SET power_level = 50 WHERE id IN ('business_strategy_director', 'marketing_director') AND power_level != 50").run();
+    await db
+      .prepare(
+        "UPDATE roles SET name = 'Advisory Member' WHERE id = 'advisory' AND name != 'Advisory Member'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE roles SET name = 'General Member' WHERE id = 'member' AND name != 'General Member'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE roles SET power_level = 100 WHERE id IN ('secretary', 'technical_director') AND power_level != 100",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE roles SET power_level = 50 WHERE id IN ('business_strategy_director', 'marketing_director') AND power_level != 50",
+      )
+      .run();
 
     // 2. Migrate user roles to the new structure
-    await db.prepare("UPDATE users SET role_id = 'chairperson' WHERE role_id = 'president'").run();
-    await db.prepare("UPDATE users SET role_id = 'vice_chairperson' WHERE role_id = 'vice_president'").run();
-    await db.prepare("UPDATE users SET role_id = 'technical_director' WHERE role_id IN ('lead', 'lead_rnd')").run();
-    await db.prepare("UPDATE users SET role_id = 'finance_director' WHERE role_id = 'lead_finance'").run();
-    await db.prepare("UPDATE users SET role_id = 'operations_director' WHERE role_id = 'lead_events'").run();
-    await db.prepare("UPDATE users SET role_id = 'crm_director' WHERE role_id = 'lead_cps'").run();
-    await db.prepare("UPDATE users SET role_id = 'business_strategy_director' WHERE role_id = 'lead_business_strategy'").run();
-    await db.prepare("UPDATE users SET role_id = 'member' WHERE role_id IN ('lead_marketing', 'lead_social', 'lead_hr')").run();
+    await db
+      .prepare(
+        "UPDATE users SET role_id = 'chairperson' WHERE role_id = 'president'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE users SET role_id = 'vice_chairperson' WHERE role_id = 'vice_president'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE users SET role_id = 'technical_director' WHERE role_id IN ('lead', 'lead_rnd')",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE users SET role_id = 'finance_director' WHERE role_id = 'lead_finance'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE users SET role_id = 'operations_director' WHERE role_id = 'lead_events'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE users SET role_id = 'crm_director' WHERE role_id = 'lead_cps'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE users SET role_id = 'business_strategy_director' WHERE role_id = 'lead_business_strategy'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE users SET role_id = 'member' WHERE role_id IN ('lead_marketing', 'lead_social', 'lead_hr')",
+      )
+      .run();
 
     // 3. Migrate department references (R&D → Technical, Social Media → Marketing,
     //     Events → Operations, CPS → CRM, HR → Operations) across all FK tables
@@ -792,15 +1448,34 @@ async function seedData(db: any, env?: any) {
       hr: "operations",
     };
     for (const [oldId, newId] of Object.entries(deptRenames)) {
-      await db.prepare("UPDATE users SET department_id = ? WHERE department_id = ?").bind(newId, oldId).run();
-      for (const t of ["department_meets", "department_documents", "department_instructions", "department_projects"]) {
-        await db.prepare(`UPDATE ${t} SET department_id = ? WHERE department_id = ?`).bind(newId, oldId).run();
+      await db
+        .prepare("UPDATE users SET department_id = ? WHERE department_id = ?")
+        .bind(newId, oldId)
+        .run();
+      for (const t of [
+        "department_meets",
+        "department_documents",
+        "department_instructions",
+        "department_projects",
+      ]) {
+        await db
+          .prepare(`UPDATE ${t} SET department_id = ? WHERE department_id = ?`)
+          .bind(newId, oldId)
+          .run();
       }
       // Junction table has a composite PK — drop the old row if the new one already exists
-      await db.prepare(
-        "DELETE FROM project_departments WHERE department_id = ? AND EXISTS (SELECT 1 FROM project_departments pd2 WHERE pd2.project_id = project_departments.project_id AND pd2.department_id = ?)",
-      ).bind(oldId, newId).run();
-      await db.prepare("UPDATE project_departments SET department_id = ? WHERE department_id = ?").bind(newId, oldId).run();
+      await db
+        .prepare(
+          "DELETE FROM project_departments WHERE department_id = ? AND EXISTS (SELECT 1 FROM project_departments pd2 WHERE pd2.project_id = project_departments.project_id AND pd2.department_id = ?)",
+        )
+        .bind(oldId, newId)
+        .run();
+      await db
+        .prepare(
+          "UPDATE project_departments SET department_id = ? WHERE department_id = ?",
+        )
+        .bind(newId, oldId)
+        .run();
     }
 
     // 4. Ensure every director is attached to their department
@@ -813,48 +1488,137 @@ async function seedData(db: any, env?: any) {
       marketing_director: "marketing",
     };
     for (const [roleId, deptId] of Object.entries(directorDepts)) {
-      await db.prepare(
-        `UPDATE users SET department_id = ? WHERE role_id = ? AND (department_id IS NULL OR department_id NOT IN ('tech', 'finance', 'crm', 'operations', 'business_strategy', 'marketing'))`
-      ).bind(deptId, roleId).run();
+      await db
+        .prepare(
+          `UPDATE users SET department_id = ? WHERE role_id = ? AND (department_id IS NULL OR department_id NOT IN ('tech', 'finance', 'crm', 'operations', 'business_strategy', 'marketing'))`,
+        )
+        .bind(deptId, roleId)
+        .run();
     }
 
     // 5. Migrate admin tokens to the new role ids
-    await db.prepare("UPDATE admin_tokens SET role_id = 'chairperson' WHERE role_id = 'president'").run();
-    await db.prepare("UPDATE admin_tokens SET role_id = 'vice_chairperson' WHERE role_id = 'vice_president'").run();
-    await db.prepare("UPDATE admin_tokens SET role_id = 'technical_director' WHERE role_id IN ('lead', 'lead_rnd')").run();
-    await db.prepare("UPDATE admin_tokens SET role_id = 'finance_director' WHERE role_id = 'lead_finance'").run();
-    await db.prepare("UPDATE admin_tokens SET role_id = 'operations_director' WHERE role_id = 'lead_events'").run();
-    await db.prepare("UPDATE admin_tokens SET role_id = 'crm_director' WHERE role_id = 'lead_cps'").run();
-    await db.prepare("UPDATE admin_tokens SET role_id = 'business_strategy_director' WHERE role_id = 'lead_business_strategy'").run();
-    await db.prepare("UPDATE admin_tokens SET role_id = 'member' WHERE role_id IN ('lead_marketing', 'lead_social', 'lead_hr')").run();
+    await db
+      .prepare(
+        "UPDATE admin_tokens SET role_id = 'chairperson' WHERE role_id = 'president'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE admin_tokens SET role_id = 'vice_chairperson' WHERE role_id = 'vice_president'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE admin_tokens SET role_id = 'technical_director' WHERE role_id IN ('lead', 'lead_rnd')",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE admin_tokens SET role_id = 'finance_director' WHERE role_id = 'lead_finance'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE admin_tokens SET role_id = 'operations_director' WHERE role_id = 'lead_events'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE admin_tokens SET role_id = 'crm_director' WHERE role_id = 'lead_cps'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE admin_tokens SET role_id = 'business_strategy_director' WHERE role_id = 'lead_business_strategy'",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE admin_tokens SET role_id = 'member' WHERE role_id IN ('lead_marketing', 'lead_social', 'lead_hr')",
+      )
+      .run();
 
     // 6. Remove dual-role (secondary role) data
-    await db.prepare("UPDATE users SET secondary_role_id = NULL WHERE secondary_role_id IS NOT NULL").run();
-    await db.prepare("UPDATE admin_tokens SET active_role_id = NULL WHERE active_role_id IS NOT NULL").run();
+    await db
+      .prepare(
+        "UPDATE users SET secondary_role_id = NULL WHERE secondary_role_id IS NOT NULL",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE admin_tokens SET active_role_id = NULL WHERE active_role_id IS NOT NULL",
+      )
+      .run();
 
     // 7. Delete legacy departments, roles, and titles
-    await db.prepare("DELETE FROM departments WHERE id IN ('rnd', 'social_media', 'events-initiatives', 'client-partner-sponsor', 'hr', 'legal')").run();
-    await db.prepare("DELETE FROM roles WHERE id IN ('president', 'vice_president', 'lead', 'lead_rnd', 'lead_marketing', 'lead_social', 'lead_finance', 'lead_events', 'lead_cps', 'lead_business_strategy', 'lead_hr', 'lead_legal')").run();
-    await db.prepare("UPDATE team_members SET role = 'Chairperson' WHERE role = 'President'").run();
+    await db
+      .prepare(
+        "DELETE FROM departments WHERE id IN ('rnd', 'social_media', 'events-initiatives', 'client-partner-sponsor', 'hr', 'legal')",
+      )
+      .run();
+    await db
+      .prepare(
+        "DELETE FROM roles WHERE id IN ('president', 'vice_president', 'lead', 'lead_rnd', 'lead_marketing', 'lead_social', 'lead_finance', 'lead_events', 'lead_cps', 'lead_business_strategy', 'lead_hr', 'lead_legal')",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE team_members SET role = 'Chairperson' WHERE role = 'President'",
+      )
+      .run();
 
-    if (!currentEnv || (currentEnv.ENVIRONMENT || "").toLowerCase() !== "production") {
+    if (
+      !currentEnv ||
+      (currentEnv.ENVIRONMENT || "").toLowerCase() !== "production"
+    ) {
       const devToken = crypto.randomUUID().replace(/-/g, "");
-      await db.prepare("INSERT OR REPLACE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)").bind(devToken, "admin@vitstudent.ac.in", "Dev Admin", "chairperson", "system").run();
+      await db
+        .prepare(
+          "INSERT OR REPLACE INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(
+          devToken,
+          "admin@vitstudent.ac.in",
+          "Dev Admin",
+          "chairperson",
+          "system",
+        )
+        .run();
       console.info("Dev token generated (visible only in dev mode)");
     }
 
-    const tmCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM team_members").first();
+    const tmCount: any = await db
+      .prepare("SELECT COUNT(*) as cnt FROM team_members")
+      .first();
     if (tmCount && tmCount.cnt === 0) {
-      const tm = "INSERT OR IGNORE INTO team_members (id, initials, name, role) VALUES (?, ?, ?, ?)";
+      const tm =
+        "INSERT OR IGNORE INTO team_members (id, initials, name, role) VALUES (?, ?, ?, ?)";
       await db.prepare(tm).bind("tm1", "JD", "John Doe", "Chairperson").run();
-      await db.prepare(tm).bind("tm2", "JS", "Jane Smith", "Director of External Relations").run();
-      await db.prepare(tm).bind("tm3", "AT", "Alex Turner", "Director of Internal Relations").run();
-      await db.prepare(tm).bind("tm4", "EC", "Emily Chen", "Director of L&D").run();
-      await db.prepare(tm).bind("tm5", "MR", "Michael Ross", "VP of Projects").run();
-      await db.prepare(tm).bind("tm6", "SL", "Sarah Lee", "Head of Marketing").run();
+      await db
+        .prepare(tm)
+        .bind("tm2", "JS", "Jane Smith", "Director of External Relations")
+        .run();
+      await db
+        .prepare(tm)
+        .bind("tm3", "AT", "Alex Turner", "Director of Internal Relations")
+        .run();
+      await db
+        .prepare(tm)
+        .bind("tm4", "EC", "Emily Chen", "Director of L&D")
+        .run();
+      await db
+        .prepare(tm)
+        .bind("tm5", "MR", "Michael Ross", "VP of Projects")
+        .run();
+      await db
+        .prepare(tm)
+        .bind("tm6", "SL", "Sarah Lee", "Head of Marketing")
+        .run();
     }
 
-    const pCount: any = await db.prepare("SELECT COUNT(*) as cnt FROM partners").first();
+    const pCount: any = await db
+      .prepare("SELECT COUNT(*) as cnt FROM partners")
+      .first();
     if (pCount && pCount.cnt === 0) {
       const pi = "INSERT OR IGNORE INTO partners (id, name) VALUES (?, ?)";
       await db.prepare(pi).bind("p1", "Partner Org 1").run();
@@ -886,7 +1650,10 @@ app.use("*", async (c, next) => {
     c.res.headers.set("X-Frame-Options", "DENY");
   }
   c.res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  c.res.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  c.res.headers.set(
+    "Strict-Transport-Security",
+    "max-age=31536000; includeSubDomains; preload",
+  );
 });
 
 const ALLOWED_ORIGINS = [
@@ -900,14 +1667,17 @@ const isDevOrigin = (o: string) => {
   try {
     const u = new URL(o);
     return ["localhost", "127.0.0.1"].includes(u.hostname);
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 };
 
 app.use(
   "*",
   cors({
     origin: (origin) => {
-      if (!origin || isDevOrigin(origin) || ALLOWED_ORIGINS.includes(origin)) return origin;
+      if (!origin || isDevOrigin(origin) || ALLOWED_ORIGINS.includes(origin))
+        return origin;
       return null;
     },
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -915,14 +1685,22 @@ app.use(
   }),
 );
 
-app.use("*", csrf({
-  origin: (origin, c) => {
-    if (c.req.method === "GET" || c.req.method === "HEAD" || c.req.method === "OPTIONS") return true;
-    if (!origin) return false;
-    if (isDevOrigin(origin) || ALLOWED_ORIGINS.includes(origin)) return true;
-    return false;
-  },
-}));
+app.use(
+  "*",
+  csrf({
+    origin: (origin, c) => {
+      if (
+        c.req.method === "GET" ||
+        c.req.method === "HEAD" ||
+        c.req.method === "OPTIONS"
+      )
+        return true;
+      if (!origin) return false;
+      if (isDevOrigin(origin) || ALLOWED_ORIGINS.includes(origin)) return true;
+      return false;
+    },
+  }),
+);
 
 // Auth middleware
 app.use("*", async (c, next) => {
@@ -941,7 +1719,10 @@ app.use("*", async (c, next) => {
   }
 
   // Newsletter editor OTP routes use their own auth (not admin tokens)
-  if (url.pathname.startsWith("/api/newsletter-editor/") && !url.pathname.startsWith("/api/newsletter-editor/admin/")) {
+  if (
+    url.pathname.startsWith("/api/newsletter-editor/") &&
+    !url.pathname.startsWith("/api/newsletter-editor/admin/")
+  ) {
     await next();
     return;
   }
@@ -959,7 +1740,12 @@ app.use("*", async (c, next) => {
         .bind(token)
         .first();
 
-      if (tokenRow && !tokenRow.revoked_at && (!tokenRow.expires_at || new Date(tokenRow.expires_at + "Z") > new Date())) {
+      if (
+        tokenRow &&
+        !tokenRow.revoked_at &&
+        (!tokenRow.expires_at ||
+          new Date(tokenRow.expires_at + "Z") > new Date())
+      ) {
         email = tokenRow.email;
 
         const existing: any = await c.env.DB.prepare(
@@ -994,13 +1780,12 @@ app.use("*", async (c, next) => {
   let user: any = await c.env.DB.prepare(query).bind(email).first();
 
   if (!user) {
-    return c.json(
-      { error: "Unauthorized: Email not registered." },
-      401,
-    );
+    return c.json({ error: "Unauthorized: Email not registered." }, 401);
   }
 
-  const mm: any = await c.env.DB.prepare("SELECT enabled, message FROM maintenance_mode WHERE id = 1").first();
+  const mm: any = await c.env.DB.prepare(
+    "SELECT enabled, message FROM maintenance_mode WHERE id = 1",
+  ).first();
   if (mm && mm.enabled === 1 && user.power_level < 100) {
     return c.json({ error: mm.message || "Site is under maintenance." }, 503);
   }
@@ -1039,8 +1824,14 @@ app.get("/api/content/case-studies", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "content_case_studies", 100, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-    const rows = await c.env.DB.prepare("SELECT * FROM case_studies ORDER BY created_at ASC").all();
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
+    const rows = await c.env.DB.prepare(
+      "SELECT * FROM case_studies ORDER BY created_at ASC",
+    ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -1052,8 +1843,14 @@ app.get("/api/content/team-members", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "content_team_members", 100, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-    const rows = await c.env.DB.prepare("SELECT * FROM team_members ORDER BY created_at ASC").all();
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
+    const rows = await c.env.DB.prepare(
+      "SELECT * FROM team_members ORDER BY created_at ASC",
+    ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -1065,8 +1862,14 @@ app.get("/api/content/partners", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "content_partners", 100, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-    const rows = await c.env.DB.prepare("SELECT * FROM partners ORDER BY created_at ASC").all();
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
+    const rows = await c.env.DB.prepare(
+      "SELECT * FROM partners ORDER BY created_at ASC",
+    ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -1077,7 +1880,13 @@ app.get("/api/content/partners", async (c) => {
 // NEWSLETTER ENDPOINTS
 // ---------------------------------------------------------
 
-function newsletterEmailHtml(title: string, description: string, siteUrl: string, subscriberEmail?: string, hasPdf?: boolean): string {
+function newsletterEmailHtml(
+  title: string,
+  description: string,
+  siteUrl: string,
+  subscriberEmail?: string,
+  hasPdf?: boolean,
+): string {
   const safeTitle = escapeHtml(title);
   const safeDesc = escapeHtml(description);
   const unsubUrl = subscriberEmail
@@ -1119,19 +1928,27 @@ function newsletterEmailHtml(title: string, description: string, siteUrl: string
 </td></tr>
 
 <!-- DESCRIPTION -->
-${safeDesc ? `<tr><td style="padding:0 32px">
+${
+  safeDesc
+    ? `<tr><td style="padding:0 32px">
 <p style="font-size:14px;color:#555555;margin:0 0 24px;line-height:1.7">${safeDesc}</p>
-</td></tr>` : ""}
+</td></tr>`
+    : ""
+}
 
 <!-- PDF ATTACHMENT NOTICE -->
-${hasPdf ? `<tr><td style="padding:0 32px">
+${
+  hasPdf
+    ? `<tr><td style="padding:0 32px">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f5;border:2px dashed #d0cec8;border-radius:12px;margin:0 0 24px">
 <tr><td style="padding:16px 20px;text-align:center">
 <p style="font-size:13px;color:#1a1a1a;margin:0 0 4px;font-weight:700">&#x1F4CE; PDF Attached</p>
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">The full newsletter is attached as a PDF for your convenience. Download it for offline reading!</p>
 </td></tr>
 </table>
-</td></tr>` : ""}
+</td></tr>`
+    : ""
+}
 
 <!-- CTA BUTTON -->
 <tr><td style="padding:0 32px 28px;text-align:center">
@@ -1189,8 +2006,14 @@ ${hasPdf ? `<tr><td style="padding:0 32px">
 </body></html>`;
 }
 
-
-function eventMailEmailHtml(title: string, description: string, siteUrl: string, subscriberEmail?: string, hasPdf?: boolean, imageUrl?: string): string {
+function eventMailEmailHtml(
+  title: string,
+  description: string,
+  siteUrl: string,
+  subscriberEmail?: string,
+  hasPdf?: boolean,
+  imageUrl?: string,
+): string {
   const safeTitle = escapeHtml(title);
   const safeDesc = escapeHtml(description);
   const unsubUrl = subscriberEmail
@@ -1233,24 +2056,36 @@ function eventMailEmailHtml(title: string, description: string, siteUrl: string,
 </td></tr>
 
 <!-- DESCRIPTION -->
-${safeDesc ? `<tr><td style="padding:0 32px">
+${
+  safeDesc
+    ? `<tr><td style="padding:0 32px">
 <p style="font-size:14px;color:#555555;margin:0 0 24px;line-height:1.7">${safeDesc}</p>
-</td></tr>` : ""}
+</td></tr>`
+    : ""
+}
 
 <!-- INLINE IMAGE POSTER -->
-${fullImageUrl ? `<tr><td style="padding:0 32px">
+${
+  fullImageUrl
+    ? `<tr><td style="padding:0 32px">
 <img src="${fullImageUrl}" alt="Event Poster" style="width:100%;border-radius:12px;border:2px solid #e8e6e1;margin:0 0 24px;display:block" />
-</td></tr>` : ""}
+</td></tr>`
+    : ""
+}
 
 <!-- PDF ATTACHMENT NOTICE -->
-${hasPdf ? `<tr><td style="padding:0 32px">
+${
+  hasPdf
+    ? `<tr><td style="padding:0 32px">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f5;border:2px dashed #d0cec8;border-radius:12px;margin:0 0 24px">
 <tr><td style="padding:16px 20px;text-align:center">
 <p style="font-size:13px;color:#1a1a1a;margin:0 0 4px;font-weight:700">&#x1F4CE; PDF Attached</p>
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Event details are attached as a PDF. Download it for easy reference!</p>
 </td></tr>
 </table>
-</td></tr>` : ""}
+</td></tr>`
+    : ""
+}
 
 <!-- CTA BUTTON -->
 <tr><td style="padding:0 32px 28px;text-align:center">
@@ -1390,8 +2225,16 @@ function sendWelcomeEmail(apiKey: string, email: string) {
 </body></html>`;
   fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: "180DC Newsletter <team@180dcvitc.org>", to: email, subject: "Welcome to the 180DC Newsletter!", html }),
+    headers: {
+      Authorization: "Bearer " + apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: "180DC Newsletter <team@180dcvitc.org>",
+      to: email,
+      subject: "Welcome to the 180DC Newsletter!",
+      html,
+    }),
   }).catch(() => {});
 }
 
@@ -1442,8 +2285,16 @@ function sendWelcomeBackEmail(apiKey: string, email: string) {
 </body></html>`;
   fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: "180DC Newsletter <team@180dcvitc.org>", to: email, subject: "Welcome back to the 180DC Newsletter!", html }),
+    headers: {
+      Authorization: "Bearer " + apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: "180DC Newsletter <team@180dcvitc.org>",
+      to: email,
+      subject: "Welcome back to the 180DC Newsletter!",
+      html,
+    }),
   }).catch(() => {});
 }
 
@@ -1453,26 +2304,55 @@ app.post("/api/newsletter/subscribe", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "newsletter_subscribe", 5, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     const body = await c.req.json();
     const email = validateEmail(body?.email);
     if (!email) return c.json({ error: "Valid email address required" }, 400);
 
-    const existing = await c.env.DB.prepare("SELECT id, active FROM newsletter_subscribers WHERE email = ?").bind(email).first();
+    const existing = await c.env.DB.prepare(
+      "SELECT id, active FROM newsletter_subscribers WHERE email = ?",
+    )
+      .bind(email)
+      .first();
     if (existing) {
-      if (existing.active === 1) return c.json({ success: true, message: "You are already subscribed!" });
-      await c.env.DB.prepare("UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL WHERE id = ?").bind(existing.id).run();
+      if (existing.active === 1)
+        return c.json({
+          success: true,
+          message: "You are already subscribed!",
+        });
+      await c.env.DB.prepare(
+        "UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL WHERE id = ?",
+      )
+        .bind(existing.id)
+        .run();
       const apiKey = c.env.RESEND_API_KEY;
       if (apiKey) sendWelcomeBackEmail(apiKey, email);
-      return c.json({ success: true, message: "Welcome back! You have been re-subscribed." });
+      return c.json({
+        success: true,
+        message: "Welcome back! You have been re-subscribed.",
+      });
     }
 
-    await c.env.DB.prepare("INSERT INTO newsletter_subscribers (id, email, active) VALUES (?, ?, 1)").bind(crypto.randomUUID(), email).run();
+    await c.env.DB.prepare(
+      "INSERT INTO newsletter_subscribers (id, email, active) VALUES (?, ?, 1)",
+    )
+      .bind(crypto.randomUUID(), email)
+      .run();
 
     const apiKey = c.env.RESEND_API_KEY;
     if (apiKey) sendWelcomeEmail(apiKey, email);
 
-    return c.json({ success: true, message: "Successfully subscribed to the newsletter!" });
+    return c.json({
+      success: true,
+      message: "Successfully subscribed to the newsletter!",
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -1483,18 +2363,39 @@ app.get("/api/newsletter/unsubscribe", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const email = c.req.query("email");
-    if (!email || !validateEmail(email)) return c.json({ error: "Invalid email address." }, 400);
+    if (!email || !validateEmail(email))
+      return c.json({ error: "Invalid email address." }, 400);
 
-    const sub = await c.env.DB.prepare("SELECT id, active FROM newsletter_subscribers WHERE email = ?").bind(email).first();
+    const sub = await c.env.DB.prepare(
+      "SELECT id, active FROM newsletter_subscribers WHERE email = ?",
+    )
+      .bind(email)
+      .first();
     if (!sub) {
-      return c.json({ success: true, status: "not_found", message: "This email is not subscribed to our newsletter." });
+      return c.json({
+        success: true,
+        status: "not_found",
+        message: "This email is not subscribed to our newsletter.",
+      });
     }
     if (sub.active === 0) {
-      return c.json({ success: true, status: "already", message: "You have already unsubscribed from the 180DC newsletter." });
+      return c.json({
+        success: true,
+        status: "already",
+        message: "You have already unsubscribed from the 180DC newsletter.",
+      });
     }
 
-    await c.env.DB.prepare("UPDATE newsletter_subscribers SET active = 0, unsubscribed_at = CURRENT_TIMESTAMP WHERE id = ?").bind(sub.id).run();
-    return c.json({ success: true, status: "unsubscribed", message: "You have been unsubscribed from the 180DC newsletter." });
+    await c.env.DB.prepare(
+      "UPDATE newsletter_subscribers SET active = 0, unsubscribed_at = CURRENT_TIMESTAMP WHERE id = ?",
+    )
+      .bind(sub.id)
+      .run();
+    return c.json({
+      success: true,
+      status: "unsubscribed",
+      message: "You have been unsubscribed from the 180DC newsletter.",
+    });
   } catch (e: any) {
     return c.json({ error: "Something went wrong." }, 500);
   }
@@ -1506,8 +2407,14 @@ app.get("/api/newsletter", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "content_newsletter", 100, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-    const rows = await c.env.DB.prepare("SELECT id, title, description, image_url, source_file_url, created_at FROM newsletters ORDER BY created_at DESC LIMIT 10").all();
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
+    const rows = await c.env.DB.prepare(
+      "SELECT id, title, description, image_url, source_file_url, created_at FROM newsletters ORDER BY created_at DESC LIMIT 10",
+    ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -1518,7 +2425,9 @@ app.get("/api/newsletter", async (c) => {
 app.get("/api/newsletter/subscribers/count", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    const row = await c.env.DB.prepare("SELECT COUNT(*) as count FROM newsletter_subscribers WHERE active = 1").first();
+    const row = await c.env.DB.prepare(
+      "SELECT COUNT(*) as count FROM newsletter_subscribers WHERE active = 1",
+    ).first();
     return c.json({ success: true, count: row?.count || 0 });
   } catch (e: any) {
     return c.json({ count: 0 });
@@ -1530,7 +2439,9 @@ app.get("/api/newsletter/admin", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
-    const rows = await c.env.DB.prepare("SELECT * FROM newsletters ORDER BY created_at DESC").all();
+    const rows = await c.env.DB.prepare(
+      "SELECT * FROM newsletters ORDER BY created_at DESC",
+    ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -1542,7 +2453,9 @@ app.get("/api/newsletter/admin/subscribers", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
-    const rows = await c.env.DB.prepare("SELECT id, email, active, subscribed_at, unsubscribed_at FROM newsletter_subscribers ORDER BY subscribed_at DESC").all();
+    const rows = await c.env.DB.prepare(
+      "SELECT id, email, active, subscribed_at, unsubscribed_at FROM newsletter_subscribers ORDER BY subscribed_at DESC",
+    ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -1554,19 +2467,28 @@ app.post("/api/newsletter/upload-source", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
-    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
+    if (!user || user.power_level < 100)
+      return c.json({ error: "Forbidden: Board only" }, 403);
     const rl = await checkRateLimit(c, "newsletter_upload", 20, 3600);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
 
     const fd = await c.req.formData();
     const file = fd.get("file");
-    if (!file || typeof file === "string") return c.json({ error: "No file provided" }, 400);
+    if (!file || typeof file === "string")
+      return c.json({ error: "No file provided" }, 400);
 
     const typedFile = file as File;
     const ext = typedFile.name.split(".").pop()?.toLowerCase();
     const allowedExts = ["pdf", "docx", "jpg", "jpeg", "png", "webp", "gif"];
     if (!ext || !allowedExts.includes(ext)) {
-      return c.json({ error: "Invalid file type. Allowed: pdf, docx, jpg, png, webp, gif" }, 400);
+      return c.json(
+        { error: "Invalid file type. Allowed: pdf, docx, jpg, png, webp, gif" },
+        400,
+      );
     }
     if (typedFile.size > MAX_DOC_SIZE) {
       return c.json({ error: "File too large. Max 20 MB" }, 400);
@@ -1590,7 +2512,8 @@ app.post("/api/newsletter", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
-    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
+    if (!user || user.power_level < 100)
+      return c.json({ error: "Forbidden: Board only" }, 403);
     const body = await c.req.json();
     const title = sanitizeStr(body.title);
     if (!title) return c.json({ error: "Title is required" }, 400);
@@ -1601,13 +2524,38 @@ app.post("/api/newsletter", async (c) => {
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
     const imageUrl = sanitizeStr(body.imageUrl);
 
-    const existing = await c.env.DB.prepare("SELECT id FROM newsletters WHERE id = ?").bind(id).first();
+    const existing = await c.env.DB.prepare(
+      "SELECT id FROM newsletters WHERE id = ?",
+    )
+      .bind(id)
+      .first();
     if (existing) {
-      await c.env.DB.prepare("UPDATE newsletters SET title = ?, description = ?, content = ?, source_file_url = COALESCE(?, source_file_url), image_url = COALESCE(?, image_url) WHERE id = ?")
-        .bind(title, description, content, sourceFileUrl || null, imageUrl || null, id).run();
+      await c.env.DB.prepare(
+        "UPDATE newsletters SET title = ?, description = ?, content = ?, source_file_url = COALESCE(?, source_file_url), image_url = COALESCE(?, image_url) WHERE id = ?",
+      )
+        .bind(
+          title,
+          description,
+          content,
+          sourceFileUrl || null,
+          imageUrl || null,
+          id,
+        )
+        .run();
     } else {
-      await c.env.DB.prepare("INSERT INTO newsletters (id, title, description, content, source_file_url, image_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .bind(id, title, description, content, sourceFileUrl || null, imageUrl || null, user.email).run();
+      await c.env.DB.prepare(
+        "INSERT INTO newsletters (id, title, description, content, source_file_url, image_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+        .bind(
+          id,
+          title,
+          description,
+          content,
+          sourceFileUrl || null,
+          imageUrl || null,
+          user.email,
+        )
+        .run();
     }
 
     return c.json({ success: true, id });
@@ -1621,9 +2569,12 @@ app.delete("/api/newsletter/:id", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
-    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
+    if (!user || user.power_level < 100)
+      return c.json({ error: "Forbidden: Board only" }, 403);
     const id = c.req.param("id");
-    await c.env.DB.prepare("DELETE FROM newsletters WHERE id = ?").bind(id).run();
+    await c.env.DB.prepare("DELETE FROM newsletters WHERE id = ?")
+      .bind(id)
+      .run();
     return c.json({ success: true });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -1635,9 +2586,17 @@ app.post("/api/newsletter/send", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
-    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
+    if (!user || user.power_level < 100)
+      return c.json({ error: "Forbidden: Board only" }, 403);
     const rl = await checkRateLimit(c, "newsletter_send", 5, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
 
     const apiKey = c.env.RESEND_API_KEY;
     if (!apiKey) return c.json({ error: "Email not configured" }, 500);
@@ -1646,33 +2605,55 @@ app.post("/api/newsletter/send", async (c) => {
     const newsletterId = body.newsletterId;
     if (!newsletterId) return c.json({ error: "newsletterId required" }, 400);
 
-    const newsletter = await c.env.DB.prepare("SELECT * FROM newsletters WHERE id = ?").bind(newsletterId).first();
+    const newsletter = await c.env.DB.prepare(
+      "SELECT * FROM newsletters WHERE id = ?",
+    )
+      .bind(newsletterId)
+      .first();
     if (!newsletter) return c.json({ error: "Newsletter not found" }, 404);
 
     const currentCount = await getTodayEmailCount(c.env.DB);
     if (currentCount >= 100) {
-      return c.json({ error: "Daily email quota reached (100). Try again after 24 hours." }, 429);
+      return c.json(
+        { error: "Daily email quota reached (100). Try again after 24 hours." },
+        429,
+      );
     }
 
-    const subscribers = await c.env.DB.prepare("SELECT email FROM newsletter_subscribers WHERE active = 1").all();
+    const subscribers = await c.env.DB.prepare(
+      "SELECT email FROM newsletter_subscribers WHERE active = 1",
+    ).all();
     const recipients = (subscribers.results || []).map((s: any) => s.email);
-    if (recipients.length === 0) return c.json({ error: "No active subscribers" }, 400);
+    if (recipients.length === 0)
+      return c.json({ error: "No active subscribers" }, 400);
 
     let sentCount = 0;
     const siteUrl = "https://180dcvitc.org/#newsletter";
 
     let pdfAttachment: any = null;
     if (newsletter.source_file_url) {
-      const r2Key = newsletter.source_file_url.replace(/^\/api\/case-studies\/images\//, "");
+      const r2Key = newsletter.source_file_url.replace(
+        /^\/api\/case-studies\/images\//,
+        "",
+      );
       const r2Obj = await c.env.CASE_STUDIES.get(r2Key);
       if (r2Obj) {
         const buf = await r2Obj.arrayBuffer();
         const b64 = arrayBufferToBase64(buf);
-        pdfAttachment = { filename: r2Key.split("/").pop() || "newsletter.pdf", content: b64 };
+        pdfAttachment = {
+          filename: r2Key.split("/").pop() || "newsletter.pdf",
+          content: b64,
+        };
       }
     }
 
-    const html = newsletterEmailHtml(newsletter.title, newsletter.description || "", siteUrl, undefined, !!pdfAttachment);
+    const html = newsletterEmailHtml(
+      newsletter.title,
+      newsletter.description || "",
+      siteUrl,
+      undefined,
+      !!pdfAttachment,
+    );
 
     for (const email of recipients) {
       if (currentCount + sentCount >= 100) break;
@@ -1686,20 +2667,28 @@ app.post("/api/newsletter/send", async (c) => {
         if (pdfAttachment) payload.attachments = [pdfAttachment];
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
-          headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+          headers: {
+            Authorization: "Bearer " + apiKey,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(payload),
         });
         if (res.ok) sentCount++;
         await new Promise((r) => setTimeout(r, 550));
       } catch (err: any) {
-        console.error("[newsletter] Failed to send to " + email + ": " + err.message);
+        console.error(
+          "[newsletter] Failed to send to " + email + ": " + err.message,
+        );
       }
     }
 
     for (let i = 0; i < sentCount; i++) await incrementEmailCount(c.env.DB);
 
-    await c.env.DB.prepare("UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?")
-      .bind(sentCount, newsletterId).run();
+    await c.env.DB.prepare(
+      "UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?",
+    )
+      .bind(sentCount, newsletterId)
+      .run();
 
     return c.json({ success: true, sentCount, total: recipients.length });
   } catch (e: any) {
@@ -1750,11 +2739,15 @@ async function verifyNewsletterSession(c: any): Promise<string | null> {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
   const token = authHeader.slice(7);
   const row = await c.env.DB.prepare(
-    "SELECT email, expires_at FROM newsletter_sessions WHERE id = ?"
-  ).bind(token).first();
+    "SELECT email, expires_at FROM newsletter_sessions WHERE id = ?",
+  )
+    .bind(token)
+    .first();
   if (!row) return null;
   if (new Date(row.expires_at as string) < new Date()) {
-    await c.env.DB.prepare("DELETE FROM newsletter_sessions WHERE id = ?").bind(token).run();
+    await c.env.DB.prepare("DELETE FROM newsletter_sessions WHERE id = ?")
+      .bind(token)
+      .run();
     return null;
   }
   return row.email as string;
@@ -1769,16 +2762,31 @@ app.post("/api/newsletter-editor/otp/send", async (c) => {
     if (!email) return c.json({ error: "Valid email required" }, 400);
 
     const rl = await checkRateLimit(c, "newsletter_otp_send", 5, 300);
-    if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
 
     const authorized = await c.env.DB.prepare(
-      "SELECT email FROM newsletter_authorized_emails WHERE email = ?"
-    ).bind(email).first();
+      "SELECT email FROM newsletter_authorized_emails WHERE email = ?",
+    )
+      .bind(email)
+      .first();
     if (!authorized) {
       const member = await c.env.DB.prepare(
-        "SELECT email FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ? AND r.power_level != 30"
-      ).bind(email).first();
-      if (!member) return c.json({ error: "Email not authorized for newsletter editor" }, 403);
+        "SELECT email FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ? AND r.power_level != 30",
+      )
+        .bind(email)
+        .first();
+      if (!member)
+        return c.json(
+          { error: "Email not authorized for newsletter editor" },
+          403,
+        );
     }
 
     const code = generateOtp();
@@ -1786,14 +2794,19 @@ app.post("/api/newsletter-editor/otp/send", async (c) => {
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
     await c.env.DB.prepare(
-      "INSERT INTO newsletter_otp_codes (id, email, code, expires_at) VALUES (?, ?, ?, ?)"
-    ).bind(id, email, code, expiresAt).run();
+      "INSERT INTO newsletter_otp_codes (id, email, code, expires_at) VALUES (?, ?, ?, ?)",
+    )
+      .bind(id, email, code, expiresAt)
+      .run();
 
     const apiKey = c.env.RESEND_API_KEY;
     if (apiKey) {
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
-        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+        headers: {
+          Authorization: "Bearer " + apiKey,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           from: "180DC Newsletter <team@180dcvitc.org>",
           to: email,
@@ -1803,7 +2816,11 @@ app.post("/api/newsletter-editor/otp/send", async (c) => {
       });
       if (!res.ok) {
         const errBody = await res.text();
-        console.error("[newsletter-editor] OTP email failed:", res.status, errBody);
+        console.error(
+          "[newsletter-editor] OTP email failed:",
+          res.status,
+          errBody,
+        );
         return c.json({ error: "Failed to send OTP email" }, 500);
       }
     } else {
@@ -1823,26 +2840,46 @@ app.post("/api/newsletter-editor/otp/verify", async (c) => {
     const body = await c.req.json();
     const email = validateEmail(body.email);
     const code = sanitizeStr(body.code, 10);
-    if (!email || !code) return c.json({ error: "Email and code required" }, 400);
+    if (!email || !code)
+      return c.json({ error: "Email and code required" }, 400);
 
     const rl = await checkRateLimit(c, "newsletter_otp_verify", 10, 300);
-    if (!rl.allowed) return c.json({ error: "Too many attempts. Try again later.", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        {
+          error: "Too many attempts. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
 
     const row = await c.env.DB.prepare(
-      "SELECT id, code, expires_at, used FROM newsletter_otp_codes WHERE email = ? ORDER BY created_at DESC LIMIT 1"
-    ).bind(email).first();
+      "SELECT id, code, expires_at, used FROM newsletter_otp_codes WHERE email = ? ORDER BY created_at DESC LIMIT 1",
+    )
+      .bind(email)
+      .first();
     if (!row) return c.json({ error: "No OTP found. Request a new one." }, 400);
-    if (row.used) return c.json({ error: "OTP already used. Request a new one." }, 400);
-    if (new Date(row.expires_at as string) < new Date()) return c.json({ error: "OTP expired. Request a new one." }, 400);
+    if (row.used)
+      return c.json({ error: "OTP already used. Request a new one." }, 400);
+    if (new Date(row.expires_at as string) < new Date())
+      return c.json({ error: "OTP expired. Request a new one." }, 400);
     if (row.code !== code) return c.json({ error: "Invalid OTP" }, 400);
 
-    await c.env.DB.prepare("UPDATE newsletter_otp_codes SET used = 1 WHERE id = ?").bind(row.id).run();
+    await c.env.DB.prepare(
+      "UPDATE newsletter_otp_codes SET used = 1 WHERE id = ?",
+    )
+      .bind(row.id)
+      .run();
 
     const sessionId = crypto.randomUUID();
-    const sessionExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const sessionExpires = new Date(
+      Date.now() + 24 * 60 * 60 * 1000,
+    ).toISOString();
     await c.env.DB.prepare(
-      "INSERT INTO newsletter_sessions (id, email, expires_at) VALUES (?, ?, ?)"
-    ).bind(sessionId, email, sessionExpires).run();
+      "INSERT INTO newsletter_sessions (id, email, expires_at) VALUES (?, ?, ?)",
+    )
+      .bind(sessionId, email, sessionExpires)
+      .run();
 
     return c.json({ success: true, token: sessionId, email });
   } catch (e: any) {
@@ -1855,7 +2892,9 @@ app.post("/api/newsletter-editor/logout", async (c) => {
   try {
     const authHeader = c.req.header("Authorization");
     if (authHeader?.startsWith("Bearer ")) {
-      await c.env.DB.prepare("DELETE FROM newsletter_sessions WHERE id = ?").bind(authHeader.slice(7)).run();
+      await c.env.DB.prepare("DELETE FROM newsletter_sessions WHERE id = ?")
+        .bind(authHeader.slice(7))
+        .run();
     }
     return c.json({ success: true });
   } catch (e: any) {
@@ -1880,8 +2919,10 @@ app.get("/api/newsletter-editor/drafts", async (c) => {
     const email = await verifyNewsletterSession(c);
     if (!email) return c.json({ error: "Not authenticated" }, 401);
     const rows = await c.env.DB.prepare(
-      "SELECT * FROM newsletters WHERE created_by = ? ORDER BY created_at DESC"
-    ).bind(email).all();
+      "SELECT * FROM newsletters WHERE created_by = ? ORDER BY created_at DESC",
+    )
+      .bind(email)
+      .all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -1902,15 +2943,30 @@ app.post("/api/newsletter-editor/drafts", async (c) => {
     const emailSubject = sanitizeStr(body.emailSubject, 200) || title;
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
 
-    const existing = await c.env.DB.prepare("SELECT id FROM newsletters WHERE id = ?").bind(id).first();
+    const existing = await c.env.DB.prepare(
+      "SELECT id FROM newsletters WHERE id = ?",
+    )
+      .bind(id)
+      .first();
     if (existing) {
       await c.env.DB.prepare(
-        "UPDATE newsletters SET title = ?, description = ?, email_subject = ?, source_file_url = COALESCE(?, source_file_url) WHERE id = ?"
-      ).bind(title, description, emailSubject, sourceFileUrl || null, id).run();
+        "UPDATE newsletters SET title = ?, description = ?, email_subject = ?, source_file_url = COALESCE(?, source_file_url) WHERE id = ?",
+      )
+        .bind(title, description, emailSubject, sourceFileUrl || null, id)
+        .run();
     } else {
       await c.env.DB.prepare(
-        "INSERT INTO newsletters (id, title, description, email_subject, source_file_url, created_by) VALUES (?, ?, ?, ?, ?, ?)"
-      ).bind(id, title, description, emailSubject, sourceFileUrl || null, email).run();
+        "INSERT INTO newsletters (id, title, description, email_subject, source_file_url, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+        .bind(
+          id,
+          title,
+          description,
+          emailSubject,
+          sourceFileUrl || null,
+          email,
+        )
+        .run();
     }
     return c.json({ success: true, id });
   } catch (e: any) {
@@ -1924,7 +2980,11 @@ app.delete("/api/newsletter-editor/drafts/:id", async (c) => {
     const email = await verifyNewsletterSession(c);
     if (!email) return c.json({ error: "Not authenticated" }, 401);
     const id = c.req.param("id");
-    await c.env.DB.prepare("DELETE FROM newsletters WHERE id = ? AND created_by = ?").bind(id, email).run();
+    await c.env.DB.prepare(
+      "DELETE FROM newsletters WHERE id = ? AND created_by = ?",
+    )
+      .bind(id, email)
+      .run();
     return c.json({ success: true });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -1937,16 +2997,26 @@ app.post("/api/newsletter-editor/upload-source", async (c) => {
     const email = await verifyNewsletterSession(c);
     if (!email) return c.json({ error: "Not authenticated" }, 401);
     const rl = await checkRateLimit(c, "newsletter_editor_upload", 20, 3600);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
 
     const fd = await c.req.formData();
     const file = fd.get("file");
-    if (!file || typeof file === "string") return c.json({ error: "No file provided" }, 400);
+    if (!file || typeof file === "string")
+      return c.json({ error: "No file provided" }, 400);
     const typedFile = file as File;
     const ext = typedFile.name.split(".").pop()?.toLowerCase();
     const allowedExts = ["pdf", "docx", "jpg", "jpeg", "png", "webp", "gif"];
-    if (!ext || !allowedExts.includes(ext)) return c.json({ error: "Invalid file type. Allowed: pdf, docx, jpg, png, webp, gif" }, 400);
-    if (typedFile.size > MAX_DOC_SIZE) return c.json({ error: "File too large. Max 20 MB" }, 400);
+    if (!ext || !allowedExts.includes(ext))
+      return c.json(
+        { error: "Invalid file type. Allowed: pdf, docx, jpg, png, webp, gif" },
+        400,
+      );
+    if (typedFile.size > MAX_DOC_SIZE)
+      return c.json({ error: "File too large. Max 20 MB" }, 400);
 
     const key = `source/${crypto.randomUUID()}.${ext}`;
     const arrayBuffer = await typedFile.arrayBuffer();
@@ -1967,7 +3037,14 @@ app.post("/api/newsletter-editor/send", async (c) => {
     if (!email) return c.json({ error: "Not authenticated" }, 401);
 
     const rl = await checkRateLimit(c, "newsletter_editor_send", 3, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
 
     const apiKey = c.env.RESEND_API_KEY;
     if (!apiKey) return c.json({ error: "Email not configured" }, 500);
@@ -1976,15 +3053,23 @@ app.post("/api/newsletter-editor/send", async (c) => {
     const newsletterId = body.newsletterId;
     if (!newsletterId) return c.json({ error: "newsletterId required" }, 400);
 
-    const newsletter = await c.env.DB.prepare("SELECT * FROM newsletters WHERE id = ?").bind(newsletterId).first();
+    const newsletter = await c.env.DB.prepare(
+      "SELECT * FROM newsletters WHERE id = ?",
+    )
+      .bind(newsletterId)
+      .first();
     if (!newsletter) return c.json({ error: "Newsletter not found" }, 404);
 
     const currentCount = await getTodayEmailCount(c.env.DB);
-    if (currentCount >= 100) return c.json({ error: "Daily email quota reached (100)." }, 429);
+    if (currentCount >= 100)
+      return c.json({ error: "Daily email quota reached (100)." }, 429);
 
-    const subscribers = await c.env.DB.prepare("SELECT email FROM newsletter_subscribers WHERE active = 1").all();
+    const subscribers = await c.env.DB.prepare(
+      "SELECT email FROM newsletter_subscribers WHERE active = 1",
+    ).all();
     const recipients = (subscribers.results || []).map((s: any) => s.email);
-    if (recipients.length === 0) return c.json({ error: "No active subscribers" }, 400);
+    if (recipients.length === 0)
+      return c.json({ error: "No active subscribers" }, 400);
 
     let sentCount = 0;
     const siteUrl = "https://180dcvitc.org/#newsletter";
@@ -1993,19 +3078,31 @@ app.post("/api/newsletter-editor/send", async (c) => {
 
     let pdfAttachment: any = null;
     if (newsletter.source_file_url) {
-      const r2Key = newsletter.source_file_url.replace(/^\/api\/case-studies\/images\//, "");
+      const r2Key = newsletter.source_file_url.replace(
+        /^\/api\/case-studies\/images\//,
+        "",
+      );
       const r2Obj = await c.env.CASE_STUDIES.get(r2Key);
       if (r2Obj) {
         const buf = await r2Obj.arrayBuffer();
         const b64 = arrayBufferToBase64(buf);
-        pdfAttachment = { filename: r2Key.split("/").pop() || "newsletter.pdf", content: b64 };
+        pdfAttachment = {
+          filename: r2Key.split("/").pop() || "newsletter.pdf",
+          content: b64,
+        };
       }
     }
 
     for (const to of recipients) {
       if (currentCount + sentCount >= 100) break;
       try {
-        const html = newsletterEmailHtml(newsletter.title, newsletter.description || "", siteUrl, to, !!pdfAttachment);
+        const html = newsletterEmailHtml(
+          newsletter.title,
+          newsletter.description || "",
+          siteUrl,
+          to,
+          !!pdfAttachment,
+        );
         const payload: any = {
           from: "180DC Newsletter <team@180dcvitc.org>",
           to,
@@ -2015,21 +3112,28 @@ app.post("/api/newsletter-editor/send", async (c) => {
         if (pdfAttachment) payload.attachments = [pdfAttachment];
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
-          headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+          headers: {
+            Authorization: "Bearer " + apiKey,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(payload),
         });
         if (res.ok) sentCount++;
         await new Promise((r) => setTimeout(r, 550));
       } catch (err: any) {
-        console.error("[newsletter-editor] Failed to send to " + to + ": " + err.message);
+        console.error(
+          "[newsletter-editor] Failed to send to " + to + ": " + err.message,
+        );
       }
     }
 
     for (let i = 0; i < sentCount; i++) await incrementEmailCount(c.env.DB);
 
     await c.env.DB.prepare(
-      "UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?"
-    ).bind(sentCount, newsletterId).run();
+      "UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?",
+    )
+      .bind(sentCount, newsletterId)
+      .run();
 
     return c.json({ success: true, sentCount, total: recipients.length });
   } catch (e: any) {
@@ -2044,7 +3148,14 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
     if (!email) return c.json({ error: "Not authenticated" }, 401);
 
     const rl = await checkRateLimit(c, "newsletter_editor_send_event", 3, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
 
     const apiKey = c.env.RESEND_API_KEY;
     if (!apiKey) return c.json({ error: "Email not configured" }, 500);
@@ -2053,14 +3164,19 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
     const { subject, description } = body;
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
     const imageUrl = sanitizeStr(body.imageUrl);
-    if (!subject || !subject.trim()) return c.json({ error: "Subject is required" }, 400);
+    if (!subject || !subject.trim())
+      return c.json({ error: "Subject is required" }, 400);
 
     const currentCount = await getTodayEmailCount(c.env.DB);
-    if (currentCount >= 100) return c.json({ error: "Daily email quota reached (100)." }, 429);
+    if (currentCount >= 100)
+      return c.json({ error: "Daily email quota reached (100)." }, 429);
 
-    const subscribers = await c.env.DB.prepare("SELECT email FROM newsletter_subscribers WHERE active = 1").all();
+    const subscribers = await c.env.DB.prepare(
+      "SELECT email FROM newsletter_subscribers WHERE active = 1",
+    ).all();
     const recipients = (subscribers.results || []).map((s: any) => s.email);
-    if (recipients.length === 0) return c.json({ error: "No active subscribers" }, 400);
+    if (recipients.length === 0)
+      return c.json({ error: "No active subscribers" }, 400);
 
     let sentCount = 0;
     const siteUrl = "https://180dcvitc.org/#newsletter";
@@ -2072,14 +3188,24 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
       if (r2Obj) {
         const buf = await r2Obj.arrayBuffer();
         const b64 = arrayBufferToBase64(buf);
-        pdfAttachment = { filename: r2Key.split("/").pop() || "event.pdf", content: b64 };
+        pdfAttachment = {
+          filename: r2Key.split("/").pop() || "event.pdf",
+          content: b64,
+        };
       }
     }
 
     for (const to of recipients) {
       if (currentCount + sentCount >= 100) break;
       try {
-        const html = eventMailEmailHtml(subject, description || "", siteUrl, to, !!pdfAttachment, imageUrl || undefined);
+        const html = eventMailEmailHtml(
+          subject,
+          description || "",
+          siteUrl,
+          to,
+          !!pdfAttachment,
+          imageUrl || undefined,
+        );
         const payload: any = {
           from: "180DC Events <team@180dcvitc.org>",
           to,
@@ -2089,13 +3215,21 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
         if (pdfAttachment) payload.attachments = [pdfAttachment];
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
-          headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+          headers: {
+            Authorization: "Bearer " + apiKey,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(payload),
         });
         if (res.ok) sentCount++;
         await new Promise((r) => setTimeout(r, 550));
       } catch (err: any) {
-        console.error("[newsletter-editor] Failed to send event mail to " + to + ": " + err.message);
+        console.error(
+          "[newsletter-editor] Failed to send event mail to " +
+            to +
+            ": " +
+            err.message,
+        );
       }
     }
 
@@ -2110,7 +3244,9 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
 app.get("/api/newsletter-editor/admin/authorized-emails", async (c) => {
   try {
     requireBoard(c);
-    const rows = await c.env.DB.prepare("SELECT * FROM newsletter_authorized_emails ORDER BY created_at DESC").all();
+    const rows = await c.env.DB.prepare(
+      "SELECT * FROM newsletter_authorized_emails ORDER BY created_at DESC",
+    ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -2120,34 +3256,49 @@ app.get("/api/newsletter-editor/admin/authorized-emails", async (c) => {
 app.post("/api/newsletter-editor/admin/authorized-emails", async (c) => {
   try {
     const user: any = c.get("user");
-    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
+    if (!user || user.power_level < 100)
+      return c.json({ error: "Forbidden: Board only" }, 403);
     const body = await c.req.json();
     const email = validateEmail(body.email);
     if (!email) return c.json({ error: "Valid email required" }, 400);
 
-    const existing = await c.env.DB.prepare("SELECT email FROM newsletter_authorized_emails WHERE email = ?").bind(email).first();
+    const existing = await c.env.DB.prepare(
+      "SELECT email FROM newsletter_authorized_emails WHERE email = ?",
+    )
+      .bind(email)
+      .first();
     if (existing) return c.json({ error: "Email already authorized" }, 409);
 
     await c.env.DB.prepare(
-      "INSERT INTO newsletter_authorized_emails (email, added_by) VALUES (?, ?)"
-    ).bind(email, user.email).run();
+      "INSERT INTO newsletter_authorized_emails (email, added_by) VALUES (?, ?)",
+    )
+      .bind(email, user.email)
+      .run();
     return c.json({ success: true });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
 });
 
-app.delete("/api/newsletter-editor/admin/authorized-emails/:email", async (c) => {
-  try {
-    const user: any = c.get("user");
-    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
-    const email = c.req.param("email");
-    await c.env.DB.prepare("DELETE FROM newsletter_authorized_emails WHERE email = ?").bind(email).run();
-    return c.json({ success: true });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 500);
-  }
-});
+app.delete(
+  "/api/newsletter-editor/admin/authorized-emails/:email",
+  async (c) => {
+    try {
+      const user: any = c.get("user");
+      if (!user || user.power_level < 100)
+        return c.json({ error: "Forbidden: Board only" }, 403);
+      const email = c.req.param("email");
+      await c.env.DB.prepare(
+        "DELETE FROM newsletter_authorized_emails WHERE email = ?",
+      )
+        .bind(email)
+        .run();
+      return c.json({ success: true });
+    } catch (e: any) {
+      return errorResponse(c, e.message, 500);
+    }
+  },
+);
 
 // ---------------------------------------------------------
 // 1. ADD NEW MEMBER (Only Pres / VP)
@@ -2168,7 +3319,13 @@ app.post("/api/members", async (c) => {
 
     const rl = await checkRateLimit(c, "create_member", 10, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many member creation requests.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many member creation requests.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
 
     const insert = await c.env.DB.prepare(
@@ -2179,20 +3336,34 @@ app.post("/api/members", async (c) => {
 
     const token = crypto.randomUUID().replace(/-/g, "");
     const user: any = c.get("user");
-    await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?").bind(email).run();
+    await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?")
+      .bind(email)
+      .run();
     await c.env.DB.prepare(
       "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, 'member', ?)",
-    ).bind(token, email, name, user.id).run();
+    )
+      .bind(token, email, name, user.id)
+      .run();
 
-    await addAuditLog(c, "member_added", "user", null, "Added " + email + " as member");
+    await addAuditLog(
+      c,
+      "member_added",
+      "user",
+      null,
+      "Added " + email + " as member",
+    );
 
     await sendTokenEmail(c, email, token, name);
 
-    return c.json({
-      success: true,
-      message: "Added " + email + " as a General Member.",
-      token,
-    }, 200, { "Cache-Control": "private, no-store" });
+    return c.json(
+      {
+        success: true,
+        message: "Added " + email + " as a General Member.",
+        token,
+      },
+      200,
+      { "Cache-Control": "private, no-store" },
+    );
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -2215,7 +3386,13 @@ app.post("/api/dev-login", async (c) => {
 
     const rl = await checkLoginRateLimit(c, "dev_login", 10, 60);
     if (!rl.allowed) {
-      return c.json({ error: "Too many login attempts. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many login attempts. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
 
     const token = body.token;
@@ -2230,7 +3407,11 @@ app.post("/api/dev-login", async (c) => {
       .bind(token)
       .first();
 
-    if (!entry || entry.revoked_at || (entry.expires_at && new Date(entry.expires_at + "Z") <= new Date())) {
+    if (
+      !entry ||
+      entry.revoked_at ||
+      (entry.expires_at && new Date(entry.expires_at + "Z") <= new Date())
+    ) {
       await incrementLoginRateLimit(c, "dev_login");
       return c.json({ error: "Invalid token" }, 401);
     }
@@ -2284,7 +3465,13 @@ app.post("/api/auth/forgot-token", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "forgot_token", 3, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -2298,22 +3485,46 @@ app.post("/api/auth/forgot-token", async (c) => {
     // Check quota before lookup to prevent email enumeration
     const count = await getTodayEmailCount(c.env.DB);
     if (count >= 100) {
-      return c.json({ error: "Daily email quota reached. Please contact the administrator or try again after 24 hours." }, 429);
+      return c.json(
+        {
+          error:
+            "Daily email quota reached. Please contact the administrator or try again after 24 hours.",
+        },
+        429,
+      );
     }
 
     const row: any = await c.env.DB.prepare(
       "SELECT token, name, email, revoked_at, expires_at FROM admin_tokens WHERE email = ?",
-    ).bind(email).first();
+    )
+      .bind(email)
+      .first();
 
-    if (row && !row.revoked_at && (!row.expires_at || new Date(row.expires_at + "Z") > new Date())) {
-      const emailResult = await sendTokenEmail(c, email, row.token, row.name || email.split("@")[0]);
-      console.log(`[forgot-token] Token found for ${email}, email sent: ${emailResult.ok}${emailResult.error ? `, error: ${emailResult.error}` : ""}`);
+    if (
+      row &&
+      !row.revoked_at &&
+      (!row.expires_at || new Date(row.expires_at + "Z") > new Date())
+    ) {
+      const emailResult = await sendTokenEmail(
+        c,
+        email,
+        row.token,
+        row.name || email.split("@")[0],
+      );
+      console.log(
+        `[forgot-token] Token found for ${email}, email sent: ${emailResult.ok}${emailResult.error ? `, error: ${emailResult.error}` : ""}`,
+      );
       await incrementEmailCount(c.env.DB);
     } else {
-      console.warn(`[forgot-token] No active token found for ${email}${row ? " (token exists but revoked or expired)" : " (no token record)"}`);
+      console.warn(
+        `[forgot-token] No active token found for ${email}${row ? " (token exists but revoked or expired)" : " (no token record)"}`,
+      );
     }
 
-    return c.json({ success: true, message: "If the email is registered, your token has been sent." });
+    return c.json({
+      success: true,
+      message: "If the email is registered, your token has been sent.",
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -2327,7 +3538,13 @@ app.post("/api/auth/clerk-login", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkLoginRateLimit(c, "clerk_login", 20, 60);
     if (!rl.allowed) {
-      return c.json({ error: "Too many login attempts. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many login attempts. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -2343,7 +3560,9 @@ app.post("/api/auth/clerk-login", async (c) => {
       return c.json({ error: "Clerk not configured on server" }, 500);
     }
 
-    const jwtPayload = await verifyToken(clerkToken, { secretKey: clerkSecret });
+    const jwtPayload = await verifyToken(clerkToken, {
+      secretKey: clerkSecret,
+    });
     const clerkUserId = jwtPayload.sub;
     if (!clerkUserId) {
       return c.json({ error: "Invalid Clerk token: missing user ID" }, 401);
@@ -2352,7 +3571,9 @@ app.post("/api/auth/clerk-login", async (c) => {
     // Try lookup by clerk_user_id first (already linked)
     let user: any = await c.env.DB.prepare(
       "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.clerk_user_id = ?",
-    ).bind(clerkUserId).first();
+    )
+      .bind(clerkUserId)
+      .first();
 
     // If not found by clerk_user_id, try by email (auto-link)
     if (!user) {
@@ -2360,33 +3581,47 @@ app.post("/api/auth/clerk-login", async (c) => {
       if (email) {
         user = await c.env.DB.prepare(
           "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
-        ).bind(email).first();
+        )
+          .bind(email)
+          .first();
 
         if (user) {
           await c.env.DB.prepare(
             "UPDATE users SET clerk_user_id = ?, oauth_enabled = 1 WHERE id = ?",
-          ).bind(clerkUserId, user.id).run();
+          )
+            .bind(clerkUserId, user.id)
+            .run();
           user.oauth_enabled = 1;
         }
       }
     }
 
     if (!user) {
-      return c.json({
-        error: "Google login not linked to any 180DC member. Log in with a token first and enable Google login in your profile settings.",
-      }, 403);
+      return c.json(
+        {
+          error:
+            "Google login not linked to any 180DC member. Log in with a token first and enable Google login in your profile settings.",
+        },
+        403,
+      );
     }
 
     if (!user.oauth_enabled) {
-      return c.json({
-        error: "Google login is disabled for this account. Enable it in your profile settings.",
-      }, 403);
+      return c.json(
+        {
+          error:
+            "Google login is disabled for this account. Enable it in your profile settings.",
+        },
+        403,
+      );
     }
 
     // Create or reuse an admin token for this session
     const existingToken: any = await c.env.DB.prepare(
       "SELECT token FROM admin_tokens WHERE email = ? AND revoked_at IS NULL",
-    ).bind(user.email).first();
+    )
+      .bind(user.email)
+      .first();
 
     let sessionToken: string;
     if (existingToken) {
@@ -2395,7 +3630,9 @@ app.post("/api/auth/clerk-login", async (c) => {
       sessionToken = crypto.randomUUID().replace(/-/g, "");
       await c.env.DB.prepare(
         "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
-      ).bind(sessionToken, user.email, user.name, user.role_id, user.id).run();
+      )
+        .bind(sessionToken, user.email, user.name, user.role_id, user.id)
+        .run();
     }
 
     return c.json({
@@ -2424,7 +3661,13 @@ app.post("/api/auth/link-clerk", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "link_clerk", 5, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const user: any = c.get("user");
     if (!user) {
@@ -2441,11 +3684,22 @@ app.post("/api/auth/link-clerk", async (c) => {
 
     await c.env.DB.prepare(
       "UPDATE users SET clerk_user_id = ?, oauth_enabled = 1 WHERE id = ?",
-    ).bind(clerkUserId, user.id).run();
+    )
+      .bind(clerkUserId, user.id)
+      .run();
 
-    await addAuditLog(c, "clerk_linked", "user", user.id, "Clerk account linked for " + user.email);
+    await addAuditLog(
+      c,
+      "clerk_linked",
+      "user",
+      user.id,
+      "Clerk account linked for " + user.email,
+    );
 
-    return c.json({ success: true, message: "Google login enabled successfully" });
+    return c.json({
+      success: true,
+      message: "Google login enabled successfully",
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -2459,7 +3713,13 @@ app.post("/api/auth/unlink-clerk", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "unlink_clerk", 5, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const user: any = c.get("user");
     if (!user) {
@@ -2468,9 +3728,17 @@ app.post("/api/auth/unlink-clerk", async (c) => {
 
     await c.env.DB.prepare(
       "UPDATE users SET clerk_user_id = NULL, oauth_enabled = 0 WHERE id = ?",
-    ).bind(user.id).run();
+    )
+      .bind(user.id)
+      .run();
 
-    await addAuditLog(c, "clerk_unlinked", "user", user.id, "Clerk account unlinked for " + user.email);
+    await addAuditLog(
+      c,
+      "clerk_unlinked",
+      "user",
+      user.id,
+      "Clerk account unlinked for " + user.email,
+    );
 
     return c.json({ success: true, message: "Google login disabled" });
   } catch (e: any) {
@@ -2487,16 +3755,35 @@ app.post("/api/auth/rotate-token", async (c) => {
     const user: any = c.get("user");
     const rl = await checkRateLimit(c, "rotate_token", 3, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many token rotations. You can only rotate 3 times per hour. Please try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error:
+            "Too many token rotations. You can only rotate 3 times per hour. Please try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
-    await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?").bind(user.email).run();
+    await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?")
+      .bind(user.email)
+      .run();
     const newToken = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
       "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, ?, ?)",
-    ).bind(newToken, user.email, user.name, user.role_id, user.id).run();
-    await addAuditLog(c, "token_rotated", "admin_token", user.email, "Token rotated for " + user.email);
+    )
+      .bind(newToken, user.email, user.name, user.role_id, user.id)
+      .run();
+    await addAuditLog(
+      c,
+      "token_rotated",
+      "admin_token",
+      user.email,
+      "Token rotated for " + user.email,
+    );
     await sendTokenEmail(c, user.email, newToken, user.name);
-    return c.json({ success: true, token: newToken }, 200, { "Cache-Control": "private, no-store" });
+    return c.json({ success: true, token: newToken }, 200, {
+      "Cache-Control": "private, no-store",
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -2509,7 +3796,11 @@ app.get("/api/dashboard", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "dashboard", 30, 60);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Too many requests", retryAfter: rl.retryAfter },
+        429,
+      );
     const user: any = c.get("user");
 
     const pendingRequests =
@@ -2528,32 +3819,83 @@ app.get("/api/dashboard", async (c) => {
 
     const maskedTokens = (adminTokens.results || []).map((t: any) => ({
       tokenPreview: maskToken(t.token),
-      email: t.email, name: t.name, role_id: t.role_id,
-      created_by: t.created_by, created_at: t.created_at, revoked_at: t.revoked_at,
+      email: t.email,
+      name: t.name,
+      role_id: t.role_id,
+      created_by: t.created_by,
+      created_at: t.created_at,
+      revoked_at: t.revoked_at,
     }));
 
     // Dashboard stats
-    const [{ count: membersCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM users").all().then((r: any) => r.results);
-    const [{ count: projectsCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM projects WHERE status != 'completed'").all().then((r: any) => r.results);
-    
+    const [{ count: membersCount }]: any = await c.env.DB.prepare(
+      "SELECT COUNT(*) as count FROM users",
+    )
+      .all()
+      .then((r: any) => r.results);
+    const [{ count: projectsCount }]: any = await c.env.DB.prepare(
+      "SELECT COUNT(*) as count FROM projects WHERE status != 'completed'",
+    )
+      .all()
+      .then((r: any) => r.results);
+
     // Upcoming meets (total count)
-    const [{ count: clubMeetsCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM club_meets WHERE scheduled_at > CURRENT_TIMESTAMP").all().then((r: any) => r.results);
-    const [{ count: deptMeetsCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM department_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (department_id = ? OR ? >= 100)").bind(user.department_id || "", user.power_level).all().then((r: any) => r.results);
-    const [{ count: interMeetsCount }]: any = await c.env.DB.prepare("SELECT COUNT(*) as count FROM inter_dept_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (',' || departments || ',' LIKE '%,' || ? || ',%' OR ? >= 100)").bind(user.department_id || "", user.power_level).all().then((r: any) => r.results);
-    
-    const totalUpcomingMeets = (clubMeetsCount || 0) + (deptMeetsCount || 0) + (interMeetsCount || 0);
+    const [{ count: clubMeetsCount }]: any = await c.env.DB.prepare(
+      "SELECT COUNT(*) as count FROM club_meets WHERE scheduled_at > CURRENT_TIMESTAMP",
+    )
+      .all()
+      .then((r: any) => r.results);
+    const [{ count: deptMeetsCount }]: any = await c.env.DB.prepare(
+      "SELECT COUNT(*) as count FROM department_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (department_id = ? OR ? >= 100)",
+    )
+      .bind(user.department_id || "", user.power_level)
+      .all()
+      .then((r: any) => r.results);
+    const [{ count: interMeetsCount }]: any = await c.env.DB.prepare(
+      "SELECT COUNT(*) as count FROM inter_dept_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (',' || departments || ',' LIKE '%,' || ? || ',%' OR ? >= 100)",
+    )
+      .bind(user.department_id || "", user.power_level)
+      .all()
+      .then((r: any) => r.results);
+
+    const totalUpcomingMeets =
+      (clubMeetsCount || 0) + (deptMeetsCount || 0) + (interMeetsCount || 0);
 
     // Recent meets for preview
     const deptId = user.department_id || "";
-    const clubMeetsRecent = await c.env.DB.prepare("SELECT 'club' as type, title, scheduled_at, meet_link FROM club_meets WHERE scheduled_at > CURRENT_TIMESTAMP").all().then((r: any) => r.results || []);
-    const deptMeetsRecent = await c.env.DB.prepare("SELECT 'department' as type, title, scheduled_at, meet_link FROM department_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (department_id = ? OR ? >= 100)").bind(deptId, user.power_level).all().then((r: any) => r.results || []);
-    const interMeetsRecent = await c.env.DB.prepare("SELECT 'inter-department' as type, title, scheduled_at, meet_link FROM inter_dept_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (',' || departments || ',' LIKE '%,' || ? || ',%' OR ? >= 100)").bind(deptId, user.power_level).all().then((r: any) => r.results || []);
-    const recentMeets = [...clubMeetsRecent, ...deptMeetsRecent, ...interMeetsRecent]
-      .sort((a: any, b: any) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+    const clubMeetsRecent = await c.env.DB.prepare(
+      "SELECT 'club' as type, title, scheduled_at, meet_link FROM club_meets WHERE scheduled_at > CURRENT_TIMESTAMP",
+    )
+      .all()
+      .then((r: any) => r.results || []);
+    const deptMeetsRecent = await c.env.DB.prepare(
+      "SELECT 'department' as type, title, scheduled_at, meet_link FROM department_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (department_id = ? OR ? >= 100)",
+    )
+      .bind(deptId, user.power_level)
+      .all()
+      .then((r: any) => r.results || []);
+    const interMeetsRecent = await c.env.DB.prepare(
+      "SELECT 'inter-department' as type, title, scheduled_at, meet_link FROM inter_dept_meets WHERE scheduled_at > CURRENT_TIMESTAMP AND (',' || departments || ',' LIKE '%,' || ? || ',%' OR ? >= 100)",
+    )
+      .bind(deptId, user.power_level)
+      .all()
+      .then((r: any) => r.results || []);
+    const recentMeets = [
+      ...clubMeetsRecent,
+      ...deptMeetsRecent,
+      ...interMeetsRecent,
+    ]
+      .sort(
+        (a: any, b: any) =>
+          new Date(a.scheduled_at).getTime() -
+          new Date(b.scheduled_at).getTime(),
+      )
       .slice(0, 3);
 
     // Announcements
-    const announcements = await c.env.DB.prepare("SELECT * FROM announcements ORDER BY created_at DESC LIMIT 20").all();
+    const announcements = await c.env.DB.prepare(
+      "SELECT * FROM announcements ORDER BY created_at DESC LIMIT 20",
+    ).all();
 
     return c.json({
       success: true,
@@ -2577,10 +3919,18 @@ app.get("/api/dashboard", async (c) => {
       recentMeets,
       pendingRequests: pendingRequests.results || [],
       adminTokens: maskedTokens,
-      roleTransfers: (await c.env.DB.prepare(
-        "SELECT rt.*, fu.name as from_name, fu.email as from_email, tu.name as to_name, tu.email as to_email, r.name as role_name FROM role_transfers rt LEFT JOIN users fu ON rt.from_user_id = fu.id LEFT JOIN users tu ON rt.to_user_id = tu.id LEFT JOIN roles r ON rt.role_id = r.id WHERE rt.status = 'pending' ORDER BY rt.created_at DESC",
-      ).all()).results || [],
-      departments: (await c.env.DB.prepare("SELECT id, name, description FROM departments ORDER BY name ASC").all()).results || [],
+      roleTransfers:
+        (
+          await c.env.DB.prepare(
+            "SELECT rt.*, fu.name as from_name, fu.email as from_email, tu.name as to_name, tu.email as to_email, r.name as role_name FROM role_transfers rt LEFT JOIN users fu ON rt.from_user_id = fu.id LEFT JOIN users tu ON rt.to_user_id = tu.id LEFT JOIN roles r ON rt.role_id = r.id WHERE rt.status = 'pending' ORDER BY rt.created_at DESC",
+          ).all()
+        ).results || [],
+      departments:
+        (
+          await c.env.DB.prepare(
+            "SELECT id, name, description FROM departments ORDER BY name ASC",
+          ).all()
+        ).results || [],
       announcements: announcements.results || [],
       flags: {
         canAccessHub: user.power_level >= 50,
@@ -2601,7 +3951,13 @@ app.post("/api/admin-tokens", async (c) => {
     requireBoard(c);
     const rl = await checkRateLimit(c, "send_email", 10, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -2629,11 +3985,19 @@ app.post("/api/admin-tokens", async (c) => {
       .bind(token, email, name, roleId, user.id)
       .run();
 
-    await addAuditLog(c, "token_created", "admin_token", null, "Token created for " + email);
+    await addAuditLog(
+      c,
+      "token_created",
+      "admin_token",
+      null,
+      "Token created for " + email,
+    );
 
     await sendTokenEmail(c, email, token, name);
 
-    return c.json({ success: true, token, email, roleId, name }, 200, { "Cache-Control": "private, no-store" });
+    return c.json({ success: true, token, email, roleId, name }, 200, {
+      "Cache-Control": "private, no-store",
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -2644,14 +4008,22 @@ app.delete("/api/admin-tokens/:email", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const email = c.req.param("email");
-    const row: any = await c.env.DB.prepare("SELECT email FROM admin_tokens WHERE email = ?").bind(email).first();
-    if (!row) return c.json({ error: "Token not found for this email" }, 404);
-    await c.env.DB.prepare(
-      "DELETE FROM admin_tokens WHERE email = ?",
+    const row: any = await c.env.DB.prepare(
+      "SELECT email FROM admin_tokens WHERE email = ?",
     )
       .bind(email)
+      .first();
+    if (!row) return c.json({ error: "Token not found for this email" }, 404);
+    await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?")
+      .bind(email)
       .run();
-    await addAuditLog(c, "token_deleted", "admin_token", email, "Token deleted for " + email);
+    await addAuditLog(
+      c,
+      "token_deleted",
+      "admin_token",
+      email,
+      "Token deleted for " + email,
+    );
     return c.json({ success: true, message: "Token deleted permanently." });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -2663,14 +4035,32 @@ app.post("/api/admin-tokens/:email/revoke", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const email = c.req.param("email");
-    if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (
+      !email ||
+      typeof email !== "string" ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    ) {
       return c.json({ error: "Invalid email" }, 400);
     }
-    const row: any = await c.env.DB.prepare("SELECT email, revoked_at FROM admin_tokens WHERE email = ?").bind(email).first();
+    const row: any = await c.env.DB.prepare(
+      "SELECT email, revoked_at FROM admin_tokens WHERE email = ?",
+    )
+      .bind(email)
+      .first();
     if (!row) return c.json({ error: "Token not found for this email" }, 404);
     if (row.revoked_at) return c.json({ error: "Token already revoked" }, 409);
-    await c.env.DB.prepare("UPDATE admin_tokens SET revoked_at = datetime('now') WHERE email = ?").bind(email).run();
-    await addAuditLog(c, "token_revoked", "admin_token", email, "Token revoked for " + email);
+    await c.env.DB.prepare(
+      "UPDATE admin_tokens SET revoked_at = datetime('now') WHERE email = ?",
+    )
+      .bind(email)
+      .run();
+    await addAuditLog(
+      c,
+      "token_revoked",
+      "admin_token",
+      email,
+      "Token revoked for " + email,
+    );
     return c.json({ success: true, message: "Token revoked." });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -2686,7 +4076,13 @@ app.post("/api/board-users", async (c) => {
     requireBoard(c);
     const rl = await checkRateLimit(c, "create_board_user", 10, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many board user creation requests.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many board user creation requests.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
 
     const body = await c.req.json();
@@ -2714,10 +4110,7 @@ app.post("/api/board-users", async (c) => {
     }
 
     if (roleRow.power_level < 50) {
-      return c.json(
-        { error: "Role must be director-level or above" },
-        400,
-      );
+      return c.json({ error: "Role must be director-level or above" }, 400);
     }
 
     const userRow: any = await c.env.DB.prepare(
@@ -2754,17 +4147,27 @@ app.post("/api/board-users", async (c) => {
       .bind(token, email, name, roleId, creator.id)
       .run();
 
-    await addAuditLog(c, "board_user_created", "user", null, "Board user created: " + email + " as " + roleId);
+    await addAuditLog(
+      c,
+      "board_user_created",
+      "user",
+      null,
+      "Board user created: " + email + " as " + roleId,
+    );
 
     await sendTokenEmail(c, email, token, name);
 
-    return c.json({
-      success: true,
-      email,
-      name,
-      roleId,
-      token,
-    }, 200, { "Cache-Control": "private, no-store" });
+    return c.json(
+      {
+        success: true,
+        email,
+        name,
+        roleId,
+        token,
+      },
+      200,
+      { "Cache-Control": "private, no-store" },
+    );
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -2779,7 +4182,13 @@ app.post("/api/advisory-members", async (c) => {
     requireBoard(c);
     const rl = await checkRateLimit(c, "create_advisory_member", 10, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many advisory member creation requests.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many advisory member creation requests.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
 
     const body = await c.req.json();
@@ -2787,7 +4196,8 @@ app.post("/api/advisory-members", async (c) => {
       return c.json({ error: "Invalid request body" }, 400);
     }
     const email = validateEmail(body.email);
-    const name = sanitizeStr(body.name) || email?.split?.("@")?.[0] || "advisory-member";
+    const name =
+      sanitizeStr(body.name) || email?.split?.("@")?.[0] || "advisory-member";
     const exTitle = sanitizeStr(body.exTitle) || null;
     const memberDeptId = sanitizeStr(body.memberDeptId) || null;
 
@@ -2795,44 +4205,68 @@ app.post("/api/advisory-members", async (c) => {
       return c.json({ error: "Missing email" }, 400);
     }
 
-    const roleRow: any = await c.env.DB.prepare("SELECT id FROM roles WHERE id = 'advisory'").first();
+    const roleRow: any = await c.env.DB.prepare(
+      "SELECT id FROM roles WHERE id = 'advisory'",
+    ).first();
     if (!roleRow) {
       return c.json({ error: "Advisory role does not exist" }, 500);
     }
 
-    const userRow: any = await c.env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
+    const userRow: any = await c.env.DB.prepare(
+      "SELECT id FROM users WHERE email = ?",
+    )
+      .bind(email)
+      .first();
 
     if (userRow) {
       await c.env.DB.prepare(
         "UPDATE users SET name = ?, role_id = 'advisory', ex_title = ?, department_id = ?, secondary_role_id = NULL WHERE email = ?",
-      ).bind(name, exTitle, memberDeptId, email).run();
+      )
+        .bind(name, exTitle, memberDeptId, email)
+        .run();
     } else {
       await c.env.DB.prepare(
         "INSERT INTO users (id, name, email, role_id, department_id, ex_title) VALUES (lower(hex(randomblob(16))), ?, ?, 'advisory', ?, ?)",
-      ).bind(name, email, memberDeptId, exTitle).run();
+      )
+        .bind(name, email, memberDeptId, exTitle)
+        .run();
     }
 
     // Delete prior token
-    await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?").bind(email).run();
+    await c.env.DB.prepare("DELETE FROM admin_tokens WHERE email = ?")
+      .bind(email)
+      .run();
 
     const token = crypto.randomUUID().replace(/-/g, "");
     const creator: any = c.get("user");
 
     await c.env.DB.prepare(
       "INSERT INTO admin_tokens (token, email, name, role_id, created_by) VALUES (?, ?, ?, 'advisory', ?)",
-    ).bind(token, email, name, creator.id).run();
+    )
+      .bind(token, email, name, creator.id)
+      .run();
 
-    await addAuditLog(c, "advisory_member_created", "user", null, "Advisory member created: " + email + " exTitle=" + (exTitle || "none"));
+    await addAuditLog(
+      c,
+      "advisory_member_created",
+      "user",
+      null,
+      "Advisory member created: " + email + " exTitle=" + (exTitle || "none"),
+    );
 
     await sendTokenEmail(c, email, token, name);
 
-    return c.json({
-      success: true,
-      email,
-      name,
-      exTitle,
-      token,
-    }, 200, { "Cache-Control": "private, no-store" });
+    return c.json(
+      {
+        success: true,
+        email,
+        name,
+        exTitle,
+        token,
+      },
+      200,
+      { "Cache-Control": "private, no-store" },
+    );
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -2863,9 +4297,18 @@ app.put("/api/members/:id/role", async (c) => {
       .run();
 
     // Send role change email
-    const targetUser: any = await c.env.DB.prepare("SELECT u.email, u.name, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?").bind(targetUserId).first();
+    const targetUser: any = await c.env.DB.prepare(
+      "SELECT u.email, u.name, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
+    )
+      .bind(targetUserId)
+      .first();
     if (targetUser) {
-      await sendRoleChangeEmail(c, targetUser.email, targetUser.name, targetUser.role_name);
+      await sendRoleChangeEmail(
+        c,
+        targetUser.email,
+        targetUser.name,
+        targetUser.role_name,
+      );
     }
 
     return c.json({ success: true, message: "Role updated successfully." });
@@ -2882,7 +4325,13 @@ app.post("/api/roles", async (c) => {
     requireBoard(c);
     const rl = await checkRateLimit(c, "create_role", 10, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -2903,8 +4352,7 @@ app.post("/api/roles", async (c) => {
     if (powerLevel >= 100) {
       return c.json(
         {
-          error:
-            "Cannot create roles equal or greater than Board level (100).",
+          error: "Cannot create roles equal or greater than Board level (100).",
         },
         400,
       );
@@ -2937,15 +4385,19 @@ app.get("/api/users", async (c) => {
       return c.json({ error: "Forbidden: Board and directors only" }, 403);
     }
     // Directors (power 50) only see members of their own department
-    const baseSql = "SELECT u.id, u.name, u.email, u.role_id, u.department_id, u.ex_title, u.created_at, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id";
+    const baseSql =
+      "SELECT u.id, u.name, u.email, u.role_id, u.department_id, u.ex_title, u.created_at, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id";
     let rows: any;
     if (user.power_level >= 100) {
       rows = await c.env.DB.prepare(baseSql + " ORDER BY u.name ASC").all();
     } else {
       if (!user.department_id) return c.json({ success: true, data: [] });
       rows = await c.env.DB.prepare(
-        baseSql + " WHERE u.department_id = ? OR r.power_level >= 100 ORDER BY u.name ASC",
-      ).bind(user.department_id).all();
+        baseSql +
+          " WHERE u.department_id = ? OR r.power_level >= 100 ORDER BY u.name ASC",
+      )
+        .bind(user.department_id)
+        .all();
     }
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
@@ -2959,21 +4411,26 @@ app.get("/api/members/export", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const rows = await c.env.DB.prepare(
-      "SELECT u.name, u.email, r.name as role_name, d.name as department_name, u.ex_title, u.created_at FROM users u JOIN roles r ON u.role_id = r.id LEFT JOIN departments d ON u.department_id = d.id ORDER BY r.power_level DESC, u.name ASC"
+      "SELECT u.name, u.email, r.name as role_name, d.name as department_name, u.ex_title, u.created_at FROM users u JOIN roles r ON u.role_id = r.id LEFT JOIN departments d ON u.department_id = d.id ORDER BY r.power_level DESC, u.name ASC",
     ).all();
 
     const esc = (v: any) => {
       const s = String(v ?? "");
-      return s.includes(",") || s.includes('"') || s.includes("\n") ? '"' + s.replace(/"/g, '""') + '"' : s;
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? '"' + s.replace(/"/g, '""') + '"'
+        : s;
     };
 
     let csv = "Name,Email,Role,Department,Ex.Title,Created At\r\n";
-    for (const r of (rows.results || [])) {
+    for (const r of rows.results || []) {
       csv += `${esc(r.name)},${esc(r.email)},${esc(r.role_name)},${esc(r.department_name)},${esc(r.ex_title)},${esc(r.created_at)}\r\n`;
     }
 
     c.header("Content-Type", "text/csv; charset=utf-8");
-    c.header("Content-Disposition", 'attachment; filename="members_export.csv"');
+    c.header(
+      "Content-Disposition",
+      'attachment; filename="members_export.csv"',
+    );
     return c.body(csv);
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -2997,7 +4454,9 @@ app.get("/api/roles", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
-    const rows = await c.env.DB.prepare("SELECT id, name, power_level FROM roles ORDER BY power_level DESC").all();
+    const rows = await c.env.DB.prepare(
+      "SELECT id, name, power_level FROM roles ORDER BY power_level DESC",
+    ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3037,7 +4496,9 @@ app.post("/api/role-transfers", async (c) => {
     const user: any = c.get("user");
     await c.env.DB.prepare(
       "INSERT INTO role_transfers (id, from_user_id, to_user_id, role_id, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
-    ).bind(fromUserId, toUserId, roleId, user.id).run();
+    )
+      .bind(fromUserId, toUserId, roleId, user.id)
+      .run();
     return c.json({ success: true, message: "Role transfer request created" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3049,29 +4510,60 @@ app.post("/api/role-transfers/:id/approve", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const id = c.req.param("id");
-    const row: any = await c.env.DB.prepare("SELECT * FROM role_transfers WHERE id = ?").bind(id).first();
+    const row: any = await c.env.DB.prepare(
+      "SELECT * FROM role_transfers WHERE id = ?",
+    )
+      .bind(id)
+      .first();
     if (!row) return c.json({ error: "Request not found" }, 404);
-    if (row.status !== "pending") return c.json({ error: "Request already processed" }, 400);
+    if (row.status !== "pending")
+      return c.json({ error: "Request already processed" }, 400);
 
     const fromPower: any = await c.env.DB.prepare(
       "SELECT power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
-    ).bind(row.from_user_id).first();
+    )
+      .bind(row.from_user_id)
+      .first();
     const toPower: any = await c.env.DB.prepare(
       "SELECT power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
-    ).bind(row.to_user_id).first();
-    const targetRole: any = await c.env.DB.prepare("SELECT power_level FROM roles WHERE id = ?").bind(row.role_id).first();
+    )
+      .bind(row.to_user_id)
+      .first();
+    const targetRole: any = await c.env.DB.prepare(
+      "SELECT power_level FROM roles WHERE id = ?",
+    )
+      .bind(row.role_id)
+      .first();
 
-    if (!fromPower || !toPower || !targetRole) return c.json({ error: "User or role not found" }, 400);
+    if (!fromPower || !toPower || !targetRole)
+      return c.json({ error: "User or role not found" }, 400);
     if (fromPower.power_level >= 100 || toPower.power_level >= 100) {
       return c.json({ error: "Cannot transfer Board roles" }, 400);
     }
 
-    await c.env.DB.prepare("UPDATE users SET role_id = ? WHERE id = ?").bind(row.role_id, row.to_user_id).run();
-    await c.env.DB.prepare("UPDATE users SET role_id = 'member' WHERE id = ?").bind(row.from_user_id).run();
+    await c.env.DB.prepare("UPDATE users SET role_id = ? WHERE id = ?")
+      .bind(row.role_id, row.to_user_id)
+      .run();
+    await c.env.DB.prepare("UPDATE users SET role_id = 'member' WHERE id = ?")
+      .bind(row.from_user_id)
+      .run();
 
-    await c.env.DB.prepare("UPDATE role_transfers SET status = 'approved' WHERE id = ?").bind(id).run();
-    await addAuditLog(c, "role_transfer_approved", "role_transfer", id, "Role transfer approved");
-    return c.json({ success: true, message: "Role transfer approved and executed" });
+    await c.env.DB.prepare(
+      "UPDATE role_transfers SET status = 'approved' WHERE id = ?",
+    )
+      .bind(id)
+      .run();
+    await addAuditLog(
+      c,
+      "role_transfer_approved",
+      "role_transfer",
+      id,
+      "Role transfer approved",
+    );
+    return c.json({
+      success: true,
+      message: "Role transfer approved and executed",
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -3082,7 +4574,11 @@ app.post("/api/role-transfers/:id/reject", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
     const id = c.req.param("id");
-    await c.env.DB.prepare("UPDATE role_transfers SET status = 'rejected' WHERE id = ?").bind(id).run();
+    await c.env.DB.prepare(
+      "UPDATE role_transfers SET status = 'rejected' WHERE id = ?",
+    )
+      .bind(id)
+      .run();
     return c.json({ success: true, message: "Role transfer rejected" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3103,7 +4599,9 @@ app.get("/api/my-role-transfers", async (c) => {
        JOIN roles r ON rt.role_id = r.id
        WHERE (rt.from_user_id = ? OR rt.to_user_id = ?) AND rt.status = 'pending'
        ORDER BY rt.created_at DESC`,
-    ).bind(user.id, user.id).all();
+    )
+      .bind(user.id, user.id)
+      .all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -3115,35 +4613,56 @@ app.post("/api/my-role-transfers/:id/accept", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     const id = c.req.param("id");
-    const row: any = await c.env.DB.prepare("SELECT * FROM role_transfers WHERE id = ?").bind(id).first();
+    const row: any = await c.env.DB.prepare(
+      "SELECT * FROM role_transfers WHERE id = ?",
+    )
+      .bind(id)
+      .first();
     if (!row) return c.json({ error: "Request not found" }, 404);
-    if (row.status !== "pending") return c.json({ error: "Request already processed" }, 400);
+    if (row.status !== "pending")
+      return c.json({ error: "Request already processed" }, 400);
     if (user.id !== row.from_user_id && user.id !== row.to_user_id) {
       return c.json({ error: "You are not involved in this transfer" }, 403);
     }
 
     if (user.id === row.from_user_id) {
-      await c.env.DB.prepare("UPDATE role_transfers SET from_user_accepted = 1 WHERE id = ?").bind(id).run();
+      await c.env.DB.prepare(
+        "UPDATE role_transfers SET from_user_accepted = 1 WHERE id = ?",
+      )
+        .bind(id)
+        .run();
     } else {
-      await c.env.DB.prepare("UPDATE role_transfers SET to_user_accepted = 1 WHERE id = ?").bind(id).run();
+      await c.env.DB.prepare(
+        "UPDATE role_transfers SET to_user_accepted = 1 WHERE id = ?",
+      )
+        .bind(id)
+        .run();
     }
 
     // Check if both accepted
     const updated: any = await c.env.DB.prepare(
       "SELECT * FROM role_transfers WHERE id = ?",
-    ).bind(id).first();
+    )
+      .bind(id)
+      .first();
 
     if (updated.from_user_accepted && updated.to_user_accepted) {
       // Both accepted Ã¢â‚¬â€ execute the swap
       const fromPower: any = await c.env.DB.prepare(
         "SELECT power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
-      ).bind(row.from_user_id).first();
+      )
+        .bind(row.from_user_id)
+        .first();
       const toPower: any = await c.env.DB.prepare(
         "SELECT power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
-      ).bind(row.to_user_id).first();
+      )
+        .bind(row.to_user_id)
+        .first();
       const targetRole: any = await c.env.DB.prepare(
         "SELECT power_level FROM roles WHERE id = ?",
-      ).bind(row.role_id).first();
+      )
+        .bind(row.role_id)
+        .first();
       if (!fromPower || !toPower || !targetRole) {
         return c.json({ error: "User or role not found" }, 400);
       }
@@ -3151,13 +4670,27 @@ app.post("/api/my-role-transfers/:id/accept", async (c) => {
         return c.json({ error: "Cannot transfer Board roles" }, 400);
       }
 
-      await c.env.DB.prepare("UPDATE users SET role_id = ? WHERE id = ?").bind(row.role_id, row.to_user_id).run();
-      await c.env.DB.prepare("UPDATE users SET role_id = 'member' WHERE id = ?").bind(row.from_user_id).run();
-      await c.env.DB.prepare("UPDATE role_transfers SET status = 'approved' WHERE id = ?").bind(id).run();
-      return c.json({ success: true, message: "Both accepted Ã¢â‚¬â€ roles swapped" });
+      await c.env.DB.prepare("UPDATE users SET role_id = ? WHERE id = ?")
+        .bind(row.role_id, row.to_user_id)
+        .run();
+      await c.env.DB.prepare("UPDATE users SET role_id = 'member' WHERE id = ?")
+        .bind(row.from_user_id)
+        .run();
+      await c.env.DB.prepare(
+        "UPDATE role_transfers SET status = 'approved' WHERE id = ?",
+      )
+        .bind(id)
+        .run();
+      return c.json({
+        success: true,
+        message: "Both accepted Ã¢â‚¬â€ roles swapped",
+      });
     }
 
-    return c.json({ success: true, message: "You accepted Ã¢â‚¬â€ waiting for the other party" });
+    return c.json({
+      success: true,
+      message: "You accepted Ã¢â‚¬â€ waiting for the other party",
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -3168,13 +4701,22 @@ app.post("/api/my-role-transfers/:id/decline", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     const id = c.req.param("id");
-    const row: any = await c.env.DB.prepare("SELECT * FROM role_transfers WHERE id = ?").bind(id).first();
+    const row: any = await c.env.DB.prepare(
+      "SELECT * FROM role_transfers WHERE id = ?",
+    )
+      .bind(id)
+      .first();
     if (!row) return c.json({ error: "Request not found" }, 404);
-    if (row.status !== "pending") return c.json({ error: "Request already processed" }, 400);
+    if (row.status !== "pending")
+      return c.json({ error: "Request already processed" }, 400);
     if (user.id !== row.from_user_id && user.id !== row.to_user_id) {
       return c.json({ error: "You are not involved in this transfer" }, 403);
     }
-    await c.env.DB.prepare("UPDATE role_transfers SET status = 'rejected' WHERE id = ?").bind(id).run();
+    await c.env.DB.prepare(
+      "UPDATE role_transfers SET status = 'rejected' WHERE id = ?",
+    )
+      .bind(id)
+      .run();
     return c.json({ success: true, message: "Transfer declined" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3198,16 +4740,15 @@ app.delete("/api/members/:id", async (c) => {
     const tUserOptions: any = targetUser;
 
     if (tUserOptions && tUserOptions.power_level === 100) {
-      return c.json(
-        { error: "Cannot remove another Board member." },
-        400,
-      );
+      return c.json({ error: "Cannot remove another Board member." }, 400);
     }
 
     // Clean up related records
     const deletedUser: any = await c.env.DB.prepare(
       "SELECT email FROM users WHERE id = ?",
-    ).bind(targetId).first();
+    )
+      .bind(targetId)
+      .first();
 
     await c.env.DB.prepare("DELETE FROM users WHERE id = ?")
       .bind(targetId)
@@ -3219,7 +4760,9 @@ app.delete("/api/members/:id", async (c) => {
         .run();
       await c.env.DB.prepare(
         "DELETE FROM role_transfers WHERE from_user_id = ? OR to_user_id = ?",
-      ).bind(targetId, targetId).run();
+      )
+        .bind(targetId, targetId)
+        .run();
     }
     await addAuditLog(c, "member_removed", "user", targetId, "Member removed");
     return c.json({ success: true, message: "Member removed permanently." });
@@ -3237,7 +4780,13 @@ app.post("/api/signup-requests", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "signup_request", 5, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many signup requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many signup requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -3295,7 +4844,9 @@ app.post("/api/signup-requests/:id/approve", async (c) => {
       .first();
     if (!reqRow) return c.json({ error: "Request not found" }, 404);
 
-    const departmentId = sanitizeStr(reqRow.department_id) || sanitizeStr((await c.req.json().catch(() => ({}))).departmentId);
+    const departmentId =
+      sanitizeStr(reqRow.department_id) ||
+      sanitizeStr((await c.req.json().catch(() => ({}))).departmentId);
 
     if (!departmentId) {
       return c.json({ error: "Request has no department assigned" }, 400);
@@ -3323,15 +4874,25 @@ app.post("/api/signup-requests/:id/approve", async (c) => {
       .bind("approved", id)
       .run();
 
-    await addAuditLog(c, "signup_approved", "signup_request", id, "Approved signup for " + reqRow.email);
+    await addAuditLog(
+      c,
+      "signup_approved",
+      "signup_request",
+      id,
+      "Approved signup for " + reqRow.email,
+    );
 
     await sendTokenEmail(c, reqRow.email, newToken, reqRow.name);
 
-    return c.json({
-      success: true,
-      message: "Signup request approved. Token created.",
-      token: newToken,
-    }, 200, { "Cache-Control": "private, no-store" });
+    return c.json(
+      {
+        success: true,
+        message: "Signup request approved. Token created.",
+        token: newToken,
+      },
+      200,
+      { "Cache-Control": "private, no-store" },
+    );
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -3372,19 +4933,27 @@ app.get("/api/departments/:id/overview", async (c) => {
 
     const meets = await c.env.DB.prepare(
       "SELECT * FROM department_meets WHERE department_id = ? ORDER BY scheduled_at ASC",
-    ).bind(deptId).all();
+    )
+      .bind(deptId)
+      .all();
 
     const documents = await c.env.DB.prepare(
       "SELECT * FROM department_documents WHERE department_id = ? ORDER BY created_at DESC",
-    ).bind(deptId).all();
+    )
+      .bind(deptId)
+      .all();
 
     const instructions = await c.env.DB.prepare(
       "SELECT * FROM department_instructions WHERE department_id = ? ORDER BY created_at DESC",
-    ).bind(deptId).all();
+    )
+      .bind(deptId)
+      .all();
 
     const projects = await c.env.DB.prepare(
       "SELECT * FROM department_projects WHERE department_id = ? ORDER BY created_at DESC",
-    ).bind(deptId).all();
+    )
+      .bind(deptId)
+      .all();
 
     return c.json({
       success: true,
@@ -3413,18 +4982,49 @@ app.post("/api/departments/:id/meets", async (c) => {
     const meetLink = sanitizeStr(body.meetLink);
     const description = sanitizeStr(body.description);
     const scheduledAt = body.scheduledAt;
-    if (!title || !scheduledAt) return c.json({ error: "Missing title or scheduledAt" }, 400);
-    if (meetLink && !isValidUrl(meetLink)) return c.json({ error: "Invalid meet link URL" }, 400);
+    if (!title || !scheduledAt)
+      return c.json({ error: "Missing title or scheduledAt" }, 400);
+    if (meetLink && !isValidUrl(meetLink))
+      return c.json({ error: "Invalid meet link URL" }, 400);
     const user: any = c.get("user");
     const meetId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
       "INSERT INTO department_meets (id, department_id, title, meet_link, description, scheduled_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    ).bind(meetId, deptId, title, meetLink || null, description || null, scheduledAt, user.id).run();
+    )
+      .bind(
+        meetId,
+        deptId,
+        title,
+        meetLink || null,
+        description || null,
+        scheduledAt,
+        user.id,
+      )
+      .run();
 
-    const recipients = await getMeetRecipients(c.env.DB, "department_meet", deptId);
-    const { sent, queued } = await queueOrSendMeetEmails(c, recipients, meetId, "department_meet", title, description, meetLink, scheduledAt);
+    const recipients = await getMeetRecipients(
+      c.env.DB,
+      "department_meet",
+      deptId,
+    );
+    const { sent, queued } = await queueOrSendMeetEmails(
+      c,
+      recipients,
+      meetId,
+      "department_meet",
+      title,
+      description,
+      meetLink,
+      scheduledAt,
+    );
 
-    return c.json({ success: true, message: "Meet scheduled", meetId, emailsSent: sent, emailsQueued: queued });
+    return c.json({
+      success: true,
+      message: "Meet scheduled",
+      meetId,
+      emailsSent: sent,
+      emailsQueued: queued,
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -3436,7 +5036,11 @@ app.delete("/api/departments/:id/meets/:meetId", async (c) => {
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const meetId = c.req.param("meetId");
-    await c.env.DB.prepare("DELETE FROM department_meets WHERE id = ? AND department_id = ?").bind(meetId, deptId).run();
+    await c.env.DB.prepare(
+      "DELETE FROM department_meets WHERE id = ? AND department_id = ?",
+    )
+      .bind(meetId, deptId)
+      .run();
     return c.json({ success: true, message: "Meet removed" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3457,11 +5061,14 @@ app.post("/api/departments/:id/documents", async (c) => {
     const description = sanitizeStr(body.description);
     const fileUrl = sanitizeStr(body.fileUrl);
     if (!title) return c.json({ error: "Missing title" }, 400);
-    if (fileUrl && !isValidUrl(fileUrl)) return c.json({ error: "Invalid file URL" }, 400);
+    if (fileUrl && !isValidUrl(fileUrl))
+      return c.json({ error: "Invalid file URL" }, 400);
     const user: any = c.get("user");
     await c.env.DB.prepare(
       "INSERT INTO department_documents (id, department_id, title, description, file_url, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
-    ).bind(deptId, title, description || null, fileUrl || null, user.id).run();
+    )
+      .bind(deptId, title, description || null, fileUrl || null, user.id)
+      .run();
     return c.json({ success: true, message: "Document added" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3474,7 +5081,11 @@ app.delete("/api/departments/:id/documents/:docId", async (c) => {
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const docId = c.req.param("docId");
-    await c.env.DB.prepare("DELETE FROM department_documents WHERE id = ? AND department_id = ?").bind(docId, deptId).run();
+    await c.env.DB.prepare(
+      "DELETE FROM department_documents WHERE id = ? AND department_id = ?",
+    )
+      .bind(docId, deptId)
+      .run();
     return c.json({ success: true, message: "Document removed" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3494,11 +5105,14 @@ app.post("/api/departments/:id/instructions", async (c) => {
     const title = sanitizeStr(body.title);
     const content = sanitizeStr(body.content);
     const priority = sanitizeStr(body.priority) || "medium";
-    if (!title || !content) return c.json({ error: "Missing title or content" }, 400);
+    if (!title || !content)
+      return c.json({ error: "Missing title or content" }, 400);
     const user: any = c.get("user");
     await c.env.DB.prepare(
       "INSERT INTO department_instructions (id, department_id, title, content, priority, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
-    ).bind(deptId, title, content, priority, user.id).run();
+    )
+      .bind(deptId, title, content, priority, user.id)
+      .run();
     return c.json({ success: true, message: "Instruction added" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3511,7 +5125,11 @@ app.delete("/api/departments/:id/instructions/:instructionId", async (c) => {
     const deptId = c.req.param("id");
     canAccessDept(c, deptId);
     const instructionId = c.req.param("instructionId");
-    await c.env.DB.prepare("DELETE FROM department_instructions WHERE id = ? AND department_id = ?").bind(instructionId, deptId).run();
+    await c.env.DB.prepare(
+      "DELETE FROM department_instructions WHERE id = ? AND department_id = ?",
+    )
+      .bind(instructionId, deptId)
+      .run();
     return c.json({ success: true, message: "Instruction removed" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3535,7 +5153,9 @@ app.post("/api/departments/:id/projects", async (c) => {
     const user: any = c.get("user");
     await c.env.DB.prepare(
       "INSERT INTO department_projects (id, department_id, name, description, deadline, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)",
-    ).bind(deptId, name, description || null, deadline, user.id).run();
+    )
+      .bind(deptId, name, description || null, deadline, user.id)
+      .run();
     return c.json({ success: true, message: "Project added" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3553,7 +5173,11 @@ app.put("/api/departments/:id/projects/:projectId/status", async (c) => {
       return c.json({ error: "Invalid request body" }, 400);
     }
     const status = sanitizeStr(body.status) || "upcoming";
-    await c.env.DB.prepare("UPDATE department_projects SET status = ? WHERE id = ? AND department_id = ?").bind(status, projectId, deptId).run();
+    await c.env.DB.prepare(
+      "UPDATE department_projects SET status = ? WHERE id = ? AND department_id = ?",
+    )
+      .bind(status, projectId, deptId)
+      .run();
     return c.json({ success: true, message: "Project status updated" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3567,8 +5191,14 @@ app.get("/api/departments", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "public_departments", 100, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
-    const rows = await c.env.DB.prepare("SELECT id, name, description FROM departments ORDER BY name ASC").all();
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
+    const rows = await c.env.DB.prepare(
+      "SELECT id, name, description FROM departments ORDER BY name ASC",
+    ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -3582,7 +5212,9 @@ app.get("/api/departments/:id/members", async (c) => {
     canAccessDept(c, deptId);
     const rows = await c.env.DB.prepare(
       "SELECT u.id, u.name, u.email, u.role_id, r.name as role_name, r.power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id = ? ORDER BY u.name ASC",
-    ).bind(deptId).all();
+    )
+      .bind(deptId)
+      .all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -3596,7 +5228,9 @@ app.get("/api/departments/:id/instructions", async (c) => {
     canAccessDept(c, deptId);
     const rows = await c.env.DB.prepare(
       "SELECT * FROM department_instructions WHERE department_id = ? ORDER BY created_at DESC",
-    ).bind(deptId).all();
+    )
+      .bind(deptId)
+      .all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -3633,17 +5267,43 @@ app.post("/api/club-meets", async (c) => {
     const meetLink = sanitizeStr(body.meetLink);
     const description = sanitizeStr(body.description);
     const scheduledAt = body.scheduledAt;
-    if (!title || !scheduledAt) return c.json({ error: "Missing title or scheduledAt" }, 400);
-    if (meetLink && !isValidUrl(meetLink)) return c.json({ error: "Invalid meet link URL" }, 400);
+    if (!title || !scheduledAt)
+      return c.json({ error: "Missing title or scheduledAt" }, 400);
+    if (meetLink && !isValidUrl(meetLink))
+      return c.json({ error: "Invalid meet link URL" }, 400);
     const meetId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
       "INSERT INTO club_meets (id, title, meet_link, description, scheduled_at, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-    ).bind(meetId, title, meetLink || null, description || null, scheduledAt, user.id).run();
+    )
+      .bind(
+        meetId,
+        title,
+        meetLink || null,
+        description || null,
+        scheduledAt,
+        user.id,
+      )
+      .run();
 
     const recipients = await getMeetRecipients(c.env.DB, "club_meet");
-    const { sent, queued } = await queueOrSendMeetEmails(c, recipients, meetId, "club_meet", title, description, meetLink, scheduledAt);
+    const { sent, queued } = await queueOrSendMeetEmails(
+      c,
+      recipients,
+      meetId,
+      "club_meet",
+      title,
+      description,
+      meetLink,
+      scheduledAt,
+    );
 
-    return c.json({ success: true, message: "Club-wide meet scheduled", meetId, emailsSent: sent, emailsQueued: queued });
+    return c.json({
+      success: true,
+      message: "Club-wide meet scheduled",
+      meetId,
+      emailsSent: sent,
+      emailsQueued: queued,
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -3657,7 +5317,9 @@ app.delete("/api/club-meets/:id", async (c) => {
       return c.json({ error: "Forbidden: Lead or above only" }, 403);
     }
     const meetId = c.req.param("id");
-    await c.env.DB.prepare("DELETE FROM club_meets WHERE id = ?").bind(meetId).run();
+    await c.env.DB.prepare("DELETE FROM club_meets WHERE id = ?")
+      .bind(meetId)
+      .run();
     return c.json({ success: true, message: "Club-wide meet removed" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3696,22 +5358,61 @@ app.post("/api/inter-dept-meets", async (c) => {
     const scheduledAt = body.scheduledAt;
     const departments = body.departments;
     if (!title || !scheduledAt || !departments) {
-      return c.json({ error: "Missing title, scheduledAt, or departments" }, 400);
+      return c.json(
+        { error: "Missing title, scheduledAt, or departments" },
+        400,
+      );
     }
-    if (meetLink && !isValidUrl(meetLink)) return c.json({ error: "Invalid meet link URL" }, 400);
-    const rawDepts = Array.isArray(departments) ? departments : departments.split(",");
-    const deptArray = rawDepts.map((d: string) => String(d).trim()).filter(Boolean);
+    if (meetLink && !isValidUrl(meetLink))
+      return c.json({ error: "Invalid meet link URL" }, 400);
+    const rawDepts = Array.isArray(departments)
+      ? departments
+      : departments.split(",");
+    const deptArray = rawDepts
+      .map((d: string) => String(d).trim())
+      .filter(Boolean);
     const deptsStr = deptArray.join(",");
-    if (deptArray.length === 0) return c.json({ error: "At least one department is required" }, 400);
+    if (deptArray.length === 0)
+      return c.json({ error: "At least one department is required" }, 400);
     const meetId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
       "INSERT INTO inter_dept_meets (id, title, meet_link, description, scheduled_at, departments, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    ).bind(meetId, title, meetLink || null, description || null, scheduledAt, deptsStr, user.id).run();
+    )
+      .bind(
+        meetId,
+        title,
+        meetLink || null,
+        description || null,
+        scheduledAt,
+        deptsStr,
+        user.id,
+      )
+      .run();
 
-    const recipients = await getMeetRecipients(c.env.DB, "inter_dept_meet", undefined, deptArray);
-    const { sent, queued } = await queueOrSendMeetEmails(c, recipients, meetId, "inter_dept_meet", title, description, meetLink, scheduledAt);
+    const recipients = await getMeetRecipients(
+      c.env.DB,
+      "inter_dept_meet",
+      undefined,
+      deptArray,
+    );
+    const { sent, queued } = await queueOrSendMeetEmails(
+      c,
+      recipients,
+      meetId,
+      "inter_dept_meet",
+      title,
+      description,
+      meetLink,
+      scheduledAt,
+    );
 
-    return c.json({ success: true, message: "Inter-department meet scheduled", meetId, emailsSent: sent, emailsQueued: queued });
+    return c.json({
+      success: true,
+      message: "Inter-department meet scheduled",
+      meetId,
+      emailsSent: sent,
+      emailsQueued: queued,
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -3725,7 +5426,9 @@ app.delete("/api/inter-dept-meets/:id", async (c) => {
       return c.json({ error: "Forbidden: Lead or above only" }, 403);
     }
     const meetId = c.req.param("id");
-    await c.env.DB.prepare("DELETE FROM inter_dept_meets WHERE id = ?").bind(meetId).run();
+    await c.env.DB.prepare("DELETE FROM inter_dept_meets WHERE id = ?")
+      .bind(meetId)
+      .run();
     return c.json({ success: true, message: "Inter-department meet removed" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3739,40 +5442,82 @@ app.post("/api/meets/:type/:id/send-notification", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "meet_notification", 10, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Too many requests", retryAfter: rl.retryAfter },
+        429,
+      );
     const user: any = c.get("user");
-    if (user.power_level < 50) return c.json({ error: "Forbidden: Lead or above only" }, 403);
+    if (user.power_level < 50)
+      return c.json({ error: "Forbidden: Lead or above only" }, 403);
     const meetType = c.req.param("type");
     const meetId = c.req.param("id");
 
     let row: any;
     if (meetType === "club_meet") {
-      row = await c.env.DB.prepare("SELECT * FROM club_meets WHERE id = ?").bind(meetId).first();
+      row = await c.env.DB.prepare("SELECT * FROM club_meets WHERE id = ?")
+        .bind(meetId)
+        .first();
     } else if (meetType === "department_meet") {
-      row = await c.env.DB.prepare("SELECT dm.*, d.name as department_name FROM department_meets dm JOIN departments d ON dm.department_id = d.id WHERE dm.id = ?").bind(meetId).first();
+      row = await c.env.DB.prepare(
+        "SELECT dm.*, d.name as department_name FROM department_meets dm JOIN departments d ON dm.department_id = d.id WHERE dm.id = ?",
+      )
+        .bind(meetId)
+        .first();
     } else if (meetType === "inter_dept_meet") {
-      row = await c.env.DB.prepare("SELECT * FROM inter_dept_meets WHERE id = ?").bind(meetId).first();
+      row = await c.env.DB.prepare(
+        "SELECT * FROM inter_dept_meets WHERE id = ?",
+      )
+        .bind(meetId)
+        .first();
     } else {
       return c.json({ error: "Invalid meet type" }, 400);
     }
     if (!row) return c.json({ error: "Meet not found" }, 404);
 
     // Department-scoped meets: verify user has access to the department
-    if (meetType === "department_meet" && user.power_level < 100 && user.department_id !== row.department_id) {
-      return c.json({ error: "Forbidden: you do not have access to this department's meets" }, 403);
+    if (
+      meetType === "department_meet" &&
+      user.power_level < 100 &&
+      user.department_id !== row.department_id
+    ) {
+      return c.json(
+        {
+          error: "Forbidden: you do not have access to this department's meets",
+        },
+        403,
+      );
     }
 
     let recipients: { email: string; name: string }[] = [];
     if (meetType === "department_meet") {
-      recipients = await getMeetRecipients(c.env.DB, "department_meet", row.department_id);
+      recipients = await getMeetRecipients(
+        c.env.DB,
+        "department_meet",
+        row.department_id,
+      );
     } else if (meetType === "club_meet") {
       recipients = await getMeetRecipients(c.env.DB, "club_meet");
     } else if (meetType === "inter_dept_meet") {
       const depts = (row.departments || "").split(",").filter(Boolean);
-      recipients = await getMeetRecipients(c.env.DB, "inter_dept_meet", undefined, depts);
+      recipients = await getMeetRecipients(
+        c.env.DB,
+        "inter_dept_meet",
+        undefined,
+        depts,
+      );
     }
 
-    const { sent, queued } = await queueOrSendMeetEmails(c, recipients, meetId, meetType, row.title, row.description, row.meet_link, row.scheduled_at);
+    const { sent, queued } = await queueOrSendMeetEmails(
+      c,
+      recipients,
+      meetId,
+      meetType,
+      row.title,
+      row.description,
+      row.meet_link,
+      row.scheduled_at,
+    );
     return c.json({ success: true, emailsSent: sent, emailsQueued: queued });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3783,18 +5528,34 @@ app.post("/api/meets/process-queue", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
-    if (user.power_level < 100) return c.json({ error: "Forbidden: Board only" }, 403);
+    if (user.power_level < 100)
+      return c.json({ error: "Forbidden: Board only" }, 403);
 
     let count = await getTodayEmailCount(c.env.DB);
     const MAX_DAILY = 100;
     let sent = 0;
 
-    const pending: any = await c.env.DB.prepare("SELECT * FROM pending_emails ORDER BY created_at ASC LIMIT ?").bind(MAX_DAILY - count).all();
-    for (const p of (pending.results || [])) {
+    const pending: any = await c.env.DB.prepare(
+      "SELECT * FROM pending_emails ORDER BY created_at ASC LIMIT ?",
+    )
+      .bind(MAX_DAILY - count)
+      .all();
+    for (const p of pending.results || []) {
       if (count >= MAX_DAILY) break;
-      await sendMeetEmail(c, p.recipient_email, p.recipient_name, p.meet_title, p.meet_description, p.meet_link, p.scheduled_at, p.meet_type);
+      await sendMeetEmail(
+        c,
+        p.recipient_email,
+        p.recipient_name,
+        p.meet_title,
+        p.meet_description,
+        p.meet_link,
+        p.scheduled_at,
+        p.meet_type,
+      );
       await incrementEmailCount(c.env.DB);
-      await c.env.DB.prepare("DELETE FROM pending_emails WHERE id = ?").bind(p.id).run();
+      await c.env.DB.prepare("DELETE FROM pending_emails WHERE id = ?")
+        .bind(p.id)
+        .run();
       count++;
       sent++;
     }
@@ -3821,7 +5582,9 @@ app.get("/api/department-meets", async (c) => {
     } else if (user.department_id) {
       rows = await c.env.DB.prepare(
         "SELECT dm.id, dm.department_id, dm.title, dm.description, dm.scheduled_at, dm.created_by, dm.created_at, CASE WHEN julianday(dm.scheduled_at) >= julianday('now', '-1 day') THEN dm.meet_link ELSE NULL END as meet_link, d.name as department_name FROM department_meets dm JOIN departments d ON dm.department_id = d.id WHERE dm.department_id = ? ORDER BY dm.scheduled_at ASC",
-      ).bind(user.department_id).all();
+      )
+        .bind(user.department_id)
+        .all();
     } else {
       rows = { results: [] };
     }
@@ -3837,7 +5600,9 @@ app.get("/api/department-meets", async (c) => {
 app.get("/api/announcements", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    const rows = await c.env.DB.prepare("SELECT * FROM announcements ORDER BY created_at DESC").all();
+    const rows = await c.env.DB.prepare(
+      "SELECT * FROM announcements ORDER BY created_at DESC",
+    ).all();
     const user: any = c.get("user");
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
@@ -3854,7 +5619,13 @@ app.post("/api/announcements", async (c) => {
     }
     const rl = await checkRateLimit(c, "create_announcement", 5, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many announcements. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many announcements. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -3862,10 +5633,13 @@ app.post("/api/announcements", async (c) => {
     }
     const title = sanitizeStr(body.title)?.replace(/<[^>]*>/g, "");
     const content = sanitizeStr(body.content)?.replace(/<[^>]*>/g, "");
-    if (!title || !content) return c.json({ error: "Missing title or content" }, 400);
+    if (!title || !content)
+      return c.json({ error: "Missing title or content" }, 400);
     await c.env.DB.prepare(
       "INSERT INTO announcements (id, title, content, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
-    ).bind(title, content, user.id).run();
+    )
+      .bind(title, content, user.id)
+      .run();
     return c.json({ success: true, message: "Announcement posted" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3880,7 +5654,9 @@ app.delete("/api/announcements/:id", async (c) => {
       return c.json({ error: "Forbidden: Board only" }, 403);
     }
     const id = c.req.param("id");
-    await c.env.DB.prepare("DELETE FROM announcements WHERE id = ?").bind(id).run();
+    await c.env.DB.prepare("DELETE FROM announcements WHERE id = ?")
+      .bind(id)
+      .run();
     return c.json({ success: true, message: "Announcement removed" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -3910,18 +5686,24 @@ app.get("/api/projects", async (c) => {
     } else {
       projects = await c.env.DB.prepare(
         "SELECT p.* FROM projects p JOIN project_departments pd ON p.id = pd.project_id WHERE pd.department_id = ? ORDER BY p.created_at DESC",
-      ).bind(user.department_id).all();
+      )
+        .bind(user.department_id)
+        .all();
     }
 
     const results = [];
-    for (const proj of (projects.results || [])) {
+    for (const proj of projects.results || []) {
       const depts = await c.env.DB.prepare(
         "SELECT d.id, d.name FROM project_departments pd JOIN departments d ON pd.department_id = d.id WHERE pd.project_id = ?",
-      ).bind(proj.id).all();
+      )
+        .bind(proj.id)
+        .all();
 
       const roles = await c.env.DB.prepare(
         "SELECT pr.id, pr.user_id, pr.role_name, u.name as user_name, u.email as user_email FROM project_roles pr JOIN users u ON pr.user_id = u.id WHERE pr.project_id = ? ORDER BY pr.created_at ASC",
-      ).bind(proj.id).all();
+      )
+        .bind(proj.id)
+        .all();
 
       results.push({
         ...proj,
@@ -3944,7 +5726,13 @@ app.post("/api/projects", async (c) => {
     }
     const rl = await checkRateLimit(c, "create_project", 10, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many projects. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many projects. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -3960,8 +5748,11 @@ app.post("/api/projects", async (c) => {
     if (!Array.isArray(departmentIds) || departmentIds.length === 0) {
       return c.json({ error: "Select at least one department" }, 400);
     }
-    const sanitizedDeptIds = departmentIds.map((d: any) => String(d).trim()).filter(Boolean);
-    if (sanitizedDeptIds.length === 0) return c.json({ error: "Invalid department selection" }, 400);
+    const sanitizedDeptIds = departmentIds
+      .map((d: any) => String(d).trim())
+      .filter(Boolean);
+    if (sanitizedDeptIds.length === 0)
+      return c.json({ error: "Invalid department selection" }, 400);
     if (!yearInput && !deadline) {
       return c.json({ error: "Provide either a year or a deadline date" }, 400);
     }
@@ -3980,12 +5771,24 @@ app.post("/api/projects", async (c) => {
     const projectId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
       "INSERT INTO projects (id, name, description, company_org, year, deadline, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    ).bind(projectId, name, description || null, companyOrg || null, year, deadline, user.id).run();
+    )
+      .bind(
+        projectId,
+        name,
+        description || null,
+        companyOrg || null,
+        year,
+        deadline,
+        user.id,
+      )
+      .run();
 
     for (const deptId of sanitizedDeptIds) {
       await c.env.DB.prepare(
         "INSERT OR IGNORE INTO project_departments (project_id, department_id) VALUES (?, ?)",
-      ).bind(projectId, deptId).run();
+      )
+        .bind(projectId, deptId)
+        .run();
     }
 
     await sendProjectAssignmentEmail(c, name, sanitizedDeptIds);
@@ -4004,13 +5807,27 @@ app.delete("/api/projects/:id", async (c) => {
       return c.json({ error: "Forbidden: Board only" }, 403);
     }
     const id = c.req.param("id");
-    const proj: any = await c.env.DB.prepare("SELECT status FROM projects WHERE id = ?").bind(id).first();
-    await c.env.DB.prepare("DELETE FROM project_departments WHERE project_id = ?").bind(id).run();
-    await c.env.DB.prepare("DELETE FROM project_roles WHERE project_id = ?").bind(id).run();
-    await c.env.DB.prepare("DELETE FROM project_tasks WHERE project_id = ?").bind(id).run();
+    const proj: any = await c.env.DB.prepare(
+      "SELECT status FROM projects WHERE id = ?",
+    )
+      .bind(id)
+      .first();
+    await c.env.DB.prepare(
+      "DELETE FROM project_departments WHERE project_id = ?",
+    )
+      .bind(id)
+      .run();
+    await c.env.DB.prepare("DELETE FROM project_roles WHERE project_id = ?")
+      .bind(id)
+      .run();
+    await c.env.DB.prepare("DELETE FROM project_tasks WHERE project_id = ?")
+      .bind(id)
+      .run();
     await c.env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(id).run();
     if (proj?.status === "completed") {
-      try { await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES); } catch {}
+      try {
+        await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES);
+      } catch {}
     }
     return c.json({ success: true, message: "Project removed" });
   } catch (e: any) {
@@ -4030,10 +5847,15 @@ app.post("/api/projects/:id/roles", async (c) => {
     }
     const userId = sanitizeStr(body.userId);
     const roleName = sanitizeStr(body.roleName);
-    if (!userId || !roleName) return c.json({ error: "Missing userId or roleName" }, 400);
+    if (!userId || !roleName)
+      return c.json({ error: "Missing userId or roleName" }, 400);
 
     // Check project exists and user has access
-    const project: any = await c.env.DB.prepare("SELECT id FROM projects WHERE id = ?").bind(projectId).first();
+    const project: any = await c.env.DB.prepare(
+      "SELECT id FROM projects WHERE id = ?",
+    )
+      .bind(projectId)
+      .first();
     if (!project) return c.json({ error: "Project not found" }, 404);
 
     // Board can always assign; leads can only assign if their dept is on the project
@@ -4043,19 +5865,41 @@ app.post("/api/projects/:id/roles", async (c) => {
       }
       const deptCheck: any = await c.env.DB.prepare(
         "SELECT 1 FROM project_departments WHERE project_id = ? AND department_id = ?",
-      ).bind(projectId, user.department_id).first();
-      if (!deptCheck) return c.json({ error: "Your department is not assigned to this project" }, 403);
+      )
+        .bind(projectId, user.department_id)
+        .first();
+      if (!deptCheck)
+        return c.json(
+          { error: "Your department is not assigned to this project" },
+          403,
+        );
     }
 
     await c.env.DB.prepare(
       "INSERT INTO project_roles (id, project_id, user_id, role_name, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
-    ).bind(projectId, userId, roleName, user.id).run();
+    )
+      .bind(projectId, userId, roleName, user.id)
+      .run();
 
     // Send role assignment email
-    const assignedUser: any = await c.env.DB.prepare("SELECT email, name FROM users WHERE id = ?").bind(userId).first();
-    const proj: any = await c.env.DB.prepare("SELECT name FROM projects WHERE id = ?").bind(projectId).first();
+    const assignedUser: any = await c.env.DB.prepare(
+      "SELECT email, name FROM users WHERE id = ?",
+    )
+      .bind(userId)
+      .first();
+    const proj: any = await c.env.DB.prepare(
+      "SELECT name FROM projects WHERE id = ?",
+    )
+      .bind(projectId)
+      .first();
     if (assignedUser && proj) {
-      await sendRoleAssignmentEmail(c, assignedUser.email, assignedUser.name, roleName, proj.name);
+      await sendRoleAssignmentEmail(
+        c,
+        assignedUser.email,
+        assignedUser.name,
+        roleName,
+        proj.name,
+      );
     }
 
     return c.json({ success: true, message: "Role assigned" });
@@ -4076,10 +5920,20 @@ app.delete("/api/projects/:id/roles/:roleId", async (c) => {
       }
       const deptCheck: any = await c.env.DB.prepare(
         "SELECT 1 FROM project_departments WHERE project_id = ? AND department_id = ?",
-      ).bind(projectId, user.department_id).first();
-      if (!deptCheck) return c.json({ error: "Your department is not assigned to this project" }, 403);
+      )
+        .bind(projectId, user.department_id)
+        .first();
+      if (!deptCheck)
+        return c.json(
+          { error: "Your department is not assigned to this project" },
+          403,
+        );
     }
-    await c.env.DB.prepare("DELETE FROM project_roles WHERE id = ? AND project_id = ?").bind(roleId, projectId).run();
+    await c.env.DB.prepare(
+      "DELETE FROM project_roles WHERE id = ? AND project_id = ?",
+    )
+      .bind(roleId, projectId)
+      .run();
     return c.json({ success: true, message: "Role removed" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4095,7 +5949,9 @@ async function canManageProjectTasks(c: any, projectId: string) {
   if (user.power_level >= 50 && user.department_id) {
     const deptCheck: any = await c.env.DB.prepare(
       "SELECT 1 FROM project_departments WHERE project_id = ? AND department_id = ?",
-    ).bind(projectId, user.department_id).first();
+    )
+      .bind(projectId, user.department_id)
+      .first();
     if (deptCheck) return true;
   }
   throw new Error("Forbidden: cannot manage tasks for this project");
@@ -4107,7 +5963,9 @@ app.get("/api/projects/:id/tasks", async (c) => {
     const projectId = c.req.param("id");
     const rows = await c.env.DB.prepare(
       "SELECT pt.*, u.name as assigned_name FROM project_tasks pt LEFT JOIN users u ON pt.assigned_to = u.id WHERE pt.project_id = ? ORDER BY pt.created_at ASC",
-    ).bind(projectId).all();
+    )
+      .bind(projectId)
+      .all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -4130,7 +5988,9 @@ app.post("/api/projects/:id/tasks", async (c) => {
     if (!title) return c.json({ error: "Missing task title" }, 400);
     await c.env.DB.prepare(
       "INSERT INTO project_tasks (id, project_id, title, description, assigned_to, status, created_by) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, 'pending', ?)",
-    ).bind(projectId, title, description || null, assignedTo || null, user.id).run();
+    )
+      .bind(projectId, title, description || null, assignedTo || null, user.id)
+      .run();
     return c.json({ success: true, message: "Task created" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4153,9 +6013,17 @@ app.put("/api/projects/:id/tasks/:taskId", async (c) => {
       return c.json({ error: "Invalid status" }, 400);
     }
     if (status === "completed") {
-      await c.env.DB.prepare("UPDATE project_tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ? AND project_id = ?").bind(taskId, projectId).run();
+      await c.env.DB.prepare(
+        "UPDATE project_tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ? AND project_id = ?",
+      )
+        .bind(taskId, projectId)
+        .run();
     } else {
-      await c.env.DB.prepare("UPDATE project_tasks SET status = 'pending', completed_at = NULL WHERE id = ? AND project_id = ?").bind(taskId, projectId).run();
+      await c.env.DB.prepare(
+        "UPDATE project_tasks SET status = 'pending', completed_at = NULL WHERE id = ? AND project_id = ?",
+      )
+        .bind(taskId, projectId)
+        .run();
     }
     return c.json({ success: true, message: "Task updated" });
   } catch (e: any) {
@@ -4169,7 +6037,11 @@ app.post("/api/projects/:id/tasks/complete-all", async (c) => {
     const projectId = c.req.param("id");
     const user: any = c.get("user");
     await canManageProjectTasks(c, projectId);
-    await c.env.DB.prepare("UPDATE project_tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE project_id = ? AND status = 'pending'").bind(projectId).run();
+    await c.env.DB.prepare(
+      "UPDATE project_tasks SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE project_id = ? AND status = 'pending'",
+    )
+      .bind(projectId)
+      .run();
     return c.json({ success: true, message: "All tasks completed" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4191,10 +6063,15 @@ function escapeForJson(val: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
-async function regenerateCompletedProjectsJson(db: any, r2: R2Bucket): Promise<void> {
-  const rows = await db.prepare(
-    "SELECT id, name, description, company_org, deadline, created_at FROM projects WHERE status = 'completed' ORDER BY created_at DESC",
-  ).all();
+async function regenerateCompletedProjectsJson(
+  db: any,
+  r2: R2Bucket,
+): Promise<void> {
+  const rows = await db
+    .prepare(
+      "SELECT id, name, description, company_org, deadline, created_at FROM projects WHERE status = 'completed' ORDER BY created_at DESC",
+    )
+    .all();
   const data = (rows.results || []).map((p: any) => ({
     id: p.id,
     name: escapeForJson(p.name),
@@ -4205,7 +6082,10 @@ async function regenerateCompletedProjectsJson(db: any, r2: R2Bucket): Promise<v
   }));
   const json = JSON.stringify(data);
   await r2.put("static/completedProjects.json", json, {
-    httpMetadata: { contentType: "application/json", cacheControl: "public, max-age=300" },
+    httpMetadata: {
+      contentType: "application/json",
+      cacheControl: "public, max-age=300",
+    },
   });
 }
 
@@ -4217,8 +6097,14 @@ app.post("/api/projects/:id/complete", async (c) => {
     if (user.power_level < 100) {
       return c.json({ error: "Forbidden: Board only" }, 403);
     }
-    await c.env.DB.prepare("UPDATE projects SET status = 'completed' WHERE id = ?").bind(projectId).run();
-    try { await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES); } catch {}
+    await c.env.DB.prepare(
+      "UPDATE projects SET status = 'completed' WHERE id = ?",
+    )
+      .bind(projectId)
+      .run();
+    try {
+      await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES);
+    } catch {}
     return c.json({ success: true, message: "Project marked as complete" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4233,8 +6119,14 @@ app.post("/api/projects/:id/reopen", async (c) => {
     if (user.power_level < 100) {
       return c.json({ error: "Forbidden: Board only" }, 403);
     }
-    await c.env.DB.prepare("UPDATE projects SET status = 'upcoming' WHERE id = ?").bind(projectId).run();
-    try { await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES); } catch {}
+    await c.env.DB.prepare(
+      "UPDATE projects SET status = 'upcoming' WHERE id = ?",
+    )
+      .bind(projectId)
+      .run();
+    try {
+      await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES);
+    } catch {}
     return c.json({ success: true, message: "Project reopened" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4247,7 +6139,11 @@ app.get("/api/projects/completed", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "public_completed_projects", 100, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
 
     const obj = await c.env.BLOG_IMAGES.get("static/completedProjects.json");
     if (obj) {
@@ -4273,7 +6169,10 @@ app.post("/api/projects/regenerate-completed", async (c) => {
     const user: any = c.get("user");
     if (user.power_level < 100) return c.json({ error: "Forbidden" }, 403);
     await regenerateCompletedProjectsJson(c.env.DB, c.env.BLOG_IMAGES);
-    return c.json({ success: true, message: "Completed projects JSON regenerated" });
+    return c.json({
+      success: true,
+      message: "Completed projects JSON regenerated",
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -4290,7 +6189,9 @@ async function canManageInstanceTeams(c: any, instanceId: string) {
   if (user.power_level >= 50 && user.department_id) {
     const check: any = await c.env.DB.prepare(
       "SELECT 1 FROM instance_departments WHERE instance_id = ? AND department_id = ?",
-    ).bind(instanceId, user.department_id).first();
+    )
+      .bind(instanceId, user.department_id)
+      .first();
     if (check) return true;
   }
   return false;
@@ -4299,18 +6200,29 @@ async function canManageInstanceTeams(c: any, instanceId: string) {
 // Audit details always embed the instance id so the per-instance activity feed
 // can still find rows whose target (a team or group) has since been deleted.
 function instanceDetail(instanceId: string, text: string | null) {
-  return text ? `${text} in instance ${instanceId}` : `in instance ${instanceId}`;
+  return text
+    ? `${text} in instance ${instanceId}`
+    : `in instance ${instanceId}`;
 }
 
 // Replace an instance's level list. `names` may be shorter than `count`; the
 // gaps fall back to "Level N" when read back out.
-async function writeInstanceLevels(c: any, instanceId: string, count: number, names: string[]) {
-  await c.env.DB.prepare("DELETE FROM instance_levels WHERE instance_id = ?").bind(instanceId).run();
+async function writeInstanceLevels(
+  c: any,
+  instanceId: string,
+  count: number,
+  names: string[],
+) {
+  await c.env.DB.prepare("DELETE FROM instance_levels WHERE instance_id = ?")
+    .bind(instanceId)
+    .run();
   for (let i = 1; i <= count; i++) {
     const name = sanitizeStr(names[i - 1], 60) || `Level ${i}`;
     await c.env.DB.prepare(
       "INSERT INTO instance_levels (id, instance_id, position, name) VALUES (?, ?, ?, ?)",
-    ).bind(crypto.randomUUID().replace(/-/g, ""), instanceId, i, name).run();
+    )
+      .bind(crypto.randomUUID().replace(/-/g, ""), instanceId, i, name)
+      .run();
   }
 }
 
@@ -4319,7 +6231,8 @@ async function writeInstanceLevels(c: any, instanceId: string, count: number, na
 function parseLevelCount(raw: any): { value?: number; error?: string } {
   if (raw === undefined || raw === null || raw === "") return {};
   const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1 || n > 20) return { error: "levelCount must be a whole number between 1 and 20" };
+  if (!Number.isInteger(n) || n < 1 || n > 20)
+    return { error: "levelCount must be a whole number between 1 and 20" };
   return { value: n };
 }
 
@@ -4331,12 +6244,17 @@ async function loadInstanceTree(c: any, onlyInstanceId?: string) {
   const db = c.env.DB;
 
   const instanceRows = onlyInstanceId
-    ? await db.prepare(
-        "SELECT ti.*, u.name as created_by_name FROM team_instances ti LEFT JOIN users u ON ti.created_by = u.id WHERE ti.id = ?",
-      ).bind(onlyInstanceId).all()
-    : await db.prepare(
-        "SELECT ti.*, u.name as created_by_name FROM team_instances ti LEFT JOIN users u ON ti.created_by = u.id ORDER BY ti.created_at DESC",
-      ).all();
+    ? await db
+        .prepare(
+          "SELECT ti.*, u.name as created_by_name FROM team_instances ti LEFT JOIN users u ON ti.created_by = u.id WHERE ti.id = ?",
+        )
+        .bind(onlyInstanceId)
+        .all()
+    : await db
+        .prepare(
+          "SELECT ti.*, u.name as created_by_name FROM team_instances ti LEFT JOIN users u ON ti.created_by = u.id ORDER BY ti.created_at DESC",
+        )
+        .all();
 
   const instances: any[] = instanceRows.results || [];
   if (instances.length === 0) return [];
@@ -4344,23 +6262,39 @@ async function loadInstanceTree(c: any, onlyInstanceId?: string) {
   const instanceIds = instances.map((i: any) => i.id);
   const iph = instanceIds.map(() => "?").join(",");
 
-  const [deptRows, groupRows, teamRows, externalRows, levelRows] = await Promise.all([
-    db.prepare(
-      `SELECT id2.instance_id, d.id, d.name FROM instance_departments id2 JOIN departments d ON id2.department_id = d.id WHERE id2.instance_id IN (${iph})`,
-    ).bind(...instanceIds).all(),
-    db.prepare(
-      `SELECT * FROM instance_groups WHERE instance_id IN (${iph}) ORDER BY sort_order ASC, created_at ASC`,
-    ).bind(...instanceIds).all(),
-    db.prepare(
-      `SELECT * FROM instance_teams WHERE instance_id IN (${iph}) ORDER BY sort_order ASC, created_at ASC`,
-    ).bind(...instanceIds).all(),
-    db.prepare(
-      `SELECT * FROM instance_external_members WHERE instance_id IN (${iph}) ORDER BY name ASC`,
-    ).bind(...instanceIds).all(),
-    db.prepare(
-      `SELECT * FROM instance_levels WHERE instance_id IN (${iph}) ORDER BY position ASC`,
-    ).bind(...instanceIds).all(),
-  ]);
+  const [deptRows, groupRows, teamRows, externalRows, levelRows] =
+    await Promise.all([
+      db
+        .prepare(
+          `SELECT id2.instance_id, d.id, d.name FROM instance_departments id2 JOIN departments d ON id2.department_id = d.id WHERE id2.instance_id IN (${iph})`,
+        )
+        .bind(...instanceIds)
+        .all(),
+      db
+        .prepare(
+          `SELECT * FROM instance_groups WHERE instance_id IN (${iph}) ORDER BY sort_order ASC, created_at ASC`,
+        )
+        .bind(...instanceIds)
+        .all(),
+      db
+        .prepare(
+          `SELECT * FROM instance_teams WHERE instance_id IN (${iph}) ORDER BY sort_order ASC, created_at ASC`,
+        )
+        .bind(...instanceIds)
+        .all(),
+      db
+        .prepare(
+          `SELECT * FROM instance_external_members WHERE instance_id IN (${iph}) ORDER BY name ASC`,
+        )
+        .bind(...instanceIds)
+        .all(),
+      db
+        .prepare(
+          `SELECT * FROM instance_levels WHERE instance_id IN (${iph}) ORDER BY position ASC`,
+        )
+        .bind(...instanceIds)
+        .all(),
+    ]);
 
   const teams: any[] = teamRows.results || [];
   const teamIds = teams.map((t: any) => t.id);
@@ -4373,12 +6307,18 @@ async function loadInstanceTree(c: any, onlyInstanceId?: string) {
       const batch = teamIds.slice(i, i + BATCH);
       const tph = batch.map(() => "?").join(",");
       const [im, el] = await Promise.all([
-        db.prepare(
-          `SELECT tm.team_id, tm.user_id, tm.added_by, u.name as user_name, u.email as user_email, u.department_id as user_department_id, r.name as user_role_name FROM instance_team_members tm JOIN users u ON tm.user_id = u.id LEFT JOIN roles r ON u.role_id = r.id WHERE tm.team_id IN (${tph}) ORDER BY tm.created_at ASC`,
-        ).bind(...batch).all(),
-        db.prepare(
-          `SELECT te.team_id, te.external_id, te.added_by, em.name, em.email, em.organization FROM instance_team_external_members te JOIN instance_external_members em ON te.external_id = em.id WHERE te.team_id IN (${tph}) ORDER BY te.created_at ASC`,
-        ).bind(...batch).all(),
+        db
+          .prepare(
+            `SELECT tm.team_id, tm.user_id, tm.added_by, u.name as user_name, u.email as user_email, u.department_id as user_department_id, r.name as user_role_name FROM instance_team_members tm JOIN users u ON tm.user_id = u.id LEFT JOIN roles r ON u.role_id = r.id WHERE tm.team_id IN (${tph}) ORDER BY tm.created_at ASC`,
+          )
+          .bind(...batch)
+          .all(),
+        db
+          .prepare(
+            `SELECT te.team_id, te.external_id, te.added_by, em.name, em.email, em.organization FROM instance_team_external_members te JOIN instance_external_members em ON te.external_id = em.id WHERE te.team_id IN (${tph}) ORDER BY te.created_at ASC`,
+          )
+          .bind(...batch)
+          .all(),
       ]);
       internalRows.push(...(im.results || []));
       externalLinkRows.push(...(el.results || []));
@@ -4416,7 +6356,8 @@ async function loadInstanceTree(c: any, onlyInstanceId?: string) {
     const max = team.member_limit != null ? team.member_limit : null;
     return {
       ...team,
-      current_level: team.current_level && team.current_level > 0 ? team.current_level : 1,
+      current_level:
+        team.current_level && team.current_level > 0 ? team.current_level : 1,
       status: team.status || "active",
       members,
       member_count: memberCount,
@@ -4429,27 +6370,32 @@ async function loadInstanceTree(c: any, onlyInstanceId?: string) {
 
   const deptsByInstance = new Map<string, any[]>();
   for (const d of (deptRows.results || []) as any[]) {
-    if (!deptsByInstance.has(d.instance_id)) deptsByInstance.set(d.instance_id, []);
+    if (!deptsByInstance.has(d.instance_id))
+      deptsByInstance.set(d.instance_id, []);
     deptsByInstance.get(d.instance_id)!.push({ id: d.id, name: d.name });
   }
   const externalsByInstance = new Map<string, any[]>();
   for (const e of (externalRows.results || []) as any[]) {
-    if (!externalsByInstance.has(e.instance_id)) externalsByInstance.set(e.instance_id, []);
+    if (!externalsByInstance.has(e.instance_id))
+      externalsByInstance.set(e.instance_id, []);
     externalsByInstance.get(e.instance_id)!.push(e);
   }
   const levelsByInstance = new Map<string, any[]>();
   for (const l of (levelRows.results || []) as any[]) {
-    if (!levelsByInstance.has(l.instance_id)) levelsByInstance.set(l.instance_id, []);
+    if (!levelsByInstance.has(l.instance_id))
+      levelsByInstance.set(l.instance_id, []);
     levelsByInstance.get(l.instance_id)!.push(l);
   }
   const groupsByInstance = new Map<string, any[]>();
   for (const g of (groupRows.results || []) as any[]) {
-    if (!groupsByInstance.has(g.instance_id)) groupsByInstance.set(g.instance_id, []);
+    if (!groupsByInstance.has(g.instance_id))
+      groupsByInstance.set(g.instance_id, []);
     groupsByInstance.get(g.instance_id)!.push(g);
   }
   const teamsByInstance = new Map<string, any[]>();
   for (const t of teams) {
-    if (!teamsByInstance.has(t.instance_id)) teamsByInstance.set(t.instance_id, []);
+    if (!teamsByInstance.has(t.instance_id))
+      teamsByInstance.set(t.instance_id, []);
     teamsByInstance.get(t.instance_id)!.push(buildTeam(t));
   }
 
@@ -4472,8 +6418,12 @@ async function loadInstanceTree(c: any, onlyInstanceId?: string) {
         teams: gTeams,
         stats: {
           team_count: gTeams.length,
-          member_count: gTeams.reduce((n: number, t: any) => n + t.member_count, 0),
-          understaffed_count: gTeams.filter((t: any) => !t.requirement_met).length,
+          member_count: gTeams.reduce(
+            (n: number, t: any) => n + t.member_count,
+            0,
+          ),
+          understaffed_count: gTeams.filter((t: any) => !t.requirement_met)
+            .length,
         },
       };
     });
@@ -4486,12 +6436,14 @@ async function loadInstanceTree(c: any, onlyInstanceId?: string) {
     return {
       ...inst,
       group_label: inst.group_label || "Company",
-      level_count: inst.level_count && inst.level_count > 0 ? inst.level_count : 1,
+      level_count:
+        inst.level_count && inst.level_count > 0 ? inst.level_count : 1,
       // Named levels when they exist, otherwise synthesised "Level N" entries so
       // the UI always has something to render columns from.
       levels: (() => {
         const stored = levelsByInstance.get(inst.id) || [];
-        const count = inst.level_count && inst.level_count > 0 ? inst.level_count : 1;
+        const count =
+          inst.level_count && inst.level_count > 0 ? inst.level_count : 1;
         const out = [];
         for (let i = 1; i <= count; i++) {
           const match = stored.find((l: any) => l.position === i);
@@ -4506,12 +6458,26 @@ async function loadInstanceTree(c: any, onlyInstanceId?: string) {
       stats: {
         group_count: groups.length,
         team_count: instTeams.length,
-        member_count: instTeams.reduce((n: number, t: any) => n + t.member_count, 0),
-        internal_count: instTeams.reduce((n: number, t: any) => n + t.internal_count, 0),
-        external_count: instTeams.reduce((n: number, t: any) => n + t.external_count, 0),
-        understaffed_count: instTeams.filter((t: any) => !t.requirement_met).length,
-        active_count: instTeams.filter((t: any) => (t.status || "active") === "active").length,
-        eliminated_count: instTeams.filter((t: any) => t.status === "eliminated").length,
+        member_count: instTeams.reduce(
+          (n: number, t: any) => n + t.member_count,
+          0,
+        ),
+        internal_count: instTeams.reduce(
+          (n: number, t: any) => n + t.internal_count,
+          0,
+        ),
+        external_count: instTeams.reduce(
+          (n: number, t: any) => n + t.external_count,
+          0,
+        ),
+        understaffed_count: instTeams.filter((t: any) => !t.requirement_met)
+          .length,
+        active_count: instTeams.filter(
+          (t: any) => (t.status || "active") === "active",
+        ).length,
+        eliminated_count: instTeams.filter(
+          (t: any) => t.status === "eliminated",
+        ).length,
       },
     };
   });
@@ -4519,8 +6485,16 @@ async function loadInstanceTree(c: any, onlyInstanceId?: string) {
 
 // Combined internal + external headcount for a team.
 async function teamMemberCount(c: any, teamId: string): Promise<number> {
-  const internal: any = await c.env.DB.prepare("SELECT COUNT(*) as n FROM instance_team_members WHERE team_id = ?").bind(teamId).first();
-  const external: any = await c.env.DB.prepare("SELECT COUNT(*) as n FROM instance_team_external_members WHERE team_id = ?").bind(teamId).first();
+  const internal: any = await c.env.DB.prepare(
+    "SELECT COUNT(*) as n FROM instance_team_members WHERE team_id = ?",
+  )
+    .bind(teamId)
+    .first();
+  const external: any = await c.env.DB.prepare(
+    "SELECT COUNT(*) as n FROM instance_team_external_members WHERE team_id = ?",
+  )
+    .bind(teamId)
+    .first();
   return (internal?.n || 0) + (external?.n || 0);
 }
 
@@ -4529,7 +6503,10 @@ app.get("/api/team-instances", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (user.role_id === "advisory") {
-      return c.json({ error: "Advisory members do not have access to team instances" }, 403);
+      return c.json(
+        { error: "Advisory members do not have access to team instances" },
+        403,
+      );
     }
     return c.json({ success: true, data: await loadInstanceTree(c) });
   } catch (e: any) {
@@ -4546,10 +6523,17 @@ app.post("/api/team-instances", async (c) => {
     }
     const rl = await checkRateLimit(c, "create_team_instance", 10, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many instances created. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many instances created. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
-    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    if (!body || typeof body !== "object")
+      return c.json({ error: "Invalid request body" }, 400);
     const name = sanitizeStr(body.name);
     const description = sanitizeStr(body.description, MAX_PROJECT_DESC_LEN);
     const groupLabel = sanitizeStr(body.groupLabel, 40) || "Company";
@@ -4557,10 +6541,19 @@ app.post("/api/team-instances", async (c) => {
 
     let departmentIds: string[];
     if (user.power_level >= 100) {
-      if (!Array.isArray(body.departmentIds) || body.departmentIds.length === 0) {
+      if (
+        !Array.isArray(body.departmentIds) ||
+        body.departmentIds.length === 0
+      ) {
         return c.json({ error: "Select at least one department" }, 400);
       }
-      departmentIds = [...new Set(((body.departmentIds as any[]).map((d: any) => String(d).trim()).filter(Boolean) as string[]))];
+      departmentIds = [
+        ...new Set(
+          (body.departmentIds as any[])
+            .map((d: any) => String(d).trim())
+            .filter(Boolean) as string[],
+        ),
+      ];
     } else {
       if (!user.department_id) {
         return c.json({ error: "You are not assigned to a department" }, 403);
@@ -4570,7 +6563,9 @@ app.post("/api/team-instances", async (c) => {
 
     const validDepts = await c.env.DB.prepare(
       `SELECT id FROM departments WHERE id IN (${departmentIds.map(() => "?").join(",")})`,
-    ).bind(...departmentIds).all();
+    )
+      .bind(...departmentIds)
+      .all();
     if ((validDepts.results || []).length !== departmentIds.length) {
       return c.json({ error: "Invalid department selection" }, 400);
     }
@@ -4578,19 +6573,39 @@ app.post("/api/team-instances", async (c) => {
     const lc = parseLevelCount(body.levelCount);
     if (lc.error) return c.json({ error: lc.error }, 400);
     const levelCount = lc.value ?? 1;
-    const levelNames: string[] = Array.isArray(body.levelNames) ? body.levelNames.map((n: any) => String(n)) : [];
+    const levelNames: string[] = Array.isArray(body.levelNames)
+      ? body.levelNames.map((n: any) => String(n))
+      : [];
 
     const instanceId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
       "INSERT INTO team_instances (id, name, description, group_label, level_count, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-    ).bind(instanceId, name, description || null, groupLabel, levelCount, user.id).run();
+    )
+      .bind(
+        instanceId,
+        name,
+        description || null,
+        groupLabel,
+        levelCount,
+        user.id,
+      )
+      .run();
     await writeInstanceLevels(c, instanceId, levelCount, levelNames);
     for (const deptId of departmentIds) {
       await c.env.DB.prepare(
         "INSERT OR IGNORE INTO instance_departments (instance_id, department_id) VALUES (?, ?)",
-      ).bind(instanceId, deptId).run();
+      )
+        .bind(instanceId, deptId)
+        .run();
     }
-    await addAuditLog(c, "team_instance_created", "team_instance", instanceId, instanceDetail(instanceId, name), instanceId);
+    await addAuditLog(
+      c,
+      "team_instance_created",
+      "team_instance",
+      instanceId,
+      instanceDetail(instanceId, name),
+      instanceId,
+    );
     return c.json({ success: true, message: "Instance created", instanceId });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4601,61 +6616,124 @@ app.put("/api/team-instances/:id", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const instanceId = c.req.param("id");
-    const existing: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    const existing: any = await c.env.DB.prepare(
+      "SELECT id FROM team_instances WHERE id = ?",
+    )
+      .bind(instanceId)
+      .first();
     if (!existing) return c.json({ error: "Instance not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      return c.json(
+        { error: "Forbidden: You can only manage your department's instances" },
+        403,
+      );
     }
     const rl = await checkRateLimit(c, "update_team_instance", 30, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
-    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    if (!body || typeof body !== "object")
+      return c.json({ error: "Invalid request body" }, 400);
 
     // --- Validate ALL fields before any DB write ---
     const name = body.name !== undefined ? sanitizeStr(body.name) : undefined;
-    const description = body.description !== undefined ? sanitizeStr(body.description, MAX_PROJECT_DESC_LEN) : undefined;
-    const groupLabel = body.groupLabel !== undefined ? sanitizeStr(body.groupLabel, 40) : undefined;
-    if (name !== undefined && !name) return c.json({ error: "Instance name cannot be empty" }, 400);
-    if (groupLabel !== undefined && !groupLabel) return c.json({ error: "Group label cannot be empty" }, 400);
+    const description =
+      body.description !== undefined
+        ? sanitizeStr(body.description, MAX_PROJECT_DESC_LEN)
+        : undefined;
+    const groupLabel =
+      body.groupLabel !== undefined
+        ? sanitizeStr(body.groupLabel, 40)
+        : undefined;
+    if (name !== undefined && !name)
+      return c.json({ error: "Instance name cannot be empty" }, 400);
+    if (groupLabel !== undefined && !groupLabel)
+      return c.json({ error: "Group label cannot be empty" }, 400);
 
     let levelCount: number | undefined;
     let levelNames: string[] | undefined;
     if (body.levelCount !== undefined || body.levelNames !== undefined) {
       const lc = parseLevelCount(body.levelCount);
       if (lc.error) return c.json({ error: lc.error }, 400);
-      const current: any = await c.env.DB.prepare("SELECT level_count FROM team_instances WHERE id = ?").bind(instanceId).first();
-      levelCount = lc.value ?? (current?.level_count && current.level_count > 0 ? current.level_count : 1);
+      const current: any = await c.env.DB.prepare(
+        "SELECT level_count FROM team_instances WHERE id = ?",
+      )
+        .bind(instanceId)
+        .first();
+      levelCount =
+        lc.value ??
+        (current?.level_count && current.level_count > 0
+          ? current.level_count
+          : 1);
       if (Array.isArray(body.levelNames)) {
         levelNames = body.levelNames.map((n: any) => String(n));
       } else {
         // Preserve existing level names when only levelCount is changed
-        const existingLevels: any = await c.env.DB.prepare("SELECT position, name FROM instance_levels WHERE instance_id = ? ORDER BY position ASC").bind(instanceId).all();
-        const existingNames = ((existingLevels.results || []) as any[]).map((l: any) => l.name || "");
-        levelNames = Array.from({ length: levelCount }, (_, i) => existingNames[i] || `Level ${i + 1}`);
+        const existingLevels: any = await c.env.DB.prepare(
+          "SELECT position, name FROM instance_levels WHERE instance_id = ? ORDER BY position ASC",
+        )
+          .bind(instanceId)
+          .all();
+        const existingNames = ((existingLevels.results || []) as any[]).map(
+          (l: any) => l.name || "",
+        );
+        levelNames = Array.from(
+          { length: levelCount },
+          (_, i) => existingNames[i] || `Level ${i + 1}`,
+        );
       }
     }
 
     // --- All validation passed — apply DB writes ---
     if (name !== undefined) {
-      await c.env.DB.prepare("UPDATE team_instances SET name = ? WHERE id = ?").bind(name, instanceId).run();
+      await c.env.DB.prepare("UPDATE team_instances SET name = ? WHERE id = ?")
+        .bind(name, instanceId)
+        .run();
     }
     if (description !== undefined) {
-      await c.env.DB.prepare("UPDATE team_instances SET description = ? WHERE id = ?").bind(description || null, instanceId).run();
+      await c.env.DB.prepare(
+        "UPDATE team_instances SET description = ? WHERE id = ?",
+      )
+        .bind(description || null, instanceId)
+        .run();
     }
     if (groupLabel !== undefined) {
-      await c.env.DB.prepare("UPDATE team_instances SET group_label = ? WHERE id = ?").bind(groupLabel, instanceId).run();
+      await c.env.DB.prepare(
+        "UPDATE team_instances SET group_label = ? WHERE id = ?",
+      )
+        .bind(groupLabel, instanceId)
+        .run();
     }
     if (levelCount !== undefined) {
       // Shrinking the ladder would strand teams above the new top level, so
       // pull them back down rather than leaving them unreachable.
-      await c.env.DB.prepare("UPDATE instance_teams SET current_level = ? WHERE instance_id = ? AND current_level > ?")
-        .bind(levelCount, instanceId, levelCount).run();
-      await c.env.DB.prepare("UPDATE team_instances SET level_count = ? WHERE id = ?").bind(levelCount, instanceId).run();
+      await c.env.DB.prepare(
+        "UPDATE instance_teams SET current_level = ? WHERE instance_id = ? AND current_level > ?",
+      )
+        .bind(levelCount, instanceId, levelCount)
+        .run();
+      await c.env.DB.prepare(
+        "UPDATE team_instances SET level_count = ? WHERE id = ?",
+      )
+        .bind(levelCount, instanceId)
+        .run();
       await writeInstanceLevels(c, instanceId, levelCount, levelNames ?? []);
     }
-    await addAuditLog(c, "team_instance_updated", "team_instance", instanceId, instanceDetail(instanceId, name || null), instanceId);
+    await addAuditLog(
+      c,
+      "team_instance_updated",
+      "team_instance",
+      instanceId,
+      instanceDetail(instanceId, name || null),
+      instanceId,
+    );
     return c.json({ success: true, message: "Instance updated" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4666,28 +6744,78 @@ app.delete("/api/team-instances/:id", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const instanceId = c.req.param("id");
-    const existing: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    const existing: any = await c.env.DB.prepare(
+      "SELECT id FROM team_instances WHERE id = ?",
+    )
+      .bind(instanceId)
+      .first();
     if (!existing) return c.json({ error: "Instance not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      return c.json(
+        { error: "Forbidden: You can only manage your department's instances" },
+        403,
+      );
     }
     const rl = await checkRateLimit(c, "delete_team_instance", 10, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
-    const teams = await c.env.DB.prepare("SELECT id FROM instance_teams WHERE instance_id = ?").bind(instanceId).all();
-    const teamIdsToDelete = ((teams.results || []) as any[]).map((t: any) => t.id);
+    const teams = await c.env.DB.prepare(
+      "SELECT id FROM instance_teams WHERE instance_id = ?",
+    )
+      .bind(instanceId)
+      .all();
+    const teamIdsToDelete = ((teams.results || []) as any[]).map(
+      (t: any) => t.id,
+    );
     for (const teamId of teamIdsToDelete) {
-      await c.env.DB.prepare("DELETE FROM instance_team_members WHERE team_id = ?").bind(teamId).run();
-      await c.env.DB.prepare("DELETE FROM instance_team_external_members WHERE team_id = ?").bind(teamId).run();
+      await c.env.DB.prepare(
+        "DELETE FROM instance_team_members WHERE team_id = ?",
+      )
+        .bind(teamId)
+        .run();
+      await c.env.DB.prepare(
+        "DELETE FROM instance_team_external_members WHERE team_id = ?",
+      )
+        .bind(teamId)
+        .run();
     }
-    await c.env.DB.prepare("DELETE FROM instance_teams WHERE instance_id = ?").bind(instanceId).run();
-    await c.env.DB.prepare("DELETE FROM instance_groups WHERE instance_id = ?").bind(instanceId).run();
-    await c.env.DB.prepare("DELETE FROM instance_levels WHERE instance_id = ?").bind(instanceId).run();
-    await c.env.DB.prepare("DELETE FROM instance_external_members WHERE instance_id = ?").bind(instanceId).run();
-    await c.env.DB.prepare("DELETE FROM instance_departments WHERE instance_id = ?").bind(instanceId).run();
-    await c.env.DB.prepare("DELETE FROM team_instances WHERE id = ?").bind(instanceId).run();
-    await addAuditLog(c, "team_instance_deleted", "team_instance", instanceId, instanceDetail(instanceId, null), instanceId);
+    await c.env.DB.prepare("DELETE FROM instance_teams WHERE instance_id = ?")
+      .bind(instanceId)
+      .run();
+    await c.env.DB.prepare("DELETE FROM instance_groups WHERE instance_id = ?")
+      .bind(instanceId)
+      .run();
+    await c.env.DB.prepare("DELETE FROM instance_levels WHERE instance_id = ?")
+      .bind(instanceId)
+      .run();
+    await c.env.DB.prepare(
+      "DELETE FROM instance_external_members WHERE instance_id = ?",
+    )
+      .bind(instanceId)
+      .run();
+    await c.env.DB.prepare(
+      "DELETE FROM instance_departments WHERE instance_id = ?",
+    )
+      .bind(instanceId)
+      .run();
+    await c.env.DB.prepare("DELETE FROM team_instances WHERE id = ?")
+      .bind(instanceId)
+      .run();
+    await addAuditLog(
+      c,
+      "team_instance_deleted",
+      "team_instance",
+      instanceId,
+      instanceDetail(instanceId, null),
+      instanceId,
+    );
     return c.json({ success: true, message: "Instance deleted" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4704,28 +6832,69 @@ app.post("/api/team-instances/:id/groups", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     const instanceId = c.req.param("id");
-    const instance: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    const instance: any = await c.env.DB.prepare(
+      "SELECT id FROM team_instances WHERE id = ?",
+    )
+      .bind(instanceId)
+      .first();
     if (!instance) return c.json({ error: "Instance not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      return c.json(
+        { error: "Forbidden: You can only manage your department's instances" },
+        403,
+      );
     }
     const rl = await checkRateLimit(c, "create_instance_group", 40, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many groups created. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many groups created. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
-    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    if (!body || typeof body !== "object")
+      return c.json({ error: "Invalid request body" }, 400);
     const name = sanitizeStr(body.name);
     if (!name) return c.json({ error: "Missing group name" }, 400);
-    const organization = body.organization !== undefined ? sanitizeStr(body.organization, 200) : null;
-    const description = body.description !== undefined ? sanitizeStr(body.description, MAX_PROJECT_DESC_LEN) : null;
+    const organization =
+      body.organization !== undefined
+        ? sanitizeStr(body.organization, 200)
+        : null;
+    const description =
+      body.description !== undefined
+        ? sanitizeStr(body.description, MAX_PROJECT_DESC_LEN)
+        : null;
 
-    const maxOrder: any = await c.env.DB.prepare("SELECT MAX(sort_order) as m FROM instance_groups WHERE instance_id = ?").bind(instanceId).first();
+    const maxOrder: any = await c.env.DB.prepare(
+      "SELECT MAX(sort_order) as m FROM instance_groups WHERE instance_id = ?",
+    )
+      .bind(instanceId)
+      .first();
     const groupId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
       "INSERT INTO instance_groups (id, instance_id, name, organization, description, sort_order, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    ).bind(groupId, instanceId, name, organization, description, (maxOrder?.m ?? -1) + 1, user.id).run();
-    await addAuditLog(c, "instance_group_created", "instance_group", groupId, instanceDetail(instanceId, name), instanceId);
+    )
+      .bind(
+        groupId,
+        instanceId,
+        name,
+        organization,
+        description,
+        (maxOrder?.m ?? -1) + 1,
+        user.id,
+      )
+      .run();
+    await addAuditLog(
+      c,
+      "instance_group_created",
+      "instance_group",
+      groupId,
+      instanceDetail(instanceId, name),
+      instanceId,
+    );
     return c.json({ success: true, message: "Group created", groupId });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4737,42 +6906,88 @@ app.put("/api/team-instances/:id/groups/:groupId", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const instanceId = c.req.param("id");
     const groupId = c.req.param("groupId");
-    const group: any = await c.env.DB.prepare("SELECT * FROM instance_groups WHERE id = ? AND instance_id = ?").bind(groupId, instanceId).first();
+    const group: any = await c.env.DB.prepare(
+      "SELECT * FROM instance_groups WHERE id = ? AND instance_id = ?",
+    )
+      .bind(groupId, instanceId)
+      .first();
     if (!group) return c.json({ error: "Group not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      return c.json(
+        { error: "Forbidden: You can only manage your department's instances" },
+        403,
+      );
     }
     const rl = await checkRateLimit(c, "update_instance_group", 30, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
-    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    if (!body || typeof body !== "object")
+      return c.json({ error: "Invalid request body" }, 400);
 
     const name = body.name !== undefined ? sanitizeStr(body.name) : undefined;
-    if (name !== undefined && !name) return c.json({ error: "Group name cannot be empty" }, 400);
-    const organization = body.organization !== undefined ? sanitizeStr(body.organization, 200) : undefined;
-    const description = body.description !== undefined ? sanitizeStr(body.description, MAX_PROJECT_DESC_LEN) : undefined;
+    if (name !== undefined && !name)
+      return c.json({ error: "Group name cannot be empty" }, 400);
+    const organization =
+      body.organization !== undefined
+        ? sanitizeStr(body.organization, 200)
+        : undefined;
+    const description =
+      body.description !== undefined
+        ? sanitizeStr(body.description, MAX_PROJECT_DESC_LEN)
+        : undefined;
     let sortOrder: number | undefined;
     if (body.sortOrder !== undefined) {
       const parsed = Number(body.sortOrder);
-      if (!Number.isInteger(parsed) || parsed < 0) return c.json({ error: "sortOrder must be a non-negative integer" }, 400);
+      if (!Number.isInteger(parsed) || parsed < 0)
+        return c.json(
+          { error: "sortOrder must be a non-negative integer" },
+          400,
+        );
       sortOrder = parsed;
     }
 
     if (name !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_groups SET name = ? WHERE id = ?").bind(name, groupId).run();
+      await c.env.DB.prepare("UPDATE instance_groups SET name = ? WHERE id = ?")
+        .bind(name, groupId)
+        .run();
     }
     if (organization !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_groups SET organization = ? WHERE id = ?").bind(organization, groupId).run();
+      await c.env.DB.prepare(
+        "UPDATE instance_groups SET organization = ? WHERE id = ?",
+      )
+        .bind(organization, groupId)
+        .run();
     }
     if (description !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_groups SET description = ? WHERE id = ?").bind(description, groupId).run();
+      await c.env.DB.prepare(
+        "UPDATE instance_groups SET description = ? WHERE id = ?",
+      )
+        .bind(description, groupId)
+        .run();
     }
     if (sortOrder !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_groups SET sort_order = ? WHERE id = ?").bind(sortOrder, groupId).run();
+      await c.env.DB.prepare(
+        "UPDATE instance_groups SET sort_order = ? WHERE id = ?",
+      )
+        .bind(sortOrder, groupId)
+        .run();
     }
-    await addAuditLog(c, "instance_group_updated", "instance_group", groupId, instanceDetail(instanceId, name || group.name), instanceId);
+    await addAuditLog(
+      c,
+      "instance_group_updated",
+      "instance_group",
+      groupId,
+      instanceDetail(instanceId, name || group.name),
+      instanceId,
+    );
     return c.json({ success: true, message: "Group updated" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4786,19 +7001,48 @@ app.delete("/api/team-instances/:id/groups/:groupId", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const instanceId = c.req.param("id");
     const groupId = c.req.param("groupId");
-    const group: any = await c.env.DB.prepare("SELECT * FROM instance_groups WHERE id = ? AND instance_id = ?").bind(groupId, instanceId).first();
+    const group: any = await c.env.DB.prepare(
+      "SELECT * FROM instance_groups WHERE id = ? AND instance_id = ?",
+    )
+      .bind(groupId, instanceId)
+      .first();
     if (!group) return c.json({ error: "Group not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      return c.json(
+        { error: "Forbidden: You can only manage your department's instances" },
+        403,
+      );
     }
     const rl = await checkRateLimit(c, "delete_instance_group", 20, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
-    await c.env.DB.prepare("UPDATE instance_teams SET group_id = NULL WHERE group_id = ?").bind(groupId).run();
-    await c.env.DB.prepare("DELETE FROM instance_groups WHERE id = ?").bind(groupId).run();
-    await addAuditLog(c, "instance_group_deleted", "instance_group", groupId, instanceDetail(instanceId, group.name), instanceId);
-    return c.json({ success: true, message: "Group deleted; its teams are now ungrouped" });
+    await c.env.DB.prepare(
+      "UPDATE instance_teams SET group_id = NULL WHERE group_id = ?",
+    )
+      .bind(groupId)
+      .run();
+    await c.env.DB.prepare("DELETE FROM instance_groups WHERE id = ?")
+      .bind(groupId)
+      .run();
+    await addAuditLog(
+      c,
+      "instance_group_deleted",
+      "instance_group",
+      groupId,
+      instanceDetail(instanceId, group.name),
+      instanceId,
+    );
+    return c.json({
+      success: true,
+      message: "Group deleted; its teams are now ungrouped",
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -4814,37 +7058,80 @@ app.post("/api/team-instances/:id/externals", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     const instanceId = c.req.param("id");
-    const instance: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    const instance: any = await c.env.DB.prepare(
+      "SELECT id FROM team_instances WHERE id = ?",
+    )
+      .bind(instanceId)
+      .first();
     if (!instance) return c.json({ error: "Instance not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      return c.json(
+        { error: "Forbidden: You can only manage your department's instances" },
+        403,
+      );
     }
     const rl = await checkRateLimit(c, "create_instance_external", 100, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many outside members added. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many outside members added. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
-    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    if (!body || typeof body !== "object")
+      return c.json({ error: "Invalid request body" }, 400);
     const name = sanitizeStr(body.name);
     if (!name) return c.json({ error: "Missing name" }, 400);
-    const organization = body.organization !== undefined ? sanitizeStr(body.organization, 200) : null;
+    const organization =
+      body.organization !== undefined
+        ? sanitizeStr(body.organization, 200)
+        : null;
 
     let email: string | null = null;
-    if (body.email !== undefined && body.email !== null && String(body.email).trim() !== "") {
+    if (
+      body.email !== undefined &&
+      body.email !== null &&
+      String(body.email).trim() !== ""
+    ) {
       email = validateEmail(body.email);
       if (!email) return c.json({ error: "Invalid email address" }, 400);
       const dupe: any = await c.env.DB.prepare(
         "SELECT name FROM instance_external_members WHERE instance_id = ? AND lower(email) = lower(?)",
-      ).bind(instanceId, email).first();
-      if (dupe) return c.json({ error: `${dupe.name} is already added with that email` }, 400);
+      )
+        .bind(instanceId, email)
+        .first();
+      if (dupe)
+        return c.json(
+          { error: `${dupe.name} is already added with that email` },
+          400,
+        );
     }
 
     const externalId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
       "INSERT INTO instance_external_members (id, instance_id, name, email, organization, created_by) VALUES (?, ?, ?, ?, ?, ?)",
-    ).bind(externalId, instanceId, name, email, organization, user.id).run();
-    await addAuditLog(c, "outside_member_created", "instance_external", externalId, instanceDetail(instanceId, `${name}${organization ? ` (${organization})` : ""}`), instanceId);
-    return c.json({ success: true, message: "Outside member added", externalId });
+    )
+      .bind(externalId, instanceId, name, email, organization, user.id)
+      .run();
+    await addAuditLog(
+      c,
+      "outside_member_created",
+      "instance_external",
+      externalId,
+      instanceDetail(
+        instanceId,
+        `${name}${organization ? ` (${organization})` : ""}`,
+      ),
+      instanceId,
+    );
+    return c.json({
+      success: true,
+      message: "Outside member added",
+      externalId,
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -4855,21 +7142,39 @@ app.put("/api/team-instances/:id/externals/:externalId", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const instanceId = c.req.param("id");
     const externalId = c.req.param("externalId");
-    const ext: any = await c.env.DB.prepare("SELECT * FROM instance_external_members WHERE id = ? AND instance_id = ?").bind(externalId, instanceId).first();
+    const ext: any = await c.env.DB.prepare(
+      "SELECT * FROM instance_external_members WHERE id = ? AND instance_id = ?",
+    )
+      .bind(externalId, instanceId)
+      .first();
     if (!ext) return c.json({ error: "Outside member not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      return c.json(
+        { error: "Forbidden: You can only manage your department's instances" },
+        403,
+      );
     }
     const rl = await checkRateLimit(c, "update_instance_external", 50, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
-    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    if (!body || typeof body !== "object")
+      return c.json({ error: "Invalid request body" }, 400);
 
     const name = body.name !== undefined ? sanitizeStr(body.name) : undefined;
-    if (name !== undefined && !name) return c.json({ error: "Name cannot be empty" }, 400);
-    const organization = body.organization !== undefined ? sanitizeStr(body.organization, 200) : undefined;
+    if (name !== undefined && !name)
+      return c.json({ error: "Name cannot be empty" }, 400);
+    const organization =
+      body.organization !== undefined
+        ? sanitizeStr(body.organization, 200)
+        : undefined;
     let email: string | null | undefined = undefined;
     if (body.email !== undefined) {
       if (body.email !== null && String(body.email).trim() !== "") {
@@ -4877,8 +7182,14 @@ app.put("/api/team-instances/:id/externals/:externalId", async (c) => {
         if (!validated) return c.json({ error: "Invalid email address" }, 400);
         const dupe: any = await c.env.DB.prepare(
           "SELECT name FROM instance_external_members WHERE instance_id = ? AND lower(email) = lower(?) AND id != ?",
-        ).bind(instanceId, validated, externalId).first();
-        if (dupe) return c.json({ error: `${dupe.name} is already added with that email` }, 400);
+        )
+          .bind(instanceId, validated, externalId)
+          .first();
+        if (dupe)
+          return c.json(
+            { error: `${dupe.name} is already added with that email` },
+            400,
+          );
         email = validated;
       } else {
         email = null;
@@ -4886,15 +7197,34 @@ app.put("/api/team-instances/:id/externals/:externalId", async (c) => {
     }
 
     if (name !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_external_members SET name = ? WHERE id = ?").bind(name, externalId).run();
+      await c.env.DB.prepare(
+        "UPDATE instance_external_members SET name = ? WHERE id = ?",
+      )
+        .bind(name, externalId)
+        .run();
     }
     if (organization !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_external_members SET organization = ? WHERE id = ?").bind(organization, externalId).run();
+      await c.env.DB.prepare(
+        "UPDATE instance_external_members SET organization = ? WHERE id = ?",
+      )
+        .bind(organization, externalId)
+        .run();
     }
     if (email !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_external_members SET email = ? WHERE id = ?").bind(email, externalId).run();
+      await c.env.DB.prepare(
+        "UPDATE instance_external_members SET email = ? WHERE id = ?",
+      )
+        .bind(email, externalId)
+        .run();
     }
-    await addAuditLog(c, "outside_member_updated", "instance_external", externalId, instanceDetail(instanceId, name || ext.name), instanceId);
+    await addAuditLog(
+      c,
+      "outside_member_updated",
+      "instance_external",
+      externalId,
+      instanceDetail(instanceId, name || ext.name),
+      instanceId,
+    );
     return c.json({ success: true, message: "Outside member updated" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4906,19 +7236,48 @@ app.delete("/api/team-instances/:id/externals/:externalId", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const instanceId = c.req.param("id");
     const externalId = c.req.param("externalId");
-    const ext: any = await c.env.DB.prepare("SELECT * FROM instance_external_members WHERE id = ? AND instance_id = ?").bind(externalId, instanceId).first();
+    const ext: any = await c.env.DB.prepare(
+      "SELECT * FROM instance_external_members WHERE id = ? AND instance_id = ?",
+    )
+      .bind(externalId, instanceId)
+      .first();
     if (!ext) return c.json({ error: "Outside member not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      return c.json(
+        { error: "Forbidden: You can only manage your department's instances" },
+        403,
+      );
     }
     const rl = await checkRateLimit(c, "delete_instance_external", 50, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
-    await c.env.DB.prepare("DELETE FROM instance_team_external_members WHERE external_id = ?").bind(externalId).run();
-    await c.env.DB.prepare("DELETE FROM instance_external_members WHERE id = ?").bind(externalId).run();
-    await addAuditLog(c, "outside_member_deleted", "instance_external", externalId, instanceDetail(instanceId, ext.name), instanceId);
-    return c.json({ success: true, message: "Outside member removed from the instance" });
+    await c.env.DB.prepare(
+      "DELETE FROM instance_team_external_members WHERE external_id = ?",
+    )
+      .bind(externalId)
+      .run();
+    await c.env.DB.prepare("DELETE FROM instance_external_members WHERE id = ?")
+      .bind(externalId)
+      .run();
+    await addAuditLog(
+      c,
+      "outside_member_deleted",
+      "instance_external",
+      externalId,
+      instanceDetail(instanceId, ext.name),
+      instanceId,
+    );
+    return c.json({
+      success: true,
+      message: "Outside member removed from the instance",
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -4926,15 +7285,25 @@ app.delete("/api/team-instances/:id/externals/:externalId", async (c) => {
 
 // Validate a user can be added to a team: must be registered, non-advisory,
 // and (for directors) belong to the acting director's department.
-async function validateTeamMemberEligibility(c: any, user: any, userId: string) {
+async function validateTeamMemberEligibility(
+  c: any,
+  user: any,
+  userId: string,
+) {
   const target: any = await c.env.DB.prepare(
     "SELECT u.id, u.name, u.email, u.department_id, u.role_id FROM users u WHERE u.id = ?",
-  ).bind(userId).first();
-  if (!target) return { error: `User ${userId} is not registered on the website` };
-  if (target.role_id === "advisory") return { error: "Advisory members cannot be added to teams" };
+  )
+    .bind(userId)
+    .first();
+  if (!target)
+    return { error: `User ${userId} is not registered on the website` };
+  if (target.role_id === "advisory")
+    return { error: "Advisory members cannot be added to teams" };
   if (user.power_level < 100) {
     if (target.department_id !== user.department_id) {
-      return { error: `Directors can only add members from their own department (${target.name} is not in your department)` };
+      return {
+        error: `Directors can only add members from their own department (${target.name} is not in your department)`,
+      };
     }
   }
   return { user: target };
@@ -4945,80 +7314,165 @@ app.post("/api/team-instances/:id/teams", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     const instanceId = c.req.param("id");
-    const existing: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    const existing: any = await c.env.DB.prepare(
+      "SELECT id FROM team_instances WHERE id = ?",
+    )
+      .bind(instanceId)
+      .first();
     if (!existing) return c.json({ error: "Instance not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      return c.json(
+        { error: "Forbidden: You can only manage your department's instances" },
+        403,
+      );
     }
     const rl = await checkRateLimit(c, "create_team", 30, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many teams created. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many teams created. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
-    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    if (!body || typeof body !== "object")
+      return c.json({ error: "Invalid request body" }, 400);
     const name = sanitizeStr(body.name);
     const description = sanitizeStr(body.description, MAX_PROJECT_DESC_LEN);
     if (!name) return c.json({ error: "Missing team name" }, 400);
 
     let groupId: string | null = null;
-    if (body.groupId !== undefined && body.groupId !== null && String(body.groupId).trim() !== "") {
+    if (
+      body.groupId !== undefined &&
+      body.groupId !== null &&
+      String(body.groupId).trim() !== ""
+    ) {
       groupId = String(body.groupId).trim();
-      const group: any = await c.env.DB.prepare("SELECT id FROM instance_groups WHERE id = ? AND instance_id = ?").bind(groupId, instanceId).first();
-      if (!group) return c.json({ error: "Group does not belong to this instance" }, 400);
+      const group: any = await c.env.DB.prepare(
+        "SELECT id FROM instance_groups WHERE id = ? AND instance_id = ?",
+      )
+        .bind(groupId, instanceId)
+        .first();
+      if (!group)
+        return c.json({ error: "Group does not belong to this instance" }, 400);
     }
 
     // Parse minMembers (min required) and maxMembers (cap). `memberLimit` is
     // accepted as a legacy alias for maxMembers. "Exactly N" is min = max = N.
     let minMembers: number | null = null;
     let maxMembers: number | null = null;
-    for (const [raw, label] of [[body.minMembers, "minMembers"], [body.maxMembers ?? body.memberLimit, "maxMembers"]] as [any, string][]) {
+    for (const [raw, label] of [
+      [body.minMembers, "minMembers"],
+      [body.maxMembers ?? body.memberLimit, "maxMembers"],
+    ] as [any, string][]) {
       if (raw === undefined || raw === null || raw === "") continue;
       const parsed = Number(raw);
       if (!Number.isInteger(parsed) || parsed < 1) {
         return c.json({ error: `${label} must be a positive integer` }, 400);
       }
-      if (label === "minMembers") minMembers = parsed; else maxMembers = parsed;
+      if (label === "minMembers") minMembers = parsed;
+      else maxMembers = parsed;
     }
     if (minMembers !== null && maxMembers !== null && minMembers > maxMembers) {
-      return c.json({ error: `minMembers (${minMembers}) cannot be greater than maxMembers (${maxMembers})` }, 400);
+      return c.json(
+        {
+          error: `minMembers (${minMembers}) cannot be greater than maxMembers (${maxMembers})`,
+        },
+        400,
+      );
     }
 
     const memberIds: string[] = Array.isArray(body.memberIds)
-      ? ([...new Set(((body.memberIds as any[]).map((m: any) => String(m).trim()).filter(Boolean) as string[]))] as string[])
+      ? ([
+          ...new Set(
+            (body.memberIds as any[])
+              .map((m: any) => String(m).trim())
+              .filter(Boolean) as string[],
+          ),
+        ] as string[])
       : [];
     const externalIds: string[] = Array.isArray(body.externalIds)
-      ? ([...new Set(((body.externalIds as any[]).map((m: any) => String(m).trim()).filter(Boolean) as string[]))] as string[])
+      ? ([
+          ...new Set(
+            (body.externalIds as any[])
+              .map((m: any) => String(m).trim())
+              .filter(Boolean) as string[],
+          ),
+        ] as string[])
       : [];
-    if (maxMembers !== null && memberIds.length + externalIds.length > maxMembers) {
-      return c.json({ error: `Member cap is ${maxMembers} but ${memberIds.length + externalIds.length} members were selected` }, 400);
+    if (
+      maxMembers !== null &&
+      memberIds.length + externalIds.length > maxMembers
+    ) {
+      return c.json(
+        {
+          error: `Member cap is ${maxMembers} but ${memberIds.length + externalIds.length} members were selected`,
+        },
+        400,
+      );
     }
     for (const memberId of memberIds) {
       const check = await validateTeamMemberEligibility(c, user, memberId);
       if (check.error) return c.json({ error: check.error }, 400);
     }
     for (const externalId of externalIds) {
-      const ext: any = await c.env.DB.prepare("SELECT id FROM instance_external_members WHERE id = ? AND instance_id = ?").bind(externalId, instanceId).first();
-      if (!ext) return c.json({ error: "An outside member does not belong to this instance" }, 400);
+      const ext: any = await c.env.DB.prepare(
+        "SELECT id FROM instance_external_members WHERE id = ? AND instance_id = ?",
+      )
+        .bind(externalId, instanceId)
+        .first();
+      if (!ext)
+        return c.json(
+          { error: "An outside member does not belong to this instance" },
+          400,
+        );
     }
 
     const maxOrder: any = await c.env.DB.prepare(
       "SELECT MAX(sort_order) as m FROM instance_teams WHERE instance_id = ? AND (group_id IS ? OR group_id = ?)",
-    ).bind(instanceId, groupId, groupId).first();
+    )
+      .bind(instanceId, groupId, groupId)
+      .first();
     const teamId = crypto.randomUUID().replace(/-/g, "");
     await c.env.DB.prepare(
       "INSERT INTO instance_teams (id, instance_id, group_id, name, description, member_limit, min_members, sort_order, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).bind(teamId, instanceId, groupId, name, description || null, maxMembers, minMembers, (maxOrder?.m ?? -1) + 1, user.id).run();
+    )
+      .bind(
+        teamId,
+        instanceId,
+        groupId,
+        name,
+        description || null,
+        maxMembers,
+        minMembers,
+        (maxOrder?.m ?? -1) + 1,
+        user.id,
+      )
+      .run();
     for (const memberId of memberIds) {
       await c.env.DB.prepare(
         "INSERT OR IGNORE INTO instance_team_members (team_id, user_id, added_by) VALUES (?, ?, ?)",
-      ).bind(teamId, memberId, user.id).run();
+      )
+        .bind(teamId, memberId, user.id)
+        .run();
     }
     for (const externalId of externalIds) {
       await c.env.DB.prepare(
         "INSERT OR IGNORE INTO instance_team_external_members (team_id, external_id, added_by) VALUES (?, ?, ?)",
-      ).bind(teamId, externalId, user.id).run();
+      )
+        .bind(teamId, externalId, user.id)
+        .run();
     }
-    await addAuditLog(c, "team_created", "team", teamId, instanceDetail(instanceId, name), instanceId);
+    await addAuditLog(
+      c,
+      "team_created",
+      "team",
+      teamId,
+      instanceDetail(instanceId, name),
+      instanceId,
+    );
     return c.json({ success: true, message: "Team created", teamId });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -5030,22 +7484,40 @@ app.put("/api/team-instances/:id/teams/:teamId", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const instanceId = c.req.param("id");
     const teamId = c.req.param("teamId");
-    const team: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
+    const team: any = await c.env.DB.prepare(
+      "SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?",
+    )
+      .bind(teamId, instanceId)
+      .first();
     if (!team) return c.json({ error: "Team not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      return c.json(
+        { error: "Forbidden: You can only manage your department's instances" },
+        403,
+      );
     }
     const rl = await checkRateLimit(c, "update_team", 30, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
-    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    if (!body || typeof body !== "object")
+      return c.json({ error: "Invalid request body" }, 400);
 
     // --- Validate ALL fields before any DB write ---
     const name = body.name !== undefined ? sanitizeStr(body.name) : undefined;
-    const description = body.description !== undefined ? sanitizeStr(body.description, MAX_PROJECT_DESC_LEN) : undefined;
-    if (name !== undefined && !name) return c.json({ error: "Team name cannot be empty" }, 400);
+    const description =
+      body.description !== undefined
+        ? sanitizeStr(body.description, MAX_PROJECT_DESC_LEN)
+        : undefined;
+    if (name !== undefined && !name)
+      return c.json({ error: "Team name cannot be empty" }, 400);
 
     let groupId: string | null | undefined = undefined;
     if (body.groupId !== undefined) {
@@ -5053,8 +7525,16 @@ app.put("/api/team-instances/:id/teams/:teamId", async (c) => {
         groupId = null;
       } else {
         groupId = String(body.groupId).trim();
-        const group: any = await c.env.DB.prepare("SELECT id FROM instance_groups WHERE id = ? AND instance_id = ?").bind(groupId, instanceId).first();
-        if (!group) return c.json({ error: "Group does not belong to this instance" }, 400);
+        const group: any = await c.env.DB.prepare(
+          "SELECT id FROM instance_groups WHERE id = ? AND instance_id = ?",
+        )
+          .bind(groupId, instanceId)
+          .first();
+        if (!group)
+          return c.json(
+            { error: "Group does not belong to this instance" },
+            400,
+          );
       }
     }
 
@@ -5065,52 +7545,95 @@ app.put("/api/team-instances/:id/teams/:teamId", async (c) => {
       } else {
         const parsed = Number(body.minMembers);
         if (!Number.isInteger(parsed) || parsed < 1) {
-          return c.json({ error: "minMembers must be a positive integer" }, 400);
+          return c.json(
+            { error: "minMembers must be a positive integer" },
+            400,
+          );
         }
         minMembers = parsed;
       }
     }
     let maxMembers: number | null | undefined = undefined;
     if (body.maxMembers !== undefined || body.memberLimit !== undefined) {
-      const raw = body.maxMembers !== undefined ? body.maxMembers : body.memberLimit;
+      const raw =
+        body.maxMembers !== undefined ? body.maxMembers : body.memberLimit;
       if (raw === null || raw === "") {
         maxMembers = null;
       } else {
         const parsed = Number(raw);
         if (!Number.isInteger(parsed) || parsed < 1) {
-          return c.json({ error: "maxMembers must be a positive integer" }, 400);
+          return c.json(
+            { error: "maxMembers must be a positive integer" },
+            400,
+          );
         }
         maxMembers = parsed;
       }
     }
 
-    const effectiveMin = minMembers !== undefined ? minMembers : (team.min_members != null ? team.min_members : null);
-    const effectiveMax = maxMembers !== undefined ? maxMembers : (team.member_limit != null ? team.member_limit : null);
-    if (effectiveMin !== null && effectiveMax !== null && effectiveMin > effectiveMax) {
-      return c.json({ error: `minMembers (${effectiveMin}) cannot be greater than maxMembers (${effectiveMax})` }, 400);
+    const effectiveMin =
+      minMembers !== undefined
+        ? minMembers
+        : team.min_members != null
+          ? team.min_members
+          : null;
+    const effectiveMax =
+      maxMembers !== undefined
+        ? maxMembers
+        : team.member_limit != null
+          ? team.member_limit
+          : null;
+    if (
+      effectiveMin !== null &&
+      effectiveMax !== null &&
+      effectiveMin > effectiveMax
+    ) {
+      return c.json(
+        {
+          error: `minMembers (${effectiveMin}) cannot be greater than maxMembers (${effectiveMax})`,
+        },
+        400,
+      );
     }
     if (maxMembers !== undefined && maxMembers !== null) {
       const n = await teamMemberCount(c, teamId);
       if (n > maxMembers) {
-        return c.json({ error: `Team already has ${n} members; cap cannot be lower than that` }, 400);
+        return c.json(
+          {
+            error: `Team already has ${n} members; cap cannot be lower than that`,
+          },
+          400,
+        );
       }
     }
 
     let sortOrder: number | undefined;
     if (body.sortOrder !== undefined) {
       const parsed = Number(body.sortOrder);
-      if (!Number.isInteger(parsed) || parsed < 0) return c.json({ error: "sortOrder must be a non-negative integer" }, 400);
+      if (!Number.isInteger(parsed) || parsed < 0)
+        return c.json(
+          { error: "sortOrder must be a non-negative integer" },
+          400,
+        );
       sortOrder = parsed;
     }
 
     let currentLevel: number | undefined;
     let levelMoved: number | null = null;
     if (body.currentLevel !== undefined) {
-      const inst: any = await c.env.DB.prepare("SELECT level_count FROM team_instances WHERE id = ?").bind(instanceId).first();
-      const maxLevel = inst?.level_count && inst.level_count > 0 ? inst.level_count : 1;
+      const inst: any = await c.env.DB.prepare(
+        "SELECT level_count FROM team_instances WHERE id = ?",
+      )
+        .bind(instanceId)
+        .first();
+      const maxLevel =
+        inst?.level_count && inst.level_count > 0 ? inst.level_count : 1;
       const parsed = Number(body.currentLevel);
       if (!Number.isInteger(parsed) || parsed < 1 || parsed > maxLevel) {
-        return c.json({ error: `currentLevel must be between 1 and ${maxLevel}` }, 400);
+        return c.json(
+          { error: `currentLevel must be between 1 and ${maxLevel}` },
+          400,
+        );
       }
       currentLevel = parsed;
       levelMoved = parsed;
@@ -5120,40 +7643,94 @@ app.put("/api/team-instances/:id/teams/:teamId", async (c) => {
     if (body.status !== undefined) {
       status = sanitizeStr(body.status, 20);
       if (!status || !["active", "eliminated", "winner"].includes(status)) {
-        return c.json({ error: "status must be one of: active, eliminated, winner" }, 400);
+        return c.json(
+          { error: "status must be one of: active, eliminated, winner" },
+          400,
+        );
       }
     }
 
     // --- All validation passed — apply DB writes ---
     if (name !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_teams SET name = ? WHERE id = ?").bind(name, teamId).run();
+      await c.env.DB.prepare("UPDATE instance_teams SET name = ? WHERE id = ?")
+        .bind(name, teamId)
+        .run();
     }
     if (description !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_teams SET description = ? WHERE id = ?").bind(description || null, teamId).run();
+      await c.env.DB.prepare(
+        "UPDATE instance_teams SET description = ? WHERE id = ?",
+      )
+        .bind(description || null, teamId)
+        .run();
     }
     if (groupId !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_teams SET group_id = ? WHERE id = ?").bind(groupId, teamId).run();
+      await c.env.DB.prepare(
+        "UPDATE instance_teams SET group_id = ? WHERE id = ?",
+      )
+        .bind(groupId, teamId)
+        .run();
     }
     if (minMembers !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_teams SET min_members = ? WHERE id = ?").bind(minMembers, teamId).run();
+      await c.env.DB.prepare(
+        "UPDATE instance_teams SET min_members = ? WHERE id = ?",
+      )
+        .bind(minMembers, teamId)
+        .run();
     }
     if (maxMembers !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_teams SET member_limit = ? WHERE id = ?").bind(maxMembers, teamId).run();
+      await c.env.DB.prepare(
+        "UPDATE instance_teams SET member_limit = ? WHERE id = ?",
+      )
+        .bind(maxMembers, teamId)
+        .run();
     }
     if (sortOrder !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_teams SET sort_order = ? WHERE id = ?").bind(sortOrder, teamId).run();
+      await c.env.DB.prepare(
+        "UPDATE instance_teams SET sort_order = ? WHERE id = ?",
+      )
+        .bind(sortOrder, teamId)
+        .run();
     }
     if (currentLevel !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_teams SET current_level = ? WHERE id = ?").bind(currentLevel, teamId).run();
+      await c.env.DB.prepare(
+        "UPDATE instance_teams SET current_level = ? WHERE id = ?",
+      )
+        .bind(currentLevel, teamId)
+        .run();
     }
     if (status !== undefined) {
-      await c.env.DB.prepare("UPDATE instance_teams SET status = ? WHERE id = ?").bind(status, teamId).run();
-      await addAuditLog(c, "team_status_changed", "team", teamId, instanceDetail(instanceId, `${team.name} -> ${status}`), instanceId);
+      await c.env.DB.prepare(
+        "UPDATE instance_teams SET status = ? WHERE id = ?",
+      )
+        .bind(status, teamId)
+        .run();
+      await addAuditLog(
+        c,
+        "team_status_changed",
+        "team",
+        teamId,
+        instanceDetail(instanceId, `${team.name} -> ${status}`),
+        instanceId,
+      );
     }
     if (levelMoved !== null) {
-      await addAuditLog(c, "team_level_changed", "team", teamId, instanceDetail(instanceId, `${team.name} -> level ${levelMoved}`), instanceId);
+      await addAuditLog(
+        c,
+        "team_level_changed",
+        "team",
+        teamId,
+        instanceDetail(instanceId, `${team.name} -> level ${levelMoved}`),
+        instanceId,
+      );
     } else {
-      await addAuditLog(c, "team_updated", "team", teamId, instanceDetail(instanceId, name || team.name), instanceId);
+      await addAuditLog(
+        c,
+        "team_updated",
+        "team",
+        teamId,
+        instanceDetail(instanceId, name || team.name),
+        instanceId,
+      );
     }
     return c.json({ success: true, message: "Team updated" });
   } catch (e: any) {
@@ -5166,19 +7743,49 @@ app.delete("/api/team-instances/:id/teams/:teamId", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const instanceId = c.req.param("id");
     const teamId = c.req.param("teamId");
-    const team: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
+    const team: any = await c.env.DB.prepare(
+      "SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?",
+    )
+      .bind(teamId, instanceId)
+      .first();
     if (!team) return c.json({ error: "Team not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      return c.json(
+        { error: "Forbidden: You can only manage your department's instances" },
+        403,
+      );
     }
     const rl = await checkRateLimit(c, "delete_team", 20, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
-    await c.env.DB.prepare("DELETE FROM instance_team_members WHERE team_id = ?").bind(teamId).run();
-    await c.env.DB.prepare("DELETE FROM instance_team_external_members WHERE team_id = ?").bind(teamId).run();
-    await c.env.DB.prepare("DELETE FROM instance_teams WHERE id = ?").bind(teamId).run();
-    await addAuditLog(c, "team_deleted", "team", teamId, instanceDetail(instanceId, team.name), instanceId);
+    await c.env.DB.prepare(
+      "DELETE FROM instance_team_members WHERE team_id = ?",
+    )
+      .bind(teamId)
+      .run();
+    await c.env.DB.prepare(
+      "DELETE FROM instance_team_external_members WHERE team_id = ?",
+    )
+      .bind(teamId)
+      .run();
+    await c.env.DB.prepare("DELETE FROM instance_teams WHERE id = ?")
+      .bind(teamId)
+      .run();
+    await addAuditLog(
+      c,
+      "team_deleted",
+      "team",
+      teamId,
+      instanceDetail(instanceId, team.name),
+      instanceId,
+    );
     return c.json({ success: true, message: "Team deleted" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -5191,135 +7798,272 @@ app.post("/api/team-instances/:id/teams/:teamId/members", async (c) => {
     const user: any = c.get("user");
     const instanceId = c.req.param("id");
     const teamId = c.req.param("teamId");
-    const team: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
+    const team: any = await c.env.DB.prepare(
+      "SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?",
+    )
+      .bind(teamId, instanceId)
+      .first();
     if (!team) return c.json({ error: "Team not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      return c.json(
+        { error: "Forbidden: You can only manage your department's instances" },
+        403,
+      );
     }
     const rl = await checkRateLimit(c, "add_team_member", 30, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
-    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    if (!body || typeof body !== "object")
+      return c.json({ error: "Invalid request body" }, 400);
     const userId = sanitizeStr(body.userId);
     if (!userId) return c.json({ error: "Missing userId" }, 400);
 
     const eligibility = await validateTeamMemberEligibility(c, user, userId);
     if (eligibility.error) return c.json({ error: eligibility.error }, 400);
 
-    const alreadyIn: any = await c.env.DB.prepare("SELECT 1 FROM instance_team_members WHERE team_id = ? AND user_id = ?").bind(teamId, userId).first();
-    if (alreadyIn) return c.json({ error: `${eligibility.user.name} is already in this team` }, 400);
+    const alreadyIn: any = await c.env.DB.prepare(
+      "SELECT 1 FROM instance_team_members WHERE team_id = ? AND user_id = ?",
+    )
+      .bind(teamId, userId)
+      .first();
+    if (alreadyIn)
+      return c.json(
+        { error: `${eligibility.user.name} is already in this team` },
+        400,
+      );
 
     if (team.member_limit !== null && team.member_limit !== undefined) {
       const n = await teamMemberCount(c, teamId);
       if (n >= team.member_limit) {
-        return c.json({ error: `Team is full (limit ${team.member_limit})` }, 400);
+        return c.json(
+          { error: `Team is full (limit ${team.member_limit})` },
+          400,
+        );
       }
     }
 
     await c.env.DB.prepare(
       "INSERT INTO instance_team_members (team_id, user_id, added_by) VALUES (?, ?, ?)",
-    ).bind(teamId, userId, user.id).run();
-    await addAuditLog(c, "team_member_added", "team", teamId, instanceDetail(instanceId, `${eligibility.user.email} -> ${team.name}`), instanceId);
+    )
+      .bind(teamId, userId, user.id)
+      .run();
+    await addAuditLog(
+      c,
+      "team_member_added",
+      "team",
+      teamId,
+      instanceDetail(instanceId, `${eligibility.user.email} -> ${team.name}`),
+      instanceId,
+    );
     return c.json({ success: true, message: "Member added" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
 });
 
-app.delete("/api/team-instances/:id/teams/:teamId/members/:userId", async (c) => {
-  try {
-    await ensureDbReady(c.env.DB, c.env);
-    const instanceId = c.req.param("id");
-    const teamId = c.req.param("teamId");
-    const userId = c.req.param("userId");
-    const team: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
-    if (!team) return c.json({ error: "Team not found" }, 404);
-    if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
-    }
-    const rl = await checkRateLimit(c, "remove_team_member", 30, 3600);
-    if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
-    }
-    await c.env.DB.prepare("DELETE FROM instance_team_members WHERE team_id = ? AND user_id = ?").bind(teamId, userId).run();
-    await addAuditLog(c, "team_member_removed", "team", teamId, instanceDetail(instanceId, `${userId} from ${team.name}`), instanceId);
-    return c.json({ success: true, message: "Member removed" });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
-
-app.post("/api/team-instances/:id/teams/:teamId/external-members", async (c) => {
-  try {
-    await ensureDbReady(c.env.DB, c.env);
-    const user: any = c.get("user");
-    const instanceId = c.req.param("id");
-    const teamId = c.req.param("teamId");
-    const team: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
-    if (!team) return c.json({ error: "Team not found" }, 404);
-    if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
-    }
-    const rl = await checkRateLimit(c, "add_team_external_member", 30, 3600);
-    if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
-    }
-    const body = await c.req.json();
-    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
-    const externalId = sanitizeStr(body.externalId);
-    if (!externalId) return c.json({ error: "Missing externalId" }, 400);
-
-    const ext: any = await c.env.DB.prepare(
-      "SELECT * FROM instance_external_members WHERE id = ? AND instance_id = ?",
-    ).bind(externalId, instanceId).first();
-    if (!ext) return c.json({ error: "That outside member does not belong to this instance" }, 400);
-
-    const alreadyIn: any = await c.env.DB.prepare(
-      "SELECT 1 FROM instance_team_external_members WHERE team_id = ? AND external_id = ?",
-    ).bind(teamId, externalId).first();
-    if (alreadyIn) return c.json({ error: `${ext.name} is already in this team` }, 400);
-
-    if (team.member_limit !== null && team.member_limit !== undefined) {
-      const n = await teamMemberCount(c, teamId);
-      if (n >= team.member_limit) {
-        return c.json({ error: `Team is full (limit ${team.member_limit})` }, 400);
+app.delete(
+  "/api/team-instances/:id/teams/:teamId/members/:userId",
+  async (c) => {
+    try {
+      await ensureDbReady(c.env.DB, c.env);
+      const instanceId = c.req.param("id");
+      const teamId = c.req.param("teamId");
+      const userId = c.req.param("userId");
+      const team: any = await c.env.DB.prepare(
+        "SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?",
+      )
+        .bind(teamId, instanceId)
+        .first();
+      if (!team) return c.json({ error: "Team not found" }, 404);
+      if (!(await canManageInstanceTeams(c, instanceId))) {
+        return c.json(
+          {
+            error: "Forbidden: You can only manage your department's instances",
+          },
+          403,
+        );
       }
+      const rl = await checkRateLimit(c, "remove_team_member", 30, 3600);
+      if (!rl.allowed) {
+        return c.json(
+          {
+            error: "Too many requests. Try again later.",
+            retryAfter: rl.retryAfter,
+          },
+          429,
+        );
+      }
+      await c.env.DB.prepare(
+        "DELETE FROM instance_team_members WHERE team_id = ? AND user_id = ?",
+      )
+        .bind(teamId, userId)
+        .run();
+      await addAuditLog(
+        c,
+        "team_member_removed",
+        "team",
+        teamId,
+        instanceDetail(instanceId, `${userId} from ${team.name}`),
+        instanceId,
+      );
+      return c.json({ success: true, message: "Member removed" });
+    } catch (e: any) {
+      return errorResponse(c, e.message, 403);
     }
+  },
+);
 
-    await c.env.DB.prepare(
-      "INSERT INTO instance_team_external_members (team_id, external_id, added_by) VALUES (?, ?, ?)",
-    ).bind(teamId, externalId, user.id).run();
-    await addAuditLog(c, "team_outside_member_added", "team", teamId, instanceDetail(instanceId, `${ext.name} -> ${team.name}`), instanceId);
-    return c.json({ success: true, message: "Outside member added" });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
+app.post(
+  "/api/team-instances/:id/teams/:teamId/external-members",
+  async (c) => {
+    try {
+      await ensureDbReady(c.env.DB, c.env);
+      const user: any = c.get("user");
+      const instanceId = c.req.param("id");
+      const teamId = c.req.param("teamId");
+      const team: any = await c.env.DB.prepare(
+        "SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?",
+      )
+        .bind(teamId, instanceId)
+        .first();
+      if (!team) return c.json({ error: "Team not found" }, 404);
+      if (!(await canManageInstanceTeams(c, instanceId))) {
+        return c.json(
+          {
+            error: "Forbidden: You can only manage your department's instances",
+          },
+          403,
+        );
+      }
+      const rl = await checkRateLimit(c, "add_team_external_member", 30, 3600);
+      if (!rl.allowed) {
+        return c.json(
+          {
+            error: "Too many requests. Try again later.",
+            retryAfter: rl.retryAfter,
+          },
+          429,
+        );
+      }
+      const body = await c.req.json();
+      if (!body || typeof body !== "object")
+        return c.json({ error: "Invalid request body" }, 400);
+      const externalId = sanitizeStr(body.externalId);
+      if (!externalId) return c.json({ error: "Missing externalId" }, 400);
 
-app.delete("/api/team-instances/:id/teams/:teamId/external-members/:externalId", async (c) => {
-  try {
-    await ensureDbReady(c.env.DB, c.env);
-    const instanceId = c.req.param("id");
-    const teamId = c.req.param("teamId");
-    const externalId = c.req.param("externalId");
-    const team: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(teamId, instanceId).first();
-    if (!team) return c.json({ error: "Team not found" }, 404);
-    if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      const ext: any = await c.env.DB.prepare(
+        "SELECT * FROM instance_external_members WHERE id = ? AND instance_id = ?",
+      )
+        .bind(externalId, instanceId)
+        .first();
+      if (!ext)
+        return c.json(
+          { error: "That outside member does not belong to this instance" },
+          400,
+        );
+
+      const alreadyIn: any = await c.env.DB.prepare(
+        "SELECT 1 FROM instance_team_external_members WHERE team_id = ? AND external_id = ?",
+      )
+        .bind(teamId, externalId)
+        .first();
+      if (alreadyIn)
+        return c.json({ error: `${ext.name} is already in this team` }, 400);
+
+      if (team.member_limit !== null && team.member_limit !== undefined) {
+        const n = await teamMemberCount(c, teamId);
+        if (n >= team.member_limit) {
+          return c.json(
+            { error: `Team is full (limit ${team.member_limit})` },
+            400,
+          );
+        }
+      }
+
+      await c.env.DB.prepare(
+        "INSERT INTO instance_team_external_members (team_id, external_id, added_by) VALUES (?, ?, ?)",
+      )
+        .bind(teamId, externalId, user.id)
+        .run();
+      await addAuditLog(
+        c,
+        "team_outside_member_added",
+        "team",
+        teamId,
+        instanceDetail(instanceId, `${ext.name} -> ${team.name}`),
+        instanceId,
+      );
+      return c.json({ success: true, message: "Outside member added" });
+    } catch (e: any) {
+      return errorResponse(c, e.message, 403);
     }
-    const rl = await checkRateLimit(c, "remove_team_external_member", 30, 3600);
-    if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+  },
+);
+
+app.delete(
+  "/api/team-instances/:id/teams/:teamId/external-members/:externalId",
+  async (c) => {
+    try {
+      await ensureDbReady(c.env.DB, c.env);
+      const instanceId = c.req.param("id");
+      const teamId = c.req.param("teamId");
+      const externalId = c.req.param("externalId");
+      const team: any = await c.env.DB.prepare(
+        "SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?",
+      )
+        .bind(teamId, instanceId)
+        .first();
+      if (!team) return c.json({ error: "Team not found" }, 404);
+      if (!(await canManageInstanceTeams(c, instanceId))) {
+        return c.json(
+          {
+            error: "Forbidden: You can only manage your department's instances",
+          },
+          403,
+        );
+      }
+      const rl = await checkRateLimit(
+        c,
+        "remove_team_external_member",
+        30,
+        3600,
+      );
+      if (!rl.allowed) {
+        return c.json(
+          {
+            error: "Too many requests. Try again later.",
+            retryAfter: rl.retryAfter,
+          },
+          429,
+        );
+      }
+      await c.env.DB.prepare(
+        "DELETE FROM instance_team_external_members WHERE team_id = ? AND external_id = ?",
+      )
+        .bind(teamId, externalId)
+        .run();
+      await addAuditLog(
+        c,
+        "team_outside_member_removed",
+        "team",
+        teamId,
+        instanceDetail(instanceId, `${externalId} from ${team.name}`),
+        instanceId,
+      );
+      return c.json({ success: true, message: "Outside member removed" });
+    } catch (e: any) {
+      return errorResponse(c, e.message, 403);
     }
-    await c.env.DB.prepare("DELETE FROM instance_team_external_members WHERE team_id = ? AND external_id = ?").bind(teamId, externalId).run();
-    await addAuditLog(c, "team_outside_member_removed", "team", teamId, instanceDetail(instanceId, `${externalId} from ${team.name}`), instanceId);
-    return c.json({ success: true, message: "Outside member removed" });
-  } catch (e: any) {
-    return errorResponse(c, e.message, 403);
-  }
-});
+  },
+);
 
 // One endpoint behind every member drag-and-drop: moves an internal user or an
 // outside member from one team to another within the same instance.
@@ -5328,71 +8072,178 @@ app.post("/api/team-instances/:id/move-member", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     const instanceId = c.req.param("id");
-    const instance: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    const instance: any = await c.env.DB.prepare(
+      "SELECT id FROM team_instances WHERE id = ?",
+    )
+      .bind(instanceId)
+      .first();
     if (!instance) return c.json({ error: "Instance not found" }, 404);
     if (!(await canManageInstanceTeams(c, instanceId))) {
-      return c.json({ error: "Forbidden: You can only manage your department's instances" }, 403);
+      return c.json(
+        { error: "Forbidden: You can only manage your department's instances" },
+        403,
+      );
     }
     const rl = await checkRateLimit(c, "move_member", 60, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
-    if (!body || typeof body !== "object") return c.json({ error: "Invalid request body" }, 400);
+    if (!body || typeof body !== "object")
+      return c.json({ error: "Invalid request body" }, 400);
 
     const kind = sanitizeStr(body.kind);
     const memberId = sanitizeStr(body.memberId);
     const fromTeamId = sanitizeStr(body.fromTeamId);
     const toTeamId = sanitizeStr(body.toTeamId);
-    if (kind !== "internal" && kind !== "external") return c.json({ error: "kind must be 'internal' or 'external'" }, 400);
-    if (!memberId || !fromTeamId || !toTeamId) return c.json({ error: "Missing memberId, fromTeamId or toTeamId" }, 400);
-    if (fromTeamId === toTeamId) return c.json({ success: true, message: "No change" });
+    if (kind !== "internal" && kind !== "external")
+      return c.json({ error: "kind must be 'internal' or 'external'" }, 400);
+    if (!memberId || !fromTeamId || !toTeamId)
+      return c.json({ error: "Missing memberId, fromTeamId or toTeamId" }, 400);
+    if (fromTeamId === toTeamId)
+      return c.json({ success: true, message: "No change" });
 
-    const fromTeam: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(fromTeamId, instanceId).first();
-    const toTeam: any = await c.env.DB.prepare("SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?").bind(toTeamId, instanceId).first();
-    if (!fromTeam || !toTeam) return c.json({ error: "Both teams must belong to this instance" }, 400);
+    const fromTeam: any = await c.env.DB.prepare(
+      "SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?",
+    )
+      .bind(fromTeamId, instanceId)
+      .first();
+    const toTeam: any = await c.env.DB.prepare(
+      "SELECT * FROM instance_teams WHERE id = ? AND instance_id = ?",
+    )
+      .bind(toTeamId, instanceId)
+      .first();
+    if (!fromTeam || !toTeam)
+      return c.json({ error: "Both teams must belong to this instance" }, 400);
 
     if (toTeam.member_limit !== null && toTeam.member_limit !== undefined) {
       const n = await teamMemberCount(c, toTeamId);
       if (n >= toTeam.member_limit) {
-        return c.json({ error: `${toTeam.name} is full (limit ${toTeam.member_limit})` }, 400);
+        return c.json(
+          { error: `${toTeam.name} is full (limit ${toTeam.member_limit})` },
+          400,
+        );
       }
     }
 
     let label = memberId;
     if (kind === "internal") {
-      const inSource: any = await c.env.DB.prepare("SELECT 1 FROM instance_team_members WHERE team_id = ? AND user_id = ?").bind(fromTeamId, memberId).first();
-      if (!inSource) return c.json({ error: "That member is not in the source team" }, 400);
-      const eligibility = await validateTeamMemberEligibility(c, user, memberId);
+      const inSource: any = await c.env.DB.prepare(
+        "SELECT 1 FROM instance_team_members WHERE team_id = ? AND user_id = ?",
+      )
+        .bind(fromTeamId, memberId)
+        .first();
+      if (!inSource)
+        return c.json({ error: "That member is not in the source team" }, 400);
+      const eligibility = await validateTeamMemberEligibility(
+        c,
+        user,
+        memberId,
+      );
       if (eligibility.error) return c.json({ error: eligibility.error }, 400);
-      const alreadyIn: any = await c.env.DB.prepare("SELECT 1 FROM instance_team_members WHERE team_id = ? AND user_id = ?").bind(toTeamId, memberId).first();
-      if (alreadyIn) return c.json({ error: `${eligibility.user.name} is already in ${toTeam.name}` }, 400);
-      await c.env.DB.prepare("DELETE FROM instance_team_members WHERE team_id = ? AND user_id = ?").bind(fromTeamId, memberId).run();
+      const alreadyIn: any = await c.env.DB.prepare(
+        "SELECT 1 FROM instance_team_members WHERE team_id = ? AND user_id = ?",
+      )
+        .bind(toTeamId, memberId)
+        .first();
+      if (alreadyIn)
+        return c.json(
+          { error: `${eligibility.user.name} is already in ${toTeam.name}` },
+          400,
+        );
+      await c.env.DB.prepare(
+        "DELETE FROM instance_team_members WHERE team_id = ? AND user_id = ?",
+      )
+        .bind(fromTeamId, memberId)
+        .run();
       try {
-        await c.env.DB.prepare("INSERT INTO instance_team_members (team_id, user_id, added_by) VALUES (?, ?, ?)").bind(toTeamId, memberId, user.id).run();
+        await c.env.DB.prepare(
+          "INSERT INTO instance_team_members (team_id, user_id, added_by) VALUES (?, ?, ?)",
+        )
+          .bind(toTeamId, memberId, user.id)
+          .run();
       } catch (insertErr) {
-        await c.env.DB.prepare("INSERT INTO instance_team_members (team_id, user_id, added_by) VALUES (?, ?, ?)").bind(fromTeamId, memberId, user.id).run();
-        return c.json({ error: "Move failed; member restored to original team" }, 500);
+        await c.env.DB.prepare(
+          "INSERT INTO instance_team_members (team_id, user_id, added_by) VALUES (?, ?, ?)",
+        )
+          .bind(fromTeamId, memberId, user.id)
+          .run();
+        return c.json(
+          { error: "Move failed; member restored to original team" },
+          500,
+        );
       }
       label = eligibility.user.name;
     } else {
-      const ext: any = await c.env.DB.prepare("SELECT * FROM instance_external_members WHERE id = ? AND instance_id = ?").bind(memberId, instanceId).first();
-      if (!ext) return c.json({ error: "That outside member does not belong to this instance" }, 400);
-      const inSource: any = await c.env.DB.prepare("SELECT 1 FROM instance_team_external_members WHERE team_id = ? AND external_id = ?").bind(fromTeamId, memberId).first();
-      if (!inSource) return c.json({ error: "That member is not in the source team" }, 400);
-      const alreadyIn: any = await c.env.DB.prepare("SELECT 1 FROM instance_team_external_members WHERE team_id = ? AND external_id = ?").bind(toTeamId, memberId).first();
-      if (alreadyIn) return c.json({ error: `${ext.name} is already in ${toTeam.name}` }, 400);
-      await c.env.DB.prepare("DELETE FROM instance_team_external_members WHERE team_id = ? AND external_id = ?").bind(fromTeamId, memberId).run();
+      const ext: any = await c.env.DB.prepare(
+        "SELECT * FROM instance_external_members WHERE id = ? AND instance_id = ?",
+      )
+        .bind(memberId, instanceId)
+        .first();
+      if (!ext)
+        return c.json(
+          { error: "That outside member does not belong to this instance" },
+          400,
+        );
+      const inSource: any = await c.env.DB.prepare(
+        "SELECT 1 FROM instance_team_external_members WHERE team_id = ? AND external_id = ?",
+      )
+        .bind(fromTeamId, memberId)
+        .first();
+      if (!inSource)
+        return c.json({ error: "That member is not in the source team" }, 400);
+      const alreadyIn: any = await c.env.DB.prepare(
+        "SELECT 1 FROM instance_team_external_members WHERE team_id = ? AND external_id = ?",
+      )
+        .bind(toTeamId, memberId)
+        .first();
+      if (alreadyIn)
+        return c.json(
+          { error: `${ext.name} is already in ${toTeam.name}` },
+          400,
+        );
+      await c.env.DB.prepare(
+        "DELETE FROM instance_team_external_members WHERE team_id = ? AND external_id = ?",
+      )
+        .bind(fromTeamId, memberId)
+        .run();
       try {
-        await c.env.DB.prepare("INSERT INTO instance_team_external_members (team_id, external_id, added_by) VALUES (?, ?, ?)").bind(toTeamId, memberId, user.id).run();
+        await c.env.DB.prepare(
+          "INSERT INTO instance_team_external_members (team_id, external_id, added_by) VALUES (?, ?, ?)",
+        )
+          .bind(toTeamId, memberId, user.id)
+          .run();
       } catch (insertErr) {
-        await c.env.DB.prepare("INSERT INTO instance_team_external_members (team_id, external_id, added_by) VALUES (?, ?, ?)").bind(fromTeamId, memberId, user.id).run();
-        return c.json({ error: "Move failed; member restored to original team" }, 500);
+        await c.env.DB.prepare(
+          "INSERT INTO instance_team_external_members (team_id, external_id, added_by) VALUES (?, ?, ?)",
+        )
+          .bind(fromTeamId, memberId, user.id)
+          .run();
+        return c.json(
+          { error: "Move failed; member restored to original team" },
+          500,
+        );
       }
       label = ext.name;
     }
 
-    await addAuditLog(c, "team_member_moved", "team", toTeamId, instanceDetail(instanceId, `${label}: ${fromTeam.name} -> ${toTeam.name}`), instanceId);
+    await addAuditLog(
+      c,
+      "team_member_moved",
+      "team",
+      toTeamId,
+      instanceDetail(
+        instanceId,
+        `${label}: ${fromTeam.name} -> ${toTeam.name}`,
+      ),
+      instanceId,
+    );
     return c.json({ success: true, message: "Member moved" });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -5405,16 +8256,31 @@ app.get("/api/team-instances/:id/activity", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
     if (user.role_id === "advisory") {
-      return c.json({ error: "Advisory members do not have access to team instances" }, 403);
+      return c.json(
+        { error: "Advisory members do not have access to team instances" },
+        403,
+      );
     }
     const instanceId = c.req.param("id");
-    const instance: any = await c.env.DB.prepare("SELECT id FROM team_instances WHERE id = ?").bind(instanceId).first();
+    const instance: any = await c.env.DB.prepare(
+      "SELECT id FROM team_instances WHERE id = ?",
+    )
+      .bind(instanceId)
+      .first();
     if (!instance) return c.json({ error: "Instance not found" }, 404);
 
     const [teams, groups, externals] = await Promise.all([
-      c.env.DB.prepare("SELECT id FROM instance_teams WHERE instance_id = ?").bind(instanceId).all(),
-      c.env.DB.prepare("SELECT id FROM instance_groups WHERE instance_id = ?").bind(instanceId).all(),
-      c.env.DB.prepare("SELECT id FROM instance_external_members WHERE instance_id = ?").bind(instanceId).all(),
+      c.env.DB.prepare("SELECT id FROM instance_teams WHERE instance_id = ?")
+        .bind(instanceId)
+        .all(),
+      c.env.DB.prepare("SELECT id FROM instance_groups WHERE instance_id = ?")
+        .bind(instanceId)
+        .all(),
+      c.env.DB.prepare(
+        "SELECT id FROM instance_external_members WHERE instance_id = ?",
+      )
+        .bind(instanceId)
+        .all(),
     ]);
     const targetIds = [
       instanceId,
@@ -5427,7 +8293,9 @@ app.get("/api/team-instances/:id/activity", async (c) => {
     // LIKE matching on details for rows written before that convention existed.
     const rows = await c.env.DB.prepare(
       `SELECT action, actor_email, target_type, target_id, details, created_at FROM audit_log WHERE instance_id = ? OR target_id IN (${ph}) OR details LIKE ? ORDER BY created_at DESC LIMIT 30`,
-    ).bind(instanceId, ...targetIds, `%instance ${instanceId}%`).all();
+    )
+      .bind(instanceId, ...targetIds, `%instance ${instanceId}%`)
+      .all();
 
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
@@ -5435,8 +8303,12 @@ app.get("/api/team-instances/:id/activity", async (c) => {
   }
 });
 
-
-const ALLOWED_IMG_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const ALLOWED_IMG_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+];
 const MAX_IMG_SIZE = 10 * 1024 * 1024; // 10 MB
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -5447,17 +8319,26 @@ app.post("/api/case-studies/upload-image", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
+    if (!user || user.power_level < 10)
+      return c.json({ error: "Forbidden: Members only" }, 403);
     const rl = await checkRateLimit(c, "case_study_upload_image", 20, 3600);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
 
     const fd = await c.req.formData();
     const file = fd.get("image");
-    if (!file || typeof file === "string") return c.json({ error: "No image file provided" }, 400);
+    if (!file || typeof file === "string")
+      return c.json({ error: "No image file provided" }, 400);
 
     const typedFile = file as File;
     if (!ALLOWED_IMG_TYPES.includes(typedFile.type)) {
-      return c.json({ error: "Invalid file type. Allowed: JPEG, PNG, WebP, GIF" }, 400);
+      return c.json(
+        { error: "Invalid file type. Allowed: JPEG, PNG, WebP, GIF" },
+        400,
+      );
     }
     if (typedFile.size > MAX_IMG_SIZE) {
       return c.json({ error: "File too large. Max 10 MB" }, 400);
@@ -5481,7 +8362,11 @@ app.post("/api/case-studies/upload-image", async (c) => {
 app.get("/api/case-studies/images/*", async (c) => {
   try {
     const rl = await checkRateLimit(c, "case_study_image_serve", 200, 60);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
     const url = new URL(c.req.url);
     const prefix = "/api/case-studies/images/";
     let key = decodeURIComponent(url.pathname);
@@ -5492,7 +8377,8 @@ app.get("/api/case-studies/images/*", async (c) => {
       key = key.replace(/^\/+/, "");
     }
 
-    if (!key || key.includes("..")) return c.json({ error: "Invalid key" }, 400);
+    if (!key || key.includes(".."))
+      return c.json({ error: "Invalid key" }, 400);
 
     const obj = await c.env.CASE_STUDIES.get(key);
     if (!obj) return c.json({ error: "Image not found" }, 404);
@@ -5513,11 +8399,14 @@ app.delete("/api/case-studies/delete-image", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
+    if (!user || user.power_level < 10)
+      return c.json({ error: "Forbidden: Members only" }, 403);
 
     const { key } = await c.req.json();
-    if (!key || typeof key !== "string") return c.json({ error: "Image key is required" }, 400);
-    if (!key.startsWith("images/") && !key.startsWith("source/")) return c.json({ error: "Invalid image key" }, 400);
+    if (!key || typeof key !== "string")
+      return c.json({ error: "Image key is required" }, 400);
+    if (!key.startsWith("images/") && !key.startsWith("source/"))
+      return c.json({ error: "Invalid image key" }, 400);
 
     await c.env.CASE_STUDIES.delete(key);
     return c.json({ success: true, message: "Image deleted" });
@@ -5540,13 +8429,19 @@ app.post("/api/case-studies/upload-document", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
+    if (!user || user.power_level < 10)
+      return c.json({ error: "Forbidden: Members only" }, 403);
     const rl = await checkRateLimit(c, "case_study_upload_doc", 20, 3600);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
 
     const fd = await c.req.formData();
     const file = fd.get("document");
-    if (!file || typeof file === "string") return c.json({ error: "No document file provided" }, 400);
+    if (!file || typeof file === "string")
+      return c.json({ error: "No document file provided" }, 400);
 
     const typedFile = file as File;
     if (!ALLOWED_DOC_TYPES.includes(typedFile.type)) {
@@ -5581,7 +8476,10 @@ app.post("/api/case-studies/upload-document", async (c) => {
           const totalLen = chunks.reduce((s, c) => s + c.length, 0);
           const merged = new Uint8Array(totalLen);
           let offset = 0;
-          for (const c of chunks) { merged.set(c, offset); offset += c.length; }
+          for (const c of chunks) {
+            merged.set(c, offset);
+            offset += c.length;
+          }
           return new TextDecoder("utf-8").decode(merged);
         } catch {
           return "";
@@ -5589,7 +8487,8 @@ app.post("/api/case-studies/upload-document", async (c) => {
       }
 
       const textChunks: string[] = [];
-      const objRegex = /(\d+)\s+\d+\s+obj[\s\S]*?(?:\/Filter\s*(?:\[?\s*)?(?:\/FlateDecode|\/LZWDecode)\s*\]?)?[\s\S]*?stream\r?\n([\s\S]*?)\r?\nendstream/g;
+      const objRegex =
+        /(\d+)\s+\d+\s+obj[\s\S]*?(?:\/Filter\s*(?:\[?\s*)?(?:\/FlateDecode|\/LZWDecode)\s*\]?)?[\s\S]*?stream\r?\n([\s\S]*?)\r?\nendstream/g;
       let objMatch;
       while ((objMatch = objRegex.exec(raw)) !== null) {
         const streamBytes = new TextEncoder().encode(objMatch[2]);
@@ -5597,7 +8496,8 @@ app.post("/api/case-studies/upload-document", async (c) => {
         if (decompressed) {
           const tjRe = /\(([^)]*)\)\s*Tj/g;
           let tjM;
-          while ((tjM = tjRe.exec(decompressed)) !== null) textChunks.push(tjM[1]);
+          while ((tjM = tjRe.exec(decompressed)) !== null)
+            textChunks.push(tjM[1]);
           const TJRe = /\[([^\]]*)\]\s*TJ/g;
           let TJM;
           while ((TJM = TJRe.exec(decompressed)) !== null) {
@@ -5611,7 +8511,9 @@ app.post("/api/case-studies/upload-document", async (c) => {
             const hex = htM[1];
             let decoded = "";
             for (let i = 0; i < hex.length; i += 4) {
-              decoded += String.fromCharCode(parseInt(hex.substring(i, i + 4), 16));
+              decoded += String.fromCharCode(
+                parseInt(hex.substring(i, i + 4), 16),
+              );
             }
             textChunks.push(decoded);
           }
@@ -5621,7 +8523,9 @@ app.post("/api/case-studies/upload-document", async (c) => {
             const hex = hTJM[1];
             let decoded = "";
             for (let i = 0; i < hex.length; i += 4) {
-              decoded += String.fromCharCode(parseInt(hex.substring(i, i + 4), 16));
+              decoded += String.fromCharCode(
+                parseInt(hex.substring(i, i + 4), 16),
+              );
             }
             textChunks.push(decoded);
           }
@@ -5649,25 +8553,29 @@ app.post("/api/case-studies/upload-document", async (c) => {
             const hex = htM[1];
             let decoded = "";
             for (let i = 0; i < hex.length; i += 4) {
-              decoded += String.fromCharCode(parseInt(hex.substring(i, i + 4), 16));
+              decoded += String.fromCharCode(
+                parseInt(hex.substring(i, i + 4), 16),
+              );
             }
             textChunks.push(decoded);
           }
         }
       }
 
-      const decodedChunks = textChunks.map(chunk =>
+      const decodedChunks = textChunks.map((chunk) =>
         chunk
           .replace(/\\n/g, "\n")
           .replace(/\\r/g, "")
           .replace(/\\t/g, " ")
           .replace(/\\\(/g, "(")
           .replace(/\\\)/g, ")")
-          .replace(/\\\\/g, "\\")
+          .replace(/\\\\/g, "\\"),
       );
 
       const text = decodedChunks.join("\n\n");
-      const paragraphs = text.split(/\n{2,}/).filter((p: string) => p.trim().length > 0);
+      const paragraphs = text
+        .split(/\n{2,}/)
+        .filter((p: string) => p.trim().length > 0);
       html = paragraphs
         .map((p: string) => {
           const trimmed = p.trim();
@@ -5675,44 +8583,69 @@ app.post("/api/case-studies/upload-document", async (c) => {
           if (lines.length === 1) {
             return `<p>${escapeHtml(lines[0].trim())}</p>`;
           }
-          return lines.map((l: string) => `<p>${escapeHtml(l.trim())}</p>`).join("\n");
+          return lines
+            .map((l: string) => `<p>${escapeHtml(l.trim())}</p>`)
+            .join("\n");
         })
         .join("\n");
 
       const titleMatch = raw.match(/\/Title\s*\(([^)]+)\)/);
-      if (titleMatch && titleMatch[1].trim()) suggestedTitle = titleMatch[1].trim();
+      if (titleMatch && titleMatch[1].trim())
+        suggestedTitle = titleMatch[1].trim();
 
       if (!suggestedTitle && paragraphs.length > 0) {
         const firstLine = paragraphs[0].split("\n")[0].trim();
-        if (firstLine.length >= 3 && firstLine.length <= 200) suggestedTitle = firstLine;
+        if (firstLine.length >= 3 && firstLine.length <= 200)
+          suggestedTitle = firstLine;
       }
       if (paragraphs.length > 1) {
         const desc = paragraphs[1].replace(/\n/g, " ").trim();
-        suggestedDescription = desc.length > 500 ? desc.slice(0, 497) + "..." : desc;
+        suggestedDescription =
+          desc.length > 500 ? desc.slice(0, 497) + "..." : desc;
       }
     } else {
       const mammoth = await import("mammoth");
       const result = await mammoth.convertToHtml({ arrayBuffer });
       html = result.value;
 
-      const tempDiv = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      const tempDiv = html
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
       const firstSentence = tempDiv.split(/[.!?]\s/)[0];
-      if (firstSentence && firstSentence.length >= 3 && firstSentence.length <= 200) {
+      if (
+        firstSentence &&
+        firstSentence.length >= 3 &&
+        firstSentence.length <= 200
+      ) {
         suggestedTitle = firstSentence.trim();
       }
       const rest = tempDiv.slice(suggestedTitle.length).trim();
       if (rest) {
-        suggestedDescription = rest.length > 500 ? rest.slice(0, 497) + "..." : rest;
+        suggestedDescription =
+          rest.length > 500 ? rest.slice(0, 497) + "..." : rest;
       }
     }
 
     const content = sanitizeBlogHtml(html);
     const textOnly = content.replace(/<[^>]*>/g, "").trim();
     if (textOnly.length < 10) {
-      return c.json({ error: "Document appears empty or contains less than 10 visible characters" }, 400);
+      return c.json(
+        {
+          error:
+            "Document appears empty or contains less than 10 visible characters",
+        },
+        400,
+      );
     }
 
-    return c.json({ success: true, content, charCount: textOnly.length, suggestedTitle, suggestedDescription });
+    return c.json({
+      success: true,
+      content,
+      charCount: textOnly.length,
+      suggestedTitle,
+      suggestedDescription,
+    });
   } catch (e: any) {
     console.error("upload-document error:", e?.message, e?.stack);
     return errorResponse(c, "Failed to parse document: " + e.message, 500);
@@ -5724,13 +8657,19 @@ app.post("/api/case-studies/upload-source", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
+    if (!user || user.power_level < 10)
+      return c.json({ error: "Forbidden: Members only" }, 403);
     const rl = await checkRateLimit(c, "case_study_upload_source", 20, 3600);
-    if (!rl.allowed) return c.json({ error: "Rate limit exceeded", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
 
     const fd = await c.req.formData();
     const file = fd.get("file");
-    if (!file || typeof file === "string") return c.json({ error: "No file provided" }, 400);
+    if (!file || typeof file === "string")
+      return c.json({ error: "No file provided" }, 400);
 
     const typedFile = file as File;
     const ext = typedFile.name.split(".").pop()?.toLowerCase();
@@ -5764,7 +8703,13 @@ app.post("/api/consulting-request", async (c) => {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "consulting_request", 1, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -5778,14 +8723,25 @@ app.post("/api/consulting-request", async (c) => {
     const requirement = sanitizeStr(body.requirement, MAX_MSG_LEN);
 
     if (!name || !email || !phone || !organization || !requirement) {
-      return c.json({ error: "Missing required fields: name, email, phone, organization, requirement" }, 400);
+      return c.json(
+        {
+          error:
+            "Missing required fields: name, email, phone, organization, requirement",
+        },
+        400,
+      );
     }
 
     await c.env.DB.prepare(
       "INSERT INTO consulting_requests (id, name, email, phone, organization, role_in_org, requirement, status) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, 'pending')",
-    ).bind(name, email, phone, organization, roleInOrg || null, requirement).run();
+    )
+      .bind(name, email, phone, organization, roleInOrg || null, requirement)
+      .run();
 
-    return c.json({ success: true, message: "Consulting request submitted successfully." });
+    return c.json({
+      success: true,
+      message: "Consulting request submitted successfully.",
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -5810,16 +8766,23 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "consulting_accept", 10, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Too many requests", retryAfter: rl.retryAfter },
+        429,
+      );
     requireBoard(c);
     const id = c.req.param("id");
 
     const request: any = await c.env.DB.prepare(
       "SELECT * FROM consulting_requests WHERE id = ?",
-    ).bind(id).first();
+    )
+      .bind(id)
+      .first();
 
     if (!request) return c.json({ error: "Request not found" }, 404);
-    if (request.status !== "pending") return c.json({ error: "Request already processed" }, 400);
+    if (request.status !== "pending")
+      return c.json({ error: "Request already processed" }, 400);
 
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -5837,7 +8800,10 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
     if (apiKey) {
       await fetch("https://api.resend.com/emails", {
         method: "POST",
-        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+        headers: {
+          Authorization: "Bearer " + apiKey,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           from: "180DC Consulting <team@180dcvitc.org>",
           to: request.email,
@@ -5866,12 +8832,21 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
     }
 
     // Update status and store response
-    await c.env.DB.prepare("UPDATE consulting_requests SET status = 'accepted' WHERE id = ?").bind(id).run();
+    await c.env.DB.prepare(
+      "UPDATE consulting_requests SET status = 'accepted' WHERE id = ?",
+    )
+      .bind(id)
+      .run();
     await c.env.DB.prepare(
       "INSERT INTO consulting_responses (id, request_id, email_subject, email_body) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
-    ).bind(id, emailSubject, emailBody).run();
+    )
+      .bind(id, emailSubject, emailBody)
+      .run();
 
-    return c.json({ success: true, message: "Request accepted and email sent." });
+    return c.json({
+      success: true,
+      message: "Request accepted and email sent.",
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -5882,14 +8857,21 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "consulting_reject", 10, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Too many requests", retryAfter: rl.retryAfter },
+        429,
+      );
     requireBoard(c);
     const id = c.req.param("id");
     const request: any = await c.env.DB.prepare(
       "SELECT * FROM consulting_requests WHERE id = ?",
-    ).bind(id).first();
+    )
+      .bind(id)
+      .first();
     if (!request) return c.json({ error: "Request not found" }, 404);
-    if (request.status !== "pending") return c.json({ error: "Request already processed" }, 400);
+    if (request.status !== "pending")
+      return c.json({ error: "Request already processed" }, 400);
 
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -5907,7 +8889,10 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
     if (apiKey) {
       await fetch("https://api.resend.com/emails", {
         method: "POST",
-        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+        headers: {
+          Authorization: "Bearer " + apiKey,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           from: "180DC Consulting <team@180dcvitc.org>",
           to: request.email,
@@ -5935,12 +8920,21 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
       });
     }
 
-    await c.env.DB.prepare("UPDATE consulting_requests SET status = 'rejected' WHERE id = ?").bind(id).run();
+    await c.env.DB.prepare(
+      "UPDATE consulting_requests SET status = 'rejected' WHERE id = ?",
+    )
+      .bind(id)
+      .run();
     await c.env.DB.prepare(
       "INSERT INTO consulting_responses (id, request_id, email_subject, email_body) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
-    ).bind(id, emailSubject, emailBody).run();
+    )
+      .bind(id, emailSubject, emailBody)
+      .run();
 
-    return c.json({ success: true, message: "Request rejected and email sent." });
+    return c.json({
+      success: true,
+      message: "Request rejected and email sent.",
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -5955,12 +8949,20 @@ app.delete("/api/consulting-requests/:id", async (c) => {
 
     const request: any = await c.env.DB.prepare(
       "SELECT id FROM consulting_requests WHERE id = ?",
-    ).bind(id).first();
+    )
+      .bind(id)
+      .first();
 
     if (!request) return c.json({ error: "Request not found" }, 404);
 
-    await c.env.DB.prepare("DELETE FROM consulting_responses WHERE request_id = ?").bind(id).run();
-    await c.env.DB.prepare("DELETE FROM consulting_requests WHERE id = ?").bind(id).run();
+    await c.env.DB.prepare(
+      "DELETE FROM consulting_responses WHERE request_id = ?",
+    )
+      .bind(id)
+      .run();
+    await c.env.DB.prepare("DELETE FROM consulting_requests WHERE id = ?")
+      .bind(id)
+      .run();
 
     return c.json({ success: true, message: "Request deleted." });
   } catch (e: any) {
@@ -5977,9 +8979,14 @@ app.post("/api/case-studies", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "case_study_create", 20, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Too many requests", retryAfter: rl.retryAfter },
+        429,
+      );
     const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
+    if (!user || user.power_level < 10)
+      return c.json({ error: "Forbidden: Members only" }, 403);
 
     const body = await c.req.json();
     const tag = sanitizeStr(body.tag) || "Uncategorized";
@@ -5988,15 +8995,26 @@ app.post("/api/case-studies", async (c) => {
     const rawContent = body.content;
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
 
-    if (!rawContent || typeof rawContent !== "string" || rawContent.length < 10) {
+    if (
+      !rawContent ||
+      typeof rawContent !== "string" ||
+      rawContent.length < 10
+    ) {
       return c.json({ error: "Content must be at least 10 characters" }, 400);
     }
-    if (rawContent.length > 100000) return c.json({ error: "Content too long (max 100,000 chars)" }, 400);
+    if (rawContent.length > 100000)
+      return c.json({ error: "Content too long (max 100,000 chars)" }, 400);
 
     const content = sanitizeBlogHtml(rawContent);
     const textOnly = content.replace(/<[^>]*>/g, "").trim();
     if (textOnly.length < 10) {
-      return c.json({ error: "Content must contain at least 10 visible characters after sanitization" }, 400);
+      return c.json(
+        {
+          error:
+            "Content must contain at least 10 visible characters after sanitization",
+        },
+        400,
+      );
     }
 
     const id = crypto.randomUUID().replace(/-/g, "");
@@ -6004,9 +9022,27 @@ app.post("/api/case-studies", async (c) => {
 
     await c.env.DB.prepare(
       "INSERT INTO case_studies (id, tag, title, description, content, image_url, author_name, created_by, source_file_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).bind(id, tag, title, description, content, null, authorName, user.id, sourceFileUrl || null).run();
+    )
+      .bind(
+        id,
+        tag,
+        title,
+        description,
+        content,
+        null,
+        authorName,
+        user.id,
+        sourceFileUrl || null,
+      )
+      .run();
 
-    await addAuditLog(c, "case_study_created", "case_study", id, "Case study created: " + title);
+    await addAuditLog(
+      c,
+      "case_study_created",
+      "case_study",
+      id,
+      "Case study created: " + title,
+    );
 
     return c.json({ success: true, message: "Case study published", id });
   } catch (e: any) {
@@ -6019,9 +9055,12 @@ app.get("/api/case-studies", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+    if (!user || user.power_level < 10)
+      return c.json({ error: "Forbidden" }, 403);
 
-    const rows = await c.env.DB.prepare("SELECT * FROM case_studies ORDER BY created_at DESC").all();
+    const rows = await c.env.DB.prepare(
+      "SELECT * FROM case_studies ORDER BY created_at DESC",
+    ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -6033,28 +9072,49 @@ app.delete("/api/case-studies/:id", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const user: any = c.get("user");
-    if (!user || user.power_level < 50) return c.json({ error: "Forbidden: Lead or above only" }, 403);
+    if (!user || user.power_level < 50)
+      return c.json({ error: "Forbidden: Lead or above only" }, 403);
 
     const id = c.req.param("id");
-    const row: any = await c.env.DB.prepare("SELECT id, title, image_url, source_file_url FROM case_studies WHERE id = ?").bind(id).first();
+    const row: any = await c.env.DB.prepare(
+      "SELECT id, title, image_url, source_file_url FROM case_studies WHERE id = ?",
+    )
+      .bind(id)
+      .first();
     if (!row) return c.json({ error: "Case study not found" }, 404);
 
-    await c.env.DB.prepare("DELETE FROM case_studies WHERE id = ?").bind(id).run();
+    await c.env.DB.prepare("DELETE FROM case_studies WHERE id = ?")
+      .bind(id)
+      .run();
 
     if (row.image_url) {
       try {
-        const imgKey = row.image_url.replace(/^\/api\/case-studies\/images\//, "");
-        if (imgKey.startsWith("images/")) await c.env.CASE_STUDIES.delete(imgKey);
+        const imgKey = row.image_url.replace(
+          /^\/api\/case-studies\/images\//,
+          "",
+        );
+        if (imgKey.startsWith("images/"))
+          await c.env.CASE_STUDIES.delete(imgKey);
       } catch {}
     }
     if (row.source_file_url) {
       try {
-        const srcKey = row.source_file_url.replace(/^\/api\/case-studies\/images\//, "");
-        if (srcKey.startsWith("source/")) await c.env.CASE_STUDIES.delete(srcKey);
+        const srcKey = row.source_file_url.replace(
+          /^\/api\/case-studies\/images\//,
+          "",
+        );
+        if (srcKey.startsWith("source/"))
+          await c.env.CASE_STUDIES.delete(srcKey);
       } catch {}
     }
 
-    await addAuditLog(c, "case_study_deleted", "case_study", id, "Case study deleted: " + row.title);
+    await addAuditLog(
+      c,
+      "case_study_deleted",
+      "case_study",
+      id,
+      "Case study deleted: " + row.title,
+    );
 
     return c.json({ success: true, message: "Case study deleted" });
   } catch (e: any) {
@@ -6067,12 +9127,21 @@ app.put("/api/case-studies/:id", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "case_study_edit", 20, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Too many requests", retryAfter: rl.retryAfter },
+        429,
+      );
     const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden: Members only" }, 403);
+    if (!user || user.power_level < 10)
+      return c.json({ error: "Forbidden: Members only" }, 403);
 
     const id = c.req.param("id");
-    const existing: any = await c.env.DB.prepare("SELECT id FROM case_studies WHERE id = ?").bind(id).first();
+    const existing: any = await c.env.DB.prepare(
+      "SELECT id FROM case_studies WHERE id = ?",
+    )
+      .bind(id)
+      .first();
     if (!existing) return c.json({ error: "Case study not found" }, 404);
 
     const body = await c.req.json();
@@ -6082,22 +9151,41 @@ app.put("/api/case-studies/:id", async (c) => {
     const rawContent = body.content;
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
 
-    if (!rawContent || typeof rawContent !== "string" || rawContent.length < 10) {
+    if (
+      !rawContent ||
+      typeof rawContent !== "string" ||
+      rawContent.length < 10
+    ) {
       return c.json({ error: "Content must be at least 10 characters" }, 400);
     }
-    if (rawContent.length > 100000) return c.json({ error: "Content too long (max 100,000 chars)" }, 400);
+    if (rawContent.length > 100000)
+      return c.json({ error: "Content too long (max 100,000 chars)" }, 400);
 
     const content = sanitizeBlogHtml(rawContent);
     const textOnly = content.replace(/<[^>]*>/g, "").trim();
     if (textOnly.length < 10) {
-      return c.json({ error: "Content must contain at least 10 visible characters after sanitization" }, 400);
+      return c.json(
+        {
+          error:
+            "Content must contain at least 10 visible characters after sanitization",
+        },
+        400,
+      );
     }
 
     await c.env.DB.prepare(
       "UPDATE case_studies SET tag = ?, title = ?, description = ?, content = ?, image_url = NULL, source_file_url = ? WHERE id = ?",
-    ).bind(tag, title, description, content, sourceFileUrl || null, id).run();
+    )
+      .bind(tag, title, description, content, sourceFileUrl || null, id)
+      .run();
 
-    await addAuditLog(c, "case_study_updated", "case_study", id, "Case study updated: " + title);
+    await addAuditLog(
+      c,
+      "case_study_updated",
+      "case_study",
+      id,
+      "Case study updated: " + title,
+    );
 
     return c.json({ success: true, message: "Case study updated" });
   } catch (e: any) {
@@ -6115,7 +9203,13 @@ app.post("/api/send-email", async (c) => {
     }
     const rl = await checkRateLimit(c, "send_email", 10, 3600);
     if (!rl.allowed) {
-      return c.json({ error: "Too many requests. Try again later.", retryAfter: rl.retryAfter }, 429);
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
     }
     const body = await c.req.json();
     if (!body || typeof body !== "object") {
@@ -6134,26 +9228,50 @@ app.post("/api/send-email", async (c) => {
 
     const currentCount = await getTodayEmailCount(c.env.DB);
     if (currentCount >= 100) {
-      return c.json({ error: "Daily email quota reached (100 emails). Try again after 24 hours." }, 429);
+      return c.json(
+        {
+          error:
+            "Daily email quota reached (100 emails). Try again after 24 hours.",
+        },
+        429,
+      );
     }
 
     // Support multiple recipients separated by comma/semicolon
-    const recipients = to.split(/[;,]+/).map((e: string) => e.trim()).filter(Boolean);
+    const recipients = to
+      .split(/[;,]+/)
+      .map((e: string) => e.trim())
+      .filter(Boolean);
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     let validRecipients = recipients.filter((e: string) => EMAIL_RE.test(e));
 
     // Directors (power < 100) can only email members of their own department
     if (user.power_level < 100) {
       if (!user.department_id) {
-        return c.json({ error: "No department assigned — cannot send department emails" }, 403);
+        return c.json(
+          { error: "No department assigned — cannot send department emails" },
+          403,
+        );
       }
       const deptRows: any = await c.env.DB.prepare(
         "SELECT email FROM users WHERE department_id = ?",
-      ).bind(user.department_id).all();
-      const deptEmails = new Set((deptRows.results || []).map((r: any) => (r.email || "").toLowerCase()));
-      validRecipients = validRecipients.filter((e: string) => deptEmails.has(e.toLowerCase()));
+      )
+        .bind(user.department_id)
+        .all();
+      const deptEmails = new Set(
+        (deptRows.results || []).map((r: any) => (r.email || "").toLowerCase()),
+      );
+      validRecipients = validRecipients.filter((e: string) =>
+        deptEmails.has(e.toLowerCase()),
+      );
       if (validRecipients.length === 0) {
-        return c.json({ error: "Directors can only send emails to members of their own department" }, 403);
+        return c.json(
+          {
+            error:
+              "Directors can only send emails to members of their own department",
+          },
+          403,
+        );
       }
     }
 
@@ -6164,7 +9282,10 @@ app.post("/api/send-email", async (c) => {
     for (const recipient of validRecipients) {
       await fetch("https://api.resend.com/emails", {
         method: "POST",
-        headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+        headers: {
+          Authorization: "Bearer " + apiKey,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           from: "180DC Admin <team@180dcvitc.org>",
           to: recipient,
@@ -6193,7 +9314,13 @@ app.post("/api/send-email", async (c) => {
     }
 
     await incrementEmailCount(c.env.DB);
-    return c.json({ success: true, message: `Email sent to ${validRecipients.length} recipient(s)` }, 200);
+    return c.json(
+      {
+        success: true,
+        message: `Email sent to ${validRecipients.length} recipient(s)`,
+      },
+      200,
+    );
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
   }
@@ -6233,7 +9360,8 @@ function fileFromR2Obj(obj: any, key: string): any {
 app.get("/api/club-files", async (c) => {
   try {
     const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+    if (!user || user.power_level < 10)
+      return c.json({ error: "Forbidden" }, 403);
 
     const category = c.req.query("category") || "";
     const eventName = (c.req.query("eventName") || "").toLowerCase();
@@ -6251,8 +9379,10 @@ app.get("/api/club-files", async (c) => {
       const cat = obj.key.split("/")[0];
 
       if (category && cat !== category) continue;
-      if (eventName && (m.eventName || "").toLowerCase() !== eventName) continue;
-      if (projectName && (m.projectName || "").toLowerCase() !== projectName) continue;
+      if (eventName && (m.eventName || "").toLowerCase() !== eventName)
+        continue;
+      if (projectName && (m.projectName || "").toLowerCase() !== projectName)
+        continue;
       if (search) {
         const fileName = (m.fileName || "").toLowerCase();
         const desc = (m.description || "").toLowerCase();
@@ -6262,7 +9392,9 @@ app.get("/api/club-files", async (c) => {
       files.push(fileFromR2Obj(head, obj.key));
     }
 
-    files.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+    files.sort((a, b) =>
+      (b.created_at || "").localeCompare(a.created_at || ""),
+    );
     return c.json({ files });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -6273,13 +9405,15 @@ app.get("/api/club-files", async (c) => {
 app.get("/api/club-files/events", async (c) => {
   try {
     const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+    if (!user || user.power_level < 10)
+      return c.json({ error: "Forbidden" }, 403);
 
     const listed = await c.env.CLUB_FILES.list({ prefix: "events/" });
     const names = new Set<string>();
     for (const obj of listed.objects) {
       const head = await c.env.CLUB_FILES.head(obj.key);
-      if (head?.customMetadata?.eventName) names.add(head.customMetadata.eventName);
+      if (head?.customMetadata?.eventName)
+        names.add(head.customMetadata.eventName);
     }
     return c.json({ events: [...names].sort() });
   } catch (e: any) {
@@ -6291,13 +9425,15 @@ app.get("/api/club-files/events", async (c) => {
 app.get("/api/club-files/projects", async (c) => {
   try {
     const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+    if (!user || user.power_level < 10)
+      return c.json({ error: "Forbidden" }, 403);
 
     const listed = await c.env.CLUB_FILES.list({ prefix: "projects/" });
     const names = new Set<string>();
     for (const obj of listed.objects) {
       const head = await c.env.CLUB_FILES.head(obj.key);
-      if (head?.customMetadata?.projectName) names.add(head.customMetadata.projectName);
+      if (head?.customMetadata?.projectName)
+        names.add(head.customMetadata.projectName);
     }
     return c.json({ projects: [...names].sort() });
   } catch (e: any) {
@@ -6310,9 +9446,17 @@ app.delete("/api/club-files/:id", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "club_files_delete", 20, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Too many requests", retryAfter: rl.retryAfter },
+        429,
+      );
     const user: any = c.get("user");
-    if (!user || user.power_level < 50) return c.json({ error: "Forbidden: Lead Consultants and above only" }, 403);
+    if (!user || user.power_level < 50)
+      return c.json(
+        { error: "Forbidden: Lead Consultants and above only" },
+        403,
+      );
 
     const id = c.req.param("id");
     const listed = await c.env.CLUB_FILES.list();
@@ -6326,7 +9470,13 @@ app.delete("/api/club-files/:id", async (c) => {
     if (!targetKey) return c.json({ error: "File not found" }, 404);
 
     await c.env.CLUB_FILES.delete(targetKey);
-    await addAuditLog(c, "club_file_deleted", "club_file", id, "Deleted file " + targetKey + " by " + user.email);
+    await addAuditLog(
+      c,
+      "club_file_deleted",
+      "club_file",
+      id,
+      "Deleted file " + targetKey + " by " + user.email,
+    );
     return c.json({ success: true });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -6337,7 +9487,8 @@ app.delete("/api/club-files/:id", async (c) => {
 app.get("/api/club-files/:id/download", async (c) => {
   try {
     const user: any = c.get("user");
-    if (!user || user.power_level < 10) return c.json({ error: "Forbidden" }, 403);
+    if (!user || user.power_level < 10)
+      return c.json({ error: "Forbidden" }, 403);
 
     const id = c.req.param("id");
     const listed = await c.env.CLUB_FILES.list();
@@ -6354,8 +9505,12 @@ app.get("/api/club-files/:id/download", async (c) => {
     if (!obj) return c.json({ error: "File not found" }, 404);
 
     const head = await c.env.CLUB_FILES.head(targetKey);
-    const fileName = head?.customMetadata?.fileName || targetKey.split("/").pop() || "download";
-    const contentType = head?.httpMetadata?.contentType || "application/octet-stream";
+    const fileName =
+      head?.customMetadata?.fileName ||
+      targetKey.split("/").pop() ||
+      "download";
+    const contentType =
+      head?.httpMetadata?.contentType || "application/octet-stream";
 
     return new Response(obj.body, {
       headers: {
@@ -6373,9 +9528,17 @@ app.post("/api/club-files/upload", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "club_files_upload", 20, 3600);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Too many requests", retryAfter: rl.retryAfter },
+        429,
+      );
     const user: any = c.get("user");
-    if (!user || user.power_level < 50) return c.json({ error: "Forbidden: Lead Consultants and above only" }, 403);
+    if (!user || user.power_level < 50)
+      return c.json(
+        { error: "Forbidden: Lead Consultants and above only" },
+        403,
+      );
 
     const formData = await c.req.formData();
     const file = formData.get("file") as File | null;
@@ -6393,19 +9556,31 @@ app.post("/api/club-files/upload", async (c) => {
       uploadedByName: user.name || user.email,
       createdAt: new Date().toISOString(),
     };
-    if (formData.get("eventName")) metadata.eventName = formData.get("eventName") as string;
-    if (formData.get("eventFor")) metadata.eventFor = formData.get("eventFor") as string;
-    if (formData.get("projectName")) metadata.projectName = formData.get("projectName") as string;
-    if (formData.get("meetingTitle")) metadata.meetingTitle = formData.get("meetingTitle") as string;
-    if (formData.get("meetingDate")) metadata.meetingDate = formData.get("meetingDate") as string;
-    if (formData.get("description")) metadata.description = formData.get("description") as string;
+    if (formData.get("eventName"))
+      metadata.eventName = formData.get("eventName") as string;
+    if (formData.get("eventFor"))
+      metadata.eventFor = formData.get("eventFor") as string;
+    if (formData.get("projectName"))
+      metadata.projectName = formData.get("projectName") as string;
+    if (formData.get("meetingTitle"))
+      metadata.meetingTitle = formData.get("meetingTitle") as string;
+    if (formData.get("meetingDate"))
+      metadata.meetingDate = formData.get("meetingDate") as string;
+    if (formData.get("description"))
+      metadata.description = formData.get("description") as string;
 
     await c.env.CLUB_FILES.put(key, file.stream(), {
       httpMetadata: { contentType: file.type },
       customMetadata: metadata,
     });
 
-    await addAuditLog(c, "club_file_uploaded", "club_file", id, "Uploaded " + file.name + " to " + category + " by " + user.email);
+    await addAuditLog(
+      c,
+      "club_file_uploaded",
+      "club_file",
+      id,
+      "Uploaded " + file.name + " to " + category + " by " + user.email,
+    );
     return c.json({ success: true, id, key });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -6420,7 +9595,9 @@ app.post("/api/club-files/upload", async (c) => {
 app.get("/api/admin/maintenance", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    const mm: any = await c.env.DB.prepare("SELECT enabled, message FROM maintenance_mode WHERE id = 1").first();
+    const mm: any = await c.env.DB.prepare(
+      "SELECT enabled, message FROM maintenance_mode WHERE id = 1",
+    ).first();
     return c.json({ enabled: mm?.enabled === 1, message: mm?.message || "" });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -6432,21 +9609,35 @@ app.post("/api/admin/maintenance", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "admin_maintenance_toggle", 5, 60);
-    if (!rl.allowed) return c.json({ error: "Too many requests", retryAfter: rl.retryAfter }, 429);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Too many requests", retryAfter: rl.retryAfter },
+        429,
+      );
     const user: any = c.get("user");
-    if (!user || user.power_level < 100) return c.json({ error: "Forbidden: President/VP only" }, 403);
+    if (!user || user.power_level < 100)
+      return c.json({ error: "Forbidden: President/VP only" }, 403);
 
     const body = await c.req.json();
     const enabled = body.enabled === true ? 1 : 0;
-    const message = typeof body.message === "string" && body.message.trim().length > 0
-      ? body.message.trim().slice(0, 500)
-      : "Site is under maintenance. Please check back later.";
+    const message =
+      typeof body.message === "string" && body.message.trim().length > 0
+        ? body.message.trim().slice(0, 500)
+        : "Site is under maintenance. Please check back later.";
 
-    await c.env.DB.prepare("UPDATE maintenance_mode SET enabled = ?, message = ?, updated_by = ?, updated_at = datetime('now') WHERE id = 1")
-      .bind(enabled, message, user.email).run();
+    await c.env.DB.prepare(
+      "UPDATE maintenance_mode SET enabled = ?, message = ?, updated_by = ?, updated_at = datetime('now') WHERE id = 1",
+    )
+      .bind(enabled, message, user.email)
+      .run();
 
-    await addAuditLog(c, "maintenance_toggle", "maintenance", "1",
-      "Maintenance mode " + (enabled ? "enabled" : "disabled"));
+    await addAuditLog(
+      c,
+      "maintenance_toggle",
+      "maintenance",
+      "1",
+      "Maintenance mode " + (enabled ? "enabled" : "disabled"),
+    );
 
     return c.json({ success: true, enabled: enabled === 1, message });
   } catch (e: any) {
@@ -6459,7 +9650,8 @@ app.get("/api/gallery-cdn/*", async (c) => {
   try {
     const url = new URL(c.req.url);
     let key = url.pathname.replace(/^\/api\/gallery-cdn\//, "");
-    if (!key || key.includes("..")) return c.json({ error: "Invalid key" }, 400);
+    if (!key || key.includes(".."))
+      return c.json({ error: "Invalid key" }, 400);
 
     const obj = await c.env.GALLERY_CDN.get(key);
     if (!obj) return c.json({ error: "Image not found" }, 404);
