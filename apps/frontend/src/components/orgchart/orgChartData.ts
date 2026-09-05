@@ -17,25 +17,25 @@ export const coreLeadership: OrgChartPerson[] = [
     name: "Sharan K",
     role: "Chairperson",
     photo: "/leads/chairperson.png",
-    linkedin: "#",
+    linkedin: "https://www.linkedin.com/in/sharan-k-719300345/",
   },
   {
     name: "Sanjana Chejeti",
     role: "Vice Chairperson",
     photo: "/leads/vice-chairperson.png",
-    linkedin: "#",
+    linkedin: "https://www.linkedin.com/in/sanjana-chejeti-565355298/",
   },
   {
     name: "Sonakshi Agrawal",
     role: "Secretary",
     photo: "/leads/secretary.png",
-    linkedin: "#",
+    linkedin: "https://www.linkedin.com/in/sonakshi-agrawal-6685991bb/",
   },
   {
     name: "Sanjay Sivakumar",
     role: "Co-Secretary",
     photo: "/leads/co-secretary.png",
-    linkedin: "#",
+    linkedin: "https://www.linkedin.com/in/sanjaysivakumar11/",
   },
 ];
 
@@ -49,7 +49,7 @@ export const departmentDirectors: OrgChartPerson[] = [
     name: "Shahid Ashraf",
     role: "Marketing Director",
     photo: "/leads/marketing-director.jpeg",
-    linkedin: "#",
+    linkedin: "https://www.linkedin.com/in/shaik-shaheed-ashraf-43a836236/",
   },
   {
     name: "Vansh Goel",
@@ -67,11 +67,11 @@ export const departmentDirectors: OrgChartPerson[] = [
     name: "Paramveer Singh",
     role: "Client Relationship Director",
     photo: "/leads/client-relation-director.png",
-    linkedin: "#",
+    linkedin: "https://www.linkedin.com/in/paramveer-singh-vilkhu/",
   },
   {
     name: "Sanath Garg",
     role: "Finance Director",
-    linkedin: "#",
+    linkedin: "https://www.linkedin.com/in/sanath-garg-356a7331b/",
   },
 ];
