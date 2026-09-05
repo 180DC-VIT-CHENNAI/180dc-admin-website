@@ -2,6 +2,8 @@
 
 This repository contains the complete codebase for the **180 Degrees Consulting VIT Chennai** platform. It is structured as a Turborepo and consists of multiple Cloudflare Worker applications and shared packages.
 
+For the agent-first guide, project mode, authoritative sources, commands, and hazards, see [AGENTS.md](./AGENTS.md). For a navigation index of all documentation, see [docs/INDEX.md](./docs/INDEX.md).
+
 ## 📦 Tech Stack
 
 - **Turborepo** – Monorepo management
@@ -18,16 +20,32 @@ This repository contains the complete codebase for the **180 Degrees Consulting 
 ```text
 .
 ├── apps/
-│   ├── frontend/         # Frontend application
-│   ├── admin-api/        # Admin API Worker
-│   ├── public-api/       # Public API Worker
-│   └── job-processor/    # Background jobs
+│   ├── frontend/         # Vite + React SPA
+│   ├── admin-api/        # Admin API Worker (production backend)
+│   ├── public-api/       # Public API Worker (placeholder)
+│   └── job-processor/    # Queue consumer (placeholder)
 │
 ├── packages/
-│   ├── shared/           # Shared utilities & types
-│   ├── ui/               # Shared UI components
-│   └── ...
+│   └── db/               # Placeholder: do not use schema.sql as authoritative
 │
+├── docs/                 # Agent-first documentation
+│   ├── INDEX.md
+│   ├── product/
+│   ├── domain/
+│   ├── architecture/
+│   ├── contracts/
+│   ├── execution/
+│   ├── compatibility/
+│   ├── quality/
+│   └── operations/
+│
+├── architecture/         # Existing architecture decisions and plans
+├── DESIGN.md
+├── REPORT.md
+├── NEWSLETTER_EDITOR.md
+├── SES_SETUP.md
+├── BUILD_AND_DEPLOY.md
+├── AGENTS.md
 ├── turbo.json
 ├── pnpm-workspace.yaml
 └── package.json
@@ -162,12 +180,12 @@ Refer to each application's `BUILD_AND_DEPLOY.md` for service-specific deploymen
 | Command | Description |
 |----------|-------------|
 | `pnpm install` | Install all dependencies |
-| `pnpm turbo run build` | Build all apps and packages |
-| `pnpm turbo run lint` | Run lint checks |
-| `pnpm turbo run test` | Run tests |
-| `pnpm turbo run dev` | Run development tasks |
+| `pnpm turbo run build` | Build all apps and packages (currently frontend only) |
+| `pnpm turbo run dev` | Run development tasks (frontend only) |
 | `pnpm wrangler dev` | Start a Worker locally |
 | `pnpm wrangler deploy` | Deploy a Worker |
+
+Note: `lint` and `test` scripts are not yet configured. See `docs/quality/testing-strategy.md`.
 
 ---
 
@@ -175,32 +193,46 @@ Refer to each application's `BUILD_AND_DEPLOY.md` for service-specific deploymen
 
 Each Worker may require its own environment configuration.
 
-For local development, create a `.dev.vars` file inside the corresponding application.
-
-Example:
+For local development, create a `.dev.vars` file inside `apps/admin-api`:
 
 ```env
-OPENROUTER_API_KEY=your_openrouter_api_key
+RESEND_API_KEY=re_...
+CLERK_SECRET_KEY=sk_test_...
+ENVIRONMENT=development
+```
+
+For the frontend, create `apps/frontend/.env.local`:
+
+```env
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
+VITE_API_BASE_URL=http://127.0.0.1:8787
 ```
 
 For production, store secrets securely using Wrangler:
 
 ```bash
-wrangler secret put OPENROUTER_API_KEY
+wrangler secret put RESEND_API_KEY
+wrangler secret put CLERK_SECRET_KEY
 ```
+
+See `docs/operations/deployment.md` for full environment setup.
 
 ---
 
 # 📚 Documentation
 
-Additional documentation is available inside each application:
+For agent and contributor guidance, see [AGENTS.md](./AGENTS.md) and [docs/INDEX.md](./docs/INDEX.md).
 
-- `apps/frontend/`
-- `apps/admin-api/`
-- `apps/public-api/`
-- `apps/job-processor/`
+Original documentation files:
 
-Each app contains its own `BUILD_AND_DEPLOY.md` with detailed setup and deployment instructions.
+- `DESIGN.md` — visual and UX design constraints
+- `REPORT.md` — feature inventory and product narrative
+- `NEWSLETTER_EDITOR.md` — newsletter editor operational guide
+- `SES_SETUP.md` — Amazon SES setup plan
+- `BUILD_AND_DEPLOY.md` — build and deployment instructions
+- `architecture/NEWSLETTER_BULK_SEND_DECISION.md` — bulk email ADR
+- `architecture/TEAM_INSTANCES_PLAN.md` — team instances ADR
+- `architecture/backend-architecture-cloudflare.txt` — historical/aspirational design (not current)
 
 ---
 
