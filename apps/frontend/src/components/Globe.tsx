@@ -1,16 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import GlobeGL from 'react-globe.gl';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { generateGlobeTexture } from '../utils/doodleGlobe';
 import { TOKENS } from '../lib/tokens';
 import './Globe.css';
-import { PolaroidGallery } from './gallery/PolaroidGallery';
 
 gsap.registerPlugin(ScrollTrigger);
 
 const Globe = () => {
+  const navigate = useNavigate();
   const globeRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [countries, setCountries] = useState<{ features: any[] }>({ features: [] });
@@ -18,9 +19,6 @@ const Globe = () => {
   const [globeSize, setGlobeSize] = useState(700);
 
   const [globeReady, setGlobeReady] = useState(false);
-  
-  
-  const [inkSplash, setInkSplash] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     function updateSize() {
@@ -72,8 +70,6 @@ const Globe = () => {
     { id: "dxb", lat: 25.2048, lng: 55.2708, name: "Dubai", color: TOKENS.white },
     { id: "syd", lat: -33.8688, lng: 151.2093, name: "Sydney", color: TOKENS.white },
   ], []);
-
-  const [selectedLocation, setSelectedLocation] = useState<any>(null);
 
   useEffect(() => {
     const WORLD_URLS = [
@@ -164,83 +160,19 @@ const Globe = () => {
   }, []);
 
   const handleGlobeClick = useCallback(() => {
-    if (globeRef.current) {
-      const chennai = allBranches.find(b => b.id === 'vit-chennai');
-      if (chennai) {
-        globeRef.current.pointOfView({
-          lat: chennai.lat,
-          lng: chennai.lng,
-          altitude: 1.8
-        }, 1000);
-        setSelectedLocation(chennai);
-        setInkSplash({ lat: chennai.lat, lng: chennai.lng });
-        setTimeout(() => setInkSplash(null), 600);
-      }
-    }
-  }, [allBranches]);
+    navigate('/gallery');
+  }, [navigate]);
 
-  const handlePointClick = useCallback((point: any) => {
-    if (point.mapSrc) {
-      setSelectedLocation(point);
-      setInkSplash({ lat: point.lat, lng: point.lng });
-      setTimeout(() => setInkSplash(null), 600);
-    }
-  }, []);
+  const handlePointClick = useCallback(() => {
+    navigate('/gallery');
+  }, [navigate]);
 
-  const handleLabelClick = useCallback((label: any) => {
-    if (label.mapSrc) {
-      setSelectedLocation(label);
-      setInkSplash({ lat: label.lat, lng: label.lng });
-      setTimeout(() => setInkSplash(null), 600);
-    }
-  }, []);
+  const handleLabelClick = useCallback(() => {
+    navigate('/gallery');
+  }, [navigate]);
 
   return (
     <div className="globe-3d-wrapper" ref={containerRef}>
-      {selectedLocation && selectedLocation.id === 'vit-chennai' && (
-        <div
-          className="campus-panel-overlay"
-          onClick={() => setSelectedLocation(null)}
-        >
-          <div
-            className="campus-panel"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              className="campus-panel-close"
-              onClick={() => setSelectedLocation(null)}
-            >
-              ✕
-            </button>
-
-            <div className="campus-panel-header">
-              <div className="campus-panel-image">
-                <img src="/images/VIT-chennai.png" alt="VIT Chennai Campus" />
-              </div>
-              <div className="campus-panel-info">
-                <h2>VIT Chennai</h2>
-                <p className="campus-panel-location">
-                  Vellore Institute of Technology, Chennai Campus
-                </p>
-                <p className="campus-panel-desc">
-                VIT Chennai is a campus of Vellore Institute of Technology, located in Kelambakkam, Chennai. Spread across 192 acres, it is home to approximately 13,000 students across engineering, science, and management programs, and hosts a wide range of student-led organizations — including the 180 Degrees Consulting VIT Chennai branch.
-                </p>
-                <a
-                  href={selectedLocation.googleMapsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn"
-                >
-                  View on Google Maps
-                </a>
-              </div>
-            </div>
-
-          <PolaroidGallery />
-          </div>
-        </div>
-      )}
-
       {globeReady && doodleTextureUrl && (
         <GlobeGL
           ref={globeRef}
@@ -322,17 +254,6 @@ const Globe = () => {
             />
           </svg>
           <span className="doodle-loading-text">Loading globe...</span>
-        </div>
-      )}
-
-      {inkSplash && (
-        <div
-          className="ink-splash-container"
-          style={{ pointerEvents: 'none', zIndex: 100 }}
-        >
-          <div className="ink-drop ink-drop-1" />
-          <div className="ink-drop ink-drop-2" />
-          <div className="ink-drop ink-drop-3" />
         </div>
       )}
 

@@ -21,9 +21,9 @@ export default function FooterSection() {
           <span className="eyebrow">Newsletter</span>
           <h2 className="footer-newsletter-title">The 180DC Newsletter</h2>
           <p className="footer-newsletter-desc">
-            Case studies, social impact stories, event updates and
-            opportunities from 180 Degrees Consulting VIT Chennai — delivered
-            straight to your inbox.
+            Case studies, social impact stories, event updates and opportunities
+            from 180 Degrees Consulting VIT Chennai — delivered straight to your
+            inbox.
           </p>
           <a
             href="/subscriber"
@@ -45,8 +45,8 @@ export default function FooterSection() {
           <div className="footer-info">
             <h3>180DC VIT Chennai</h3>
             <p>Vellore Institute of Technology, Chennai Campus</p>
-            <a href="mailto:vit.chennai@180dc.org" className="footer-link">
-              vit.chennai@180dc.org
+            <a href="mailto: technical.vitc@180dc.org" className="footer-link">
+              technical.vitc@180dc.org
             </a>
             <div className="social-links">
               <h4>Connect With Us</h4>
@@ -80,8 +80,8 @@ export default function FooterSection() {
               180 Degrees Consulting is the world's largest consultancy for
               non-profits and social enterprises, with 190+ branches across
               universities worldwide. Our VIT Chennai branch connects talented
-              students with organizations that need strategic support to maximize
-              their impact.
+              students with organizations that need strategic support to
+              maximize their impact.
             </p>
           </div>
           <div className="footer-links">

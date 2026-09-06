@@ -133,6 +133,7 @@ function App() {
     { label: "Case Studies", href: "#case-studies" },
     { label: "Leadership", href: "#leadership" },
     { label: "Partners", href: "#partners" },
+    { label: "Gallery", href: "/gallery" },
     { label: "Recruitments", href: "/recruitments" },
   ];
 
@@ -162,7 +163,7 @@ function App() {
         </ErrorBoundary>
       </LazyReveal>
 
-      <LazyReveal>
+      <LazyReveal sectionId="about">
         <ErrorBoundary>
           <Suspense fallback={null}>
             <AboutSection />
@@ -178,7 +179,7 @@ function App() {
         </ErrorBoundary>
       </LazyReveal>
 
-      <LazyReveal>
+      <LazyReveal sectionId="case-studies">
         <ErrorBoundary>
           <Suspense fallback={null}>
             <CaseStudiesSection caseStudies={caseStudies} />
@@ -186,7 +187,7 @@ function App() {
         </ErrorBoundary>
       </LazyReveal>
 
-      <LazyReveal>
+      <LazyReveal sectionId="leadership">
         <ErrorBoundary>
           <Suspense fallback={null}>
             <LeadershipSection />
@@ -194,7 +195,7 @@ function App() {
         </ErrorBoundary>
       </LazyReveal>
 
-      <LazyReveal>
+      <LazyReveal sectionId="partners">
         <ErrorBoundary>
           <Suspense fallback={null}>
             <PartnersSection />
