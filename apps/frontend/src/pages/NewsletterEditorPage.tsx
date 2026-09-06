@@ -150,39 +150,44 @@ export default function NewsletterEditorPage() {
     setMode("list");
   };
 
-  const handleDocumentUpload = useCallback(async (file: File) => {
-    setUploading(true);
+  const uploadFile = useCallback(async (file: File, allowed: string[], typeMsg: string, onOk: (url: string, key?: string) => void, onFail: () => void, setBusy: (v: boolean) => void) => {
+    setBusy(true);
     setError("");
-    setSourceFileName(file.name);
     try {
       const ext = file.name.split(".").pop()?.toLowerCase();
-      if (!ext || !["pdf", "docx"].includes(ext)) {
-        setError("Unsupported file type. Upload a PDF or DOCX.");
-        setSourceFileName("");
-        setUploading(false);
+      if (!ext || !allowed.includes(ext)) {
+        setError(`Unsupported file type. Upload ${typeMsg}.`);
+        onFail();
         return;
       }
-
-      const srcFd = new FormData();
-      srcFd.append("file", file);
-      const srcRes = await fetch(apiUrl("/api/newsletter-editor/upload-source"), {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(apiUrl("/api/newsletter-editor/upload-source"), {
         method: "POST",
         headers: authHeaders,
-        body: srcFd,
+        body: fd,
       });
-      const srcData = await srcRes.json();
-      if (srcData.success) {
-        setSourceFileUrl(srcData.url);
-        setSourceFileKey(srcData.key);
+      const data = await res.json();
+      if (data.success) {
+        onOk(data.url, data.key);
       } else {
-        setError(srcData.error || "Upload failed");
-        setSourceFileName("");
+        setError(data.error || "Upload failed");
+        onFail();
       }
     } catch (err: any) {
       setError("Upload failed: " + (err?.message || "Unknown error"));
+      onFail();
+    } finally {
+      setBusy(false);
     }
-    setUploading(false);
   }, [authHeaders]);
+
+  const handleDocumentUpload = useCallback(async (file: File) => {
+    setSourceFileName(file.name);
+    await uploadFile(file, ["pdf", "docx"], "a PDF or DOCX",
+      (url, key) => { setSourceFileUrl(url); setSourceFileKey(key || ""); },
+      () => setSourceFileName(""), setUploading);
+  }, [uploadFile]);
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -226,70 +231,18 @@ export default function NewsletterEditorPage() {
   }, []);
 
   const handleEventDocumentUpload = useCallback(async (file: File) => {
-    setEventUploading(true);
-    setError("");
     setEventSourceFileName(file.name);
-    try {
-      const ext = file.name.split(".").pop()?.toLowerCase();
-      const allowed = ["pdf", "docx", "jpg", "jpeg", "png", "webp", "gif"];
-      if (!ext || !allowed.includes(ext)) {
-        setError("Unsupported file type. Upload a PDF, DOCX, JPG, PNG, or WEBP.");
-        setEventUploading(false);
-        return;
-      }
-      const srcFd = new FormData();
-      srcFd.append("file", file);
-      const srcRes = await fetch(apiUrl("/api/newsletter-editor/upload-source"), {
-        method: "POST",
-        headers: authHeaders,
-        body: srcFd,
-      });
-      const srcData = await srcRes.json();
-      if (srcData.success) {
-        setEventSourceFileUrl(srcData.url);
-      } else {
-        setError(srcData.error || "Failed to upload file");
-        setEventSourceFileName("");
-      }
-    } catch (err: any) {
-      setError("Failed to upload: " + (err?.message || "Unknown error"));
-      setEventSourceFileName("");
-    }
-    setEventUploading(false);
-  }, [authHeaders]);
+    await uploadFile(file, ["pdf", "docx", "jpg", "jpeg", "png", "webp", "gif"], "a PDF, DOCX, JPG, PNG, or WEBP",
+      (url) => setEventSourceFileUrl(url),
+      () => setEventSourceFileName(""), setEventUploading);
+  }, [uploadFile]);
 
   const handleEventImageUpload = useCallback(async (file: File) => {
-    setEventUploading(true);
-    setError("");
     setEventImageFileName(file.name);
-    try {
-      const ext = file.name.split(".").pop()?.toLowerCase();
-      if (!ext || !["jpg", "jpeg", "png", "webp", "gif"].includes(ext)) {
-        setError("Unsupported file type. Upload a JPG, PNG, WEBP, or GIF image.");
-        setEventUploading(false);
-        setEventImageFileName("");
-        return;
-      }
-      const srcFd = new FormData();
-      srcFd.append("file", file);
-      const srcRes = await fetch(apiUrl("/api/newsletter-editor/upload-source"), {
-        method: "POST",
-        headers: authHeaders,
-        body: srcFd,
-      });
-      const srcData = await srcRes.json();
-      if (srcData.success) {
-        setEventImageUrl(srcData.url);
-      } else {
-        setError(srcData.error || "Failed to upload image");
-        setEventImageFileName("");
-      }
-    } catch (err: any) {
-      setError("Failed to upload: " + (err?.message || "Unknown error"));
-      setEventImageFileName("");
-    }
-    setEventUploading(false);
-  }, [authHeaders]);
+    await uploadFile(file, ["jpg", "jpeg", "png", "webp", "gif"], "a JPG, PNG, WEBP, or GIF image",
+      (url) => setEventImageUrl(url),
+      () => setEventImageFileName(""), setEventUploading);
+  }, [uploadFile]);
 
   const handleEventFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

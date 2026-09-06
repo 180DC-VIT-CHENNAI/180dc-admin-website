@@ -34,3 +34,4 @@ coverage/
 *.tmp
 .pnpm-debug.log
 .turbo
+.omo/

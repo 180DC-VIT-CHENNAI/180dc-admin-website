@@ -6,7 +6,6 @@ import { sanitizeHtml } from "../lib/sanitize";
 
 gsap.registerPlugin(ScrollTrigger);
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface Props {
   caseStudies: any[];
 }
@@ -41,7 +40,6 @@ export default function CaseStudiesSection({ caseStudies }: Props) {
     }, sectionRef);
 
     return () => ctx.revert();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseStudies.length]);
 
   return (
