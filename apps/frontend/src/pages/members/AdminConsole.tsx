@@ -211,7 +211,7 @@ export default function AdminConsole({
         if (uData.success) setAllUsers(uData.data || []);
         if (rData.success) setAllRoles(rData.data || []);
       } catch { /* ignore */ }
-    })(); // eslint-disable-line react-hooks/exhaustive-deps
+    })();
   }, [authToken]);
 
   return (

@@ -25,6 +25,67 @@ import { stripHtmlTags } from "../../lib/sanitize";
 import { DEPT_NAMES } from "./constants";
 import "./MembersLayout.css";
 
+type NavItem = { id: string; label: string; minPower: number; deptId?: string; icon: string };
+type NavSection = { label: string; items: NavItem[] };
+
+function buildNavSections(roleId: string | null, powerLevel: number, departmentId: string | null, departments: any[]): NavSection[] {
+  const hasDepartment = !!(departmentId && DEPT_NAMES[departmentId]);
+  // Directors (power 50) see only their own department's panel
+  const allowedDeptIds = hasDepartment && powerLevel >= 50 ? [departmentId!] : [];
+  const sections: NavSection[] = [];
+
+  if (roleId === "advisory") {
+    sections.push({
+      label: "",
+      items: [
+        { id: "dashboard", label: "Dashboard", minPower: 0, icon: "dashboard" },
+        { id: "profile", label: "Profile", minPower: 0, icon: "person" },
+      ],
+    });
+    return sections;
+  }
+
+  sections.push({
+    label: "General",
+    items: [
+      { id: "dashboard", label: "Dashboard", minPower: 0, icon: "dashboard" },
+      { id: "members", label: "Members", minPower: 0, icon: "groups" },
+      { id: "profile", label: "Profile", minPower: 0, icon: "person" },
+      { id: "club-files", label: "Club Files", minPower: 10, icon: "folder_open" },
+    ],
+  });
+
+  const deptItems: NavItem[] = departments
+    .filter((d: any) => powerLevel >= 100 || allowedDeptIds.includes(d.id))
+    .map((d: any) => ({ id: `dept-${d.id}`, label: d.name, minPower: 0, deptId: d.id, icon: "domain" }));
+  if (deptItems.length > 0) sections.push({ label: "Departments", items: deptItems });
+
+  sections.push({
+    label: "Management",
+    items: [
+      { id: "meets", label: "Meets", minPower: 0, icon: "event" },
+      { id: "projects", label: "Projects", minPower: 0, icon: "account_tree" },
+      { id: "team-instances", label: "Teams", minPower: 0, icon: "diversity_3" },
+      { id: "instructions", label: "Instructions", minPower: 0, icon: "menu_book" },
+      { id: "transfers", label: "Transfers", minPower: 0, icon: "swap_horiz" },
+      { id: "announcements", label: "Announcements", minPower: 0, icon: "campaign" },
+      { id: "case-studies", label: "Case Studies", minPower: 0, icon: "description" },
+    ],
+  });
+
+  sections.push({
+    label: "Admin",
+    items: [
+      { id: "consulting", label: "Consulting", minPower: 100, icon: "business_center" },
+      { id: "sendmail", label: "Send Mail", minPower: 50, icon: "alternate_email" },
+      { id: "newsletter", label: "Newsletter", minPower: 100, icon: "mail" },
+      { id: "admin", label: "Admin Console", minPower: 100, icon: "terminal" },
+    ],
+  });
+
+  return sections;
+}
+
 export default function MembersLayout() {
   const { isDark, toggle: toggleTheme } = useTheme();
   const { userId: clerkUserId, getToken, isLoaded: clerkLoaded } = useAuth();
@@ -320,77 +381,10 @@ export default function MembersLayout() {
     handleClerkCallback();
   }, [clerkUserId, clerkLoaded, authToken, getToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hasDepartment = departmentId && DEPT_NAMES[departmentId];
+  const hasDepartment = !!(departmentId && DEPT_NAMES[departmentId]);
   const deptName = hasDepartment ? DEPT_NAMES[departmentId!] : "";
 
-  type NavItem = { id: string; label: string; minPower: number; deptId?: string; icon: string };
-  type NavSection = { label: string; items: NavItem[] };
-
-  // Directors (power 50) see only their own department's panel
-  const allowedDeptIds = hasDepartment && powerLevel >= 50 ? [departmentId!] : [];
-
-  const navSections: NavSection[] = [];
-
-  if (roleId === "advisory") {
-    navSections.push({
-      label: "",
-      items: [
-        { id: "dashboard", label: "Dashboard", minPower: 0, icon: "dashboard" },
-        { id: "profile", label: "Profile", minPower: 0, icon: "person" },
-      ],
-    });
-  } else {
-    // General
-    navSections.push({
-      label: "General",
-      items: [
-        { id: "dashboard", label: "Dashboard", minPower: 0, icon: "dashboard" },
-        { id: "members", label: "Members", minPower: 0, icon: "groups" },
-        { id: "profile", label: "Profile", minPower: 0, icon: "person" },
-        { id: "club-files", label: "Club Files", minPower: 10, icon: "folder_open" },
-      ],
-    });
-
-    // Departments (management panels)
-    const deptItems: NavItem[] = [];
-    if (powerLevel >= 100) {
-      departments.forEach((d: any) => {
-        deptItems.push({ id: `dept-${d.id}`, label: d.name, minPower: 0, deptId: d.id, icon: "domain" });
-      });
-    } else if (allowedDeptIds.length > 0) {
-      departments
-        .filter((d: any) => allowedDeptIds.includes(d.id))
-        .forEach((d: any) => {
-          deptItems.push({ id: `dept-${d.id}`, label: d.name, minPower: 0, deptId: d.id, icon: "domain" });
-        });
-    }
-    if (deptItems.length > 0) {
-      navSections.push({ label: "Departments", items: deptItems });
-    }
-
-    // Management
-    const managementItems: NavItem[] = [
-      { id: "meets", label: "Meets", minPower: 0, icon: "event" },
-      { id: "projects", label: "Projects", minPower: 0, icon: "account_tree" },
-      { id: "team-instances", label: "Teams", minPower: 0, icon: "diversity_3" },
-      { id: "instructions", label: "Instructions", minPower: 0, icon: "menu_book" },
-      { id: "transfers", label: "Transfers", minPower: 0, icon: "swap_horiz" },
-      { id: "announcements", label: "Announcements", minPower: 0, icon: "campaign" },
-      { id: "case-studies", label: "Case Studies", minPower: 0, icon: "description" },
-    ];
-    navSections.push({ label: "Management", items: managementItems });
-
-    // Admin
-    navSections.push({
-      label: "Admin",
-      items: [
-        { id: "consulting", label: "Consulting", minPower: 100, icon: "business_center" },
-        { id: "sendmail", label: "Send Mail", minPower: 50, icon: "alternate_email" },
-        { id: "newsletter", label: "Newsletter", minPower: 100, icon: "mail" },
-        { id: "admin", label: "Admin Console", minPower: 100, icon: "terminal" },
-      ],
-    });
-  }
+  const navSections = buildNavSections(roleId, powerLevel, departmentId, departments);
 
   if (!authToken) return <MembersLogin onLogin={handleLogin} oauthLoading={oauthLoading} oauthError={oauthStatusMsg} />;
 

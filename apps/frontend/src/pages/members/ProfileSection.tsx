@@ -103,33 +103,27 @@ export default function ProfileSection({ authToken, email, powerLevel, departmen
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
-      {statusMsg && (
-        <div style={{
-          padding: "1rem 1.25rem",
-          borderRadius: 12,
-          background: statusMsg.toLowerCase().includes("fail") || statusMsg.toLowerCase().includes("error")
-            ? "rgba(239, 68, 68, 0.1)"
-            : "rgba(16, 185, 129, 0.1)",
-          border: `1px solid ${
-            statusMsg.toLowerCase().includes("fail") || statusMsg.toLowerCase().includes("error")
-              ? "#ef4444"
-              : "#10b981"
-          }`,
-          color: statusMsg.toLowerCase().includes("fail") || statusMsg.toLowerCase().includes("error")
-            ? "#ef4444"
-            : "#10b981",
-          fontSize: 14,
-          fontWeight: 600,
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-        }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
-            {statusMsg.toLowerCase().includes("fail") || statusMsg.toLowerCase().includes("error") ? "error" : "check_circle"}
-          </span>
-          {statusMsg}
-        </div>
-      )}
+      {statusMsg && (() => {
+        const isErr = /fail|error/i.test(statusMsg);
+        const c = isErr ? "#ef4444" : "#10b981";
+        return (
+          <div style={{
+            padding: "1rem 1.25rem",
+            borderRadius: 12,
+            background: isErr ? "rgba(239, 68, 68, 0.1)" : "rgba(16, 185, 129, 0.1)",
+            border: `1px solid ${c}`,
+            color: c,
+            fontSize: 14,
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{isErr ? "error" : "check_circle"}</span>
+            {statusMsg}
+          </div>
+        );
+      })()}
 
       <div className="members-grid">
         <div className="dashboard-card" style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: "2rem", padding: "2.5rem" }}>
