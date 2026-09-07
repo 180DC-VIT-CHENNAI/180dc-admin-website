@@ -240,7 +240,10 @@ function getClientIp(c: any): string {
 }
 
 // In-memory rate limit cache (resets when isolate dies — ideal for rate limiting)
-const rateLimitCache = new Map<string, { count: number; windowStart: number }>();
+const rateLimitCache = new Map<
+  string,
+  { count: number; windowStart: number }
+>();
 
 // Periodic cleanup of expired rate limit entries — initialized lazily in first request
 let rateLimitCleanupStarted = false;
@@ -410,9 +413,7 @@ async function sendTokenEmail(
 ): Promise<{ ok: boolean; status?: number; error?: string }> {
   const apiKey = c.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn(
-      "RESEND_API_KEY not configured Ã¢â‚¬â€ skipping email to " + email,
-    );
+    console.warn("RESEND_API_KEY not configured @ skipping email to " + email);
     return { ok: false, error: "RESEND_API_KEY not configured" };
   }
   const from = "180DC Admin <team@180dcvitc.org>";
@@ -523,8 +524,7 @@ async function sendMeetEmail(
   const apiKey = c.env.RESEND_API_KEY;
   if (!apiKey) {
     console.warn(
-      "[email] RESEND_API_KEY not configured Ã¢â‚¬â€ skipping meet email to " +
-        to,
+      "[email] RESEND_API_KEY not configured @ skipping meet email to " + to,
     );
     return false;
   }
@@ -580,7 +580,7 @@ async function queueOrSendMeetEmails(
   const apiKey = c.env.RESEND_API_KEY;
   if (!apiKey) {
     console.warn(
-      "[email] RESEND_API_KEY not configured Ã¢â‚¬â€ skipping meet emails",
+      "[email] RESEND_API_KEY not configured @ skipping meet emails",
     );
     return { sent: 0, queued: 0 };
   }
@@ -1348,199 +1348,201 @@ async function seedData(db: any, env?: any) {
     // ── Org restructure migration (idempotent) ──
     // Skip on repeat cold starts — these are one-time data fixes
     if (!migrationsApplied) {
-    // 1. Role id/name/power fixes for retained roles
-    await db
-      .prepare(
-        "UPDATE roles SET name = 'Advisory Member' WHERE id = 'advisory' AND name != 'Advisory Member'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE roles SET name = 'General Member' WHERE id = 'member' AND name != 'General Member'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE roles SET power_level = 100 WHERE id IN ('secretary', 'technical_director') AND power_level != 100",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE roles SET power_level = 50 WHERE id IN ('business_strategy_director', 'marketing_director') AND power_level != 50",
-      )
-      .run();
-
-    // 2. Migrate user roles to the new structure
-    await db
-      .prepare(
-        "UPDATE users SET role_id = 'chairperson' WHERE role_id = 'president'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE users SET role_id = 'vice_chairperson' WHERE role_id = 'vice_president'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE users SET role_id = 'technical_director' WHERE role_id IN ('lead', 'lead_rnd')",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE users SET role_id = 'finance_director' WHERE role_id = 'lead_finance'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE users SET role_id = 'operations_director' WHERE role_id = 'lead_events'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE users SET role_id = 'crm_director' WHERE role_id = 'lead_cps'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE users SET role_id = 'business_strategy_director' WHERE role_id = 'lead_business_strategy'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE users SET role_id = 'member' WHERE role_id IN ('lead_marketing', 'lead_social', 'lead_hr')",
-      )
-      .run();
-
-    // 3. Migrate department references (R&D → Technical, Social Media → Marketing,
-    //     Events → Operations, CPS → CRM, HR → Operations) across all FK tables
-    const deptRenames: Record<string, string> = {
-      rnd: "tech",
-      social_media: "marketing",
-      "events-initiatives": "operations",
-      "client-partner-sponsor": "crm",
-      hr: "operations",
-    };
-    for (const [oldId, newId] of Object.entries(deptRenames)) {
+      // 1. Role id/name/power fixes for retained roles
       await db
-        .prepare("UPDATE users SET department_id = ? WHERE department_id = ?")
-        .bind(newId, oldId)
+        .prepare(
+          "UPDATE roles SET name = 'Advisory Member' WHERE id = 'advisory' AND name != 'Advisory Member'",
+        )
         .run();
-      for (const t of [
-        "department_meets",
-        "department_documents",
-        "department_instructions",
-        "department_projects",
-      ]) {
+      await db
+        .prepare(
+          "UPDATE roles SET name = 'General Member' WHERE id = 'member' AND name != 'General Member'",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE roles SET power_level = 100 WHERE id IN ('secretary', 'technical_director') AND power_level != 100",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE roles SET power_level = 50 WHERE id IN ('business_strategy_director', 'marketing_director') AND power_level != 50",
+        )
+        .run();
+
+      // 2. Migrate user roles to the new structure
+      await db
+        .prepare(
+          "UPDATE users SET role_id = 'chairperson' WHERE role_id = 'president'",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE users SET role_id = 'vice_chairperson' WHERE role_id = 'vice_president'",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE users SET role_id = 'technical_director' WHERE role_id IN ('lead', 'lead_rnd')",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE users SET role_id = 'finance_director' WHERE role_id = 'lead_finance'",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE users SET role_id = 'operations_director' WHERE role_id = 'lead_events'",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE users SET role_id = 'crm_director' WHERE role_id = 'lead_cps'",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE users SET role_id = 'business_strategy_director' WHERE role_id = 'lead_business_strategy'",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE users SET role_id = 'member' WHERE role_id IN ('lead_marketing', 'lead_social', 'lead_hr')",
+        )
+        .run();
+
+      // 3. Migrate department references (R&D → Technical, Social Media → Marketing,
+      //     Events → Operations, CPS → CRM, HR → Operations) across all FK tables
+      const deptRenames: Record<string, string> = {
+        rnd: "tech",
+        social_media: "marketing",
+        "events-initiatives": "operations",
+        "client-partner-sponsor": "crm",
+        hr: "operations",
+      };
+      for (const [oldId, newId] of Object.entries(deptRenames)) {
         await db
-          .prepare(`UPDATE ${t} SET department_id = ? WHERE department_id = ?`)
+          .prepare("UPDATE users SET department_id = ? WHERE department_id = ?")
+          .bind(newId, oldId)
+          .run();
+        for (const t of [
+          "department_meets",
+          "department_documents",
+          "department_instructions",
+          "department_projects",
+        ]) {
+          await db
+            .prepare(
+              `UPDATE ${t} SET department_id = ? WHERE department_id = ?`,
+            )
+            .bind(newId, oldId)
+            .run();
+        }
+        // Junction table has a composite PK — drop the old row if the new one already exists
+        await db
+          .prepare(
+            "DELETE FROM project_departments WHERE department_id = ? AND EXISTS (SELECT 1 FROM project_departments pd2 WHERE pd2.project_id = project_departments.project_id AND pd2.department_id = ?)",
+          )
+          .bind(oldId, newId)
+          .run();
+        await db
+          .prepare(
+            "UPDATE project_departments SET department_id = ? WHERE department_id = ?",
+          )
           .bind(newId, oldId)
           .run();
       }
-      // Junction table has a composite PK — drop the old row if the new one already exists
+
+      // 4. Ensure every director is attached to their department
+      const directorDepts: Record<string, string> = {
+        technical_director: "tech",
+        finance_director: "finance",
+        crm_director: "crm",
+        operations_director: "operations",
+        business_strategy_director: "business_strategy",
+        marketing_director: "marketing",
+      };
+      for (const [roleId, deptId] of Object.entries(directorDepts)) {
+        await db
+          .prepare(
+            `UPDATE users SET department_id = ? WHERE role_id = ? AND (department_id IS NULL OR department_id NOT IN ('tech', 'finance', 'crm', 'operations', 'business_strategy', 'marketing'))`,
+          )
+          .bind(deptId, roleId)
+          .run();
+      }
+
+      // 5. Migrate admin tokens to the new role ids
       await db
         .prepare(
-          "DELETE FROM project_departments WHERE department_id = ? AND EXISTS (SELECT 1 FROM project_departments pd2 WHERE pd2.project_id = project_departments.project_id AND pd2.department_id = ?)",
+          "UPDATE admin_tokens SET role_id = 'chairperson' WHERE role_id = 'president'",
         )
-        .bind(oldId, newId)
         .run();
       await db
         .prepare(
-          "UPDATE project_departments SET department_id = ? WHERE department_id = ?",
+          "UPDATE admin_tokens SET role_id = 'vice_chairperson' WHERE role_id = 'vice_president'",
         )
-        .bind(newId, oldId)
         .run();
-    }
-
-    // 4. Ensure every director is attached to their department
-    const directorDepts: Record<string, string> = {
-      technical_director: "tech",
-      finance_director: "finance",
-      crm_director: "crm",
-      operations_director: "operations",
-      business_strategy_director: "business_strategy",
-      marketing_director: "marketing",
-    };
-    for (const [roleId, deptId] of Object.entries(directorDepts)) {
       await db
         .prepare(
-          `UPDATE users SET department_id = ? WHERE role_id = ? AND (department_id IS NULL OR department_id NOT IN ('tech', 'finance', 'crm', 'operations', 'business_strategy', 'marketing'))`,
+          "UPDATE admin_tokens SET role_id = 'technical_director' WHERE role_id IN ('lead', 'lead_rnd')",
         )
-        .bind(deptId, roleId)
         .run();
-    }
+      await db
+        .prepare(
+          "UPDATE admin_tokens SET role_id = 'finance_director' WHERE role_id = 'lead_finance'",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE admin_tokens SET role_id = 'operations_director' WHERE role_id = 'lead_events'",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE admin_tokens SET role_id = 'crm_director' WHERE role_id = 'lead_cps'",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE admin_tokens SET role_id = 'business_strategy_director' WHERE role_id = 'lead_business_strategy'",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE admin_tokens SET role_id = 'member' WHERE role_id IN ('lead_marketing', 'lead_social', 'lead_hr')",
+        )
+        .run();
 
-    // 5. Migrate admin tokens to the new role ids
-    await db
-      .prepare(
-        "UPDATE admin_tokens SET role_id = 'chairperson' WHERE role_id = 'president'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE admin_tokens SET role_id = 'vice_chairperson' WHERE role_id = 'vice_president'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE admin_tokens SET role_id = 'technical_director' WHERE role_id IN ('lead', 'lead_rnd')",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE admin_tokens SET role_id = 'finance_director' WHERE role_id = 'lead_finance'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE admin_tokens SET role_id = 'operations_director' WHERE role_id = 'lead_events'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE admin_tokens SET role_id = 'crm_director' WHERE role_id = 'lead_cps'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE admin_tokens SET role_id = 'business_strategy_director' WHERE role_id = 'lead_business_strategy'",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE admin_tokens SET role_id = 'member' WHERE role_id IN ('lead_marketing', 'lead_social', 'lead_hr')",
-      )
-      .run();
+      // 6. Remove dual-role (secondary role) data
+      await db
+        .prepare(
+          "UPDATE users SET secondary_role_id = NULL WHERE secondary_role_id IS NOT NULL",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE admin_tokens SET active_role_id = NULL WHERE active_role_id IS NOT NULL",
+        )
+        .run();
 
-    // 6. Remove dual-role (secondary role) data
-    await db
-      .prepare(
-        "UPDATE users SET secondary_role_id = NULL WHERE secondary_role_id IS NOT NULL",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE admin_tokens SET active_role_id = NULL WHERE active_role_id IS NOT NULL",
-      )
-      .run();
-
-    // 7. Delete legacy departments, roles, and titles
-    await db
-      .prepare(
-        "DELETE FROM departments WHERE id IN ('rnd', 'social_media', 'events-initiatives', 'client-partner-sponsor', 'hr', 'legal')",
-      )
-      .run();
-    await db
-      .prepare(
-        "DELETE FROM roles WHERE id IN ('president', 'vice_president', 'lead', 'lead_rnd', 'lead_marketing', 'lead_social', 'lead_finance', 'lead_events', 'lead_cps', 'lead_business_strategy', 'lead_hr', 'lead_legal')",
-      )
-      .run();
-    await db
-      .prepare(
-        "UPDATE team_members SET role = 'Chairperson' WHERE role = 'President'",
-      )
-      .run();
-    migrationsApplied = true;
+      // 7. Delete legacy departments, roles, and titles
+      await db
+        .prepare(
+          "DELETE FROM departments WHERE id IN ('rnd', 'social_media', 'events-initiatives', 'client-partner-sponsor', 'hr', 'legal')",
+        )
+        .run();
+      await db
+        .prepare(
+          "DELETE FROM roles WHERE id IN ('president', 'vice_president', 'lead', 'lead_rnd', 'lead_marketing', 'lead_social', 'lead_finance', 'lead_events', 'lead_cps', 'lead_business_strategy', 'lead_hr', 'lead_legal')",
+        )
+        .run();
+      await db
+        .prepare(
+          "UPDATE team_members SET role = 'Chairperson' WHERE role = 'President'",
+        )
+        .run();
+      migrationsApplied = true;
     } // end migrationsApplied check
 
     if (
@@ -1615,7 +1617,7 @@ async function seedData(db: any, env?: any) {
  * Middleware: Verify Authentication & Inject User Context
  * (In production, this decodes the Google/Clerk JWT token mapped to the VIT email)
  */
-// CORS Ã¢â‚¬â€ runs first, handles preflight OPTIONS automatically
+// CORS @ runs first, handles preflight OPTIONS automatically
 app.use("*", async (c, next) => {
   await next();
   c.res.headers.set("X-Content-Type-Options", "nosniff");
@@ -1755,8 +1757,15 @@ app.use("*", async (c, next) => {
       maintenanceCacheTime = now;
     }
   }
-  if (maintenanceCache && maintenanceCache.enabled === 1 && user.power_level < 100) {
-    return c.json({ error: maintenanceCache.message || "Site is under maintenance." }, 503);
+  if (
+    maintenanceCache &&
+    maintenanceCache.enabled === 1 &&
+    user.power_level < 100
+  ) {
+    return c.json(
+      { error: maintenanceCache.message || "Site is under maintenance." },
+      503,
+    );
   }
 
   c.set("user", user);
@@ -1786,7 +1795,7 @@ const requireBoard = (c: any) => {
 // ---------------------------------------------------------
 // CONTENT ENDPOINTS (Public Ã¢â‚¬â€ landing page data)
 // ---------------------------------------------------------
-// CONTENT ENDPOINTS (Public Ã¢â‚¬â€ landing page data)
+// CONTENT ENDPOINTS (Public @ landing page data)
 // ---------------------------------------------------------
 app.get("/api/content/case-studies", async (c) => {
   try {
@@ -2688,7 +2697,7 @@ function otpEmailHtml(otp: string): string {
 <p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Didn't request this? You can safely ignore this email.</p>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:16px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting @ VIT Chennai</p>
 </td></tr>
 </table>
 </td></tr></table>
@@ -3423,7 +3432,7 @@ app.post("/api/dev-login", async (c) => {
 });
 
 // ---------------------------------------------------------
-// FORGOT TOKEN (public Ã¢â‚¬â€ sends token to email if registered)
+// FORGOT TOKEN (public @ sends token to email if registered)
 // ---------------------------------------------------------
 app.post("/api/auth/forgot-token", async (c) => {
   try {
@@ -3496,7 +3505,7 @@ app.post("/api/auth/forgot-token", async (c) => {
 });
 
 // ---------------------------------------------------------
-// CLERK LOGIN (public Ã¢â‚¬â€ verifies Clerk JWT, returns session)
+// CLERK LOGIN (public @ verifies Clerk JWT, returns session)
 // ---------------------------------------------------------
 app.post("/api/auth/clerk-login", async (c) => {
   try {
@@ -3619,7 +3628,7 @@ app.post("/api/auth/clerk-login", async (c) => {
 });
 
 // ---------------------------------------------------------
-// LINK CLERK (authenticated Ã¢â‚¬â€ links Clerk user ID to member)
+// LINK CLERK (authenticated @ links Clerk user ID to member)
 // ---------------------------------------------------------
 app.post("/api/auth/link-clerk", async (c) => {
   try {
@@ -3671,7 +3680,7 @@ app.post("/api/auth/link-clerk", async (c) => {
 });
 
 // ---------------------------------------------------------
-// UNLINK CLERK (authenticated Ã¢â‚¬â€ disconnects Google login)
+// UNLINK CLERK (authenticated @ disconnects Google login)
 // ---------------------------------------------------------
 app.post("/api/auth/unlink-clerk", async (c) => {
   try {
@@ -4612,7 +4621,7 @@ app.post("/api/my-role-transfers/:id/accept", async (c) => {
       .first();
 
     if (updated.from_user_accepted && updated.to_user_accepted) {
-      // Both accepted Ã¢â‚¬â€ execute the swap
+      // Both accepted @ execute the swap
       const fromPower: any = await c.env.DB.prepare(
         "SELECT power_level FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
       )
@@ -4648,13 +4657,13 @@ app.post("/api/my-role-transfers/:id/accept", async (c) => {
         .run();
       return c.json({
         success: true,
-        message: "Both accepted Ã¢â‚¬â€ roles swapped",
+        message: "Both accepted @ roles swapped",
       });
     }
 
     return c.json({
       success: true,
-      message: "You accepted Ã¢â‚¬â€ waiting for the other party",
+      message: "You accepted @ waiting for the other party",
     });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
@@ -4889,7 +4898,7 @@ async function canAccessDept(c: any, deptId: string) {
   throw new Error("Forbidden: you do not have access to this department");
 }
 
-// GET /api/departments/:id/overview Ã¢â‚¬â€ all department data in one call
+// GET /api/departments/:id/overview @ all department data in one call
 app.get("/api/departments/:id/overview", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
@@ -6098,7 +6107,7 @@ app.post("/api/projects/:id/reopen", async (c) => {
   }
 });
 
-// Public endpoint Ã¢â‚¬â€ returns completed projects (no auth required)
+// Public endpoint @ returns completed projects (no auth required)
 // Reads from R2 static JSON for fast loading; falls back to DB if R2 misses.
 app.get("/api/projects/completed", async (c) => {
   try {
@@ -8788,7 +8797,7 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
 <div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${escapeHtml(emailBody).replace(/\n/g, "<br>")}</div>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting @ VIT Chennai</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
@@ -8877,7 +8886,7 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
 <div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${escapeHtml(emailBody).replace(/\n/g, "<br>")}</div>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting @ VIT Chennai</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
@@ -9270,7 +9279,7 @@ app.post("/api/send-email", async (c) => {
 <div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${escapeHtml(htmlBody).replace(/\n/g, "<br>")}</div>
 </td></tr>
 <tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting Ã¢â‚¬â€ VIT Chennai</p>
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting @ VIT Chennai</p>
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
@@ -9292,7 +9301,7 @@ app.post("/api/send-email", async (c) => {
 });
 
 // ---------------------------------------------------------
-// CLUB FILES ENDPOINTS (R2 only Ã¢â‚¬â€ metadata stored as custom metadata on objects)
+// CLUB FILES ENDPOINTS (R2 only @ metadata stored as custom metadata on objects)
 // ---------------------------------------------------------
 
 function meta(obj: any, key: string): string {
@@ -9556,7 +9565,7 @@ app.post("/api/club-files/upload", async (c) => {
 // MAINTENANCE MODE (Board only)
 // ---------------------------------------------------------
 
-// GET /api/admin/maintenance Ã¢â‚¬â€ check maintenance status
+// GET /api/admin/maintenance @ check maintenance status
 app.get("/api/admin/maintenance", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
@@ -9569,7 +9578,7 @@ app.get("/api/admin/maintenance", async (c) => {
   }
 });
 
-// POST /api/admin/maintenance Ã¢â‚¬â€ toggle maintenance mode (power >= 100)
+// POST /api/admin/maintenance @ toggle maintenance mode (power >= 100)
 app.post("/api/admin/maintenance", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
