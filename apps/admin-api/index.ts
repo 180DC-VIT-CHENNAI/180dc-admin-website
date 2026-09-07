@@ -239,6 +239,49 @@ function getClientIp(c: any): string {
   return c.req.header("CF-Connecting-IP") || "unknown";
 }
 
+// In-memory rate limit cache (resets when isolate dies — ideal for rate limiting)
+const rateLimitCache = new Map<string, { count: number; windowStart: number }>();
+
+// Periodic cleanup of expired rate limit entries (every 5 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitCache) {
+    if (now - entry.windowStart > 360_000) { // 6 minutes max window
+      rateLimitCache.delete(key);
+    }
+  }
+}, 300_000);
+
+// In-memory maintenance mode cache (refreshed every 60s)
+let maintenanceCache: { enabled: number; message: string } | null = null;
+let maintenanceCacheTime = 0;
+const MAINTENANCE_CACHE_TTL = 60_000;
+
+function checkRateLimitSync(
+  ip: string,
+  endpoint: string,
+  maxRequests: number,
+  windowSeconds = 60,
+): { allowed: boolean; retryAfter: number } {
+  const key = `${ip}:${endpoint}`;
+  const now = Date.now();
+  const entry = rateLimitCache.get(key);
+  if (!entry) {
+    rateLimitCache.set(key, { count: 1, windowStart: now });
+    return { allowed: true, retryAfter: 0 };
+  }
+  const elapsed = (now - entry.windowStart) / 1000;
+  if (elapsed > windowSeconds) {
+    rateLimitCache.set(key, { count: 1, windowStart: now });
+    return { allowed: true, retryAfter: 0 };
+  }
+  if (entry.count >= maxRequests) {
+    return { allowed: false, retryAfter: Math.ceil(windowSeconds - elapsed) };
+  }
+  entry.count++;
+  return { allowed: true, retryAfter: 0 };
+}
+
 async function checkRateLimit(
   c: any,
   endpoint: string,
@@ -246,44 +289,7 @@ async function checkRateLimit(
   windowSeconds = 60,
 ): Promise<{ allowed: boolean; retryAfter: number }> {
   const ip = getClientIp(c);
-  try {
-    const row: any = await c.env.DB.prepare(
-      "SELECT count, window_start FROM rate_limits WHERE ip = ? AND endpoint = ?",
-    )
-      .bind(ip, endpoint)
-      .first();
-    const now = new Date();
-    if (!row) {
-      await c.env.DB.prepare(
-        "INSERT INTO rate_limits (ip, endpoint, count, window_start) VALUES (?, ?, 1, ?)",
-      )
-        .bind(ip, endpoint, now.toISOString())
-        .run();
-      return { allowed: true, retryAfter: 0 };
-    }
-    const elapsed =
-      (now.getTime() - new Date(row.window_start).getTime()) / 1000;
-    if (elapsed > windowSeconds) {
-      await c.env.DB.prepare(
-        "UPDATE rate_limits SET count = 1, window_start = ? WHERE ip = ? AND endpoint = ?",
-      )
-        .bind(now.toISOString(), ip, endpoint)
-        .run();
-      return { allowed: true, retryAfter: 0 };
-    }
-    if (row.count >= maxRequests) {
-      return { allowed: false, retryAfter: Math.ceil(windowSeconds - elapsed) };
-    }
-    await c.env.DB.prepare(
-      "UPDATE rate_limits SET count = count + 1 WHERE ip = ? AND endpoint = ?",
-    )
-      .bind(ip, endpoint)
-      .run();
-    return { allowed: true, retryAfter: 0 };
-  } catch {
-    console.error("checkRateLimit failed for endpoint: " + endpoint);
-    return { allowed: false, retryAfter: 60 };
-  }
+  return checkRateLimitSync(ip, endpoint, maxRequests, windowSeconds);
 }
 
 async function checkLoginRateLimit(
@@ -293,72 +299,25 @@ async function checkLoginRateLimit(
   windowSeconds = 60,
 ): Promise<{ allowed: boolean; retryAfter: number }> {
   const ip = getClientIp(c);
-  try {
-    const row: any = await c.env.DB.prepare(
-      "SELECT count, window_start FROM rate_limits WHERE ip = ? AND endpoint = ?",
-    )
-      .bind(ip, endpoint)
-      .first();
-    const now = new Date();
-    if (!row) return { allowed: true, retryAfter: 0 };
-    const elapsed =
-      (now.getTime() - new Date(row.window_start).getTime()) / 1000;
-    if (elapsed > windowSeconds) {
-      await c.env.DB.prepare(
-        "DELETE FROM rate_limits WHERE ip = ? AND endpoint = ?",
-      )
-        .bind(ip, endpoint)
-        .run();
-      return { allowed: true, retryAfter: 0 };
-    }
-    if (row.count >= maxRequests) {
-      return { allowed: false, retryAfter: Math.ceil(windowSeconds - elapsed) };
-    }
-    return { allowed: true, retryAfter: 0 };
-  } catch {
-    console.error("checkLoginRateLimit failed for endpoint: " + endpoint);
-    return { allowed: false, retryAfter: 60 };
-  }
+  return checkRateLimitSync(ip, endpoint, maxRequests, windowSeconds);
 }
 
 async function incrementLoginRateLimit(c: any, endpoint: string) {
   const ip = getClientIp(c);
-  const now = new Date();
-  try {
-    const row: any = await c.env.DB.prepare(
-      "SELECT count FROM rate_limits WHERE ip = ? AND endpoint = ?",
-    )
-      .bind(ip, endpoint)
-      .first();
-    if (!row) {
-      await c.env.DB.prepare(
-        "INSERT INTO rate_limits (ip, endpoint, count, window_start) VALUES (?, ?, 1, ?)",
-      )
-        .bind(ip, endpoint, now.toISOString())
-        .run();
-    } else {
-      await c.env.DB.prepare(
-        "UPDATE rate_limits SET count = count + 1 WHERE ip = ? AND endpoint = ?",
-      )
-        .bind(ip, endpoint)
-        .run();
-    }
-  } catch {
-    console.error("incrementLoginRateLimit failed");
+  const key = `${ip}:${endpoint}`;
+  const now = Date.now();
+  const entry = rateLimitCache.get(key);
+  if (!entry) {
+    rateLimitCache.set(key, { count: 1, windowStart: now });
+  } else {
+    entry.count++;
   }
 }
 
 async function resetLoginRateLimit(c: any, endpoint: string) {
   const ip = getClientIp(c);
-  try {
-    await c.env.DB.prepare(
-      "DELETE FROM rate_limits WHERE ip = ? AND endpoint = ?",
-    )
-      .bind(ip, endpoint)
-      .run();
-  } catch {
-    /* ignore cleanup errors */
-  }
+  const key = `${ip}:${endpoint}`;
+  rateLimitCache.delete(key);
 }
 
 async function addAuditLog(
@@ -1010,7 +969,10 @@ async function ensureTables(db: any) {
   await runMigrations(db);
 }
 
+let migrationsApplied = false;
+
 async function runMigrations(db: any) {
+  if (migrationsApplied) return;
   try {
     await db.exec(
       "ALTER TABLE role_transfers ADD COLUMN from_user_accepted INTEGER DEFAULT 0",
@@ -1250,6 +1212,7 @@ async function runMigrations(db: any) {
   } catch {
     console.warn("Migration: audit_log.instance_id may already exist");
   }
+  migrationsApplied = true;
 }
 
 let currentEnv: any = null;
@@ -1374,6 +1337,8 @@ async function seedData(db: any, env?: any) {
       .run();
 
     // ── Org restructure migration (idempotent) ──
+    // Skip on repeat cold starts — these are one-time data fixes
+    if (!migrationsApplied) {
     // 1. Role id/name/power fixes for retained roles
     await db
       .prepare(
@@ -1566,6 +1531,8 @@ async function seedData(db: any, env?: any) {
         "UPDATE team_members SET role = 'Chairperson' WHERE role = 'President'",
       )
       .run();
+    migrationsApplied = true;
+    } // end migrationsApplied check
 
     if (
       !currentEnv ||
@@ -1747,24 +1714,6 @@ app.use("*", async (c, next) => {
           new Date(tokenRow.expires_at + "Z") > new Date())
       ) {
         email = tokenRow.email;
-
-        const existing: any = await c.env.DB.prepare(
-          "SELECT id FROM users WHERE email = ?",
-        )
-          .bind(email)
-          .first();
-
-        if (!existing) {
-          await c.env.DB.prepare(
-            "INSERT INTO users (id, name, email, role_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
-          )
-            .bind(
-              tokenRow.name || tokenRow.email.split("@")[0],
-              email,
-              tokenRow.role_id || "member",
-            )
-            .run();
-        }
       }
     }
   } catch (e) {
@@ -1783,11 +1732,22 @@ app.use("*", async (c, next) => {
     return c.json({ error: "Unauthorized: Email not registered." }, 401);
   }
 
-  const mm: any = await c.env.DB.prepare(
-    "SELECT enabled, message FROM maintenance_mode WHERE id = 1",
-  ).first();
-  if (mm && mm.enabled === 1 && user.power_level < 100) {
-    return c.json({ error: mm.message || "Site is under maintenance." }, 503);
+  // Cache maintenance mode to avoid DB query on every request
+  const now = Date.now();
+  if (!maintenanceCache || now - maintenanceCacheTime > MAINTENANCE_CACHE_TTL) {
+    try {
+      const mm: any = await c.env.DB.prepare(
+        "SELECT enabled, message FROM maintenance_mode WHERE id = 1",
+      ).first();
+      maintenanceCache = mm || { enabled: 0, message: "" };
+      maintenanceCacheTime = now;
+    } catch {
+      maintenanceCache = { enabled: 0, message: "" };
+      maintenanceCacheTime = now;
+    }
+  }
+  if (maintenanceCache && maintenanceCache.enabled === 1 && user.power_level < 100) {
+    return c.json({ error: maintenanceCache.message || "Site is under maintenance." }, 503);
   }
 
   c.set("user", user);
@@ -1822,7 +1782,6 @@ const requireBoard = (c: any) => {
 app.get("/api/content/case-studies", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "content_case_studies", 100, 60);
     if (!rl.allowed)
       return c.json(
@@ -1841,7 +1800,6 @@ app.get("/api/content/case-studies", async (c) => {
 app.get("/api/content/team-members", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "content_team_members", 100, 60);
     if (!rl.allowed)
       return c.json(
@@ -1859,7 +1817,6 @@ app.get("/api/content/team-members", async (c) => {
 
 app.get("/api/content/partners", async (c) => {
   try {
-    await ensureDbReady(c.env.DB, c.env);
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "content_partners", 100, 60);
     if (!rl.allowed)
@@ -2404,7 +2361,6 @@ app.get("/api/newsletter/unsubscribe", async (c) => {
 // Public: List published newsletters (landing page)
 app.get("/api/newsletter", async (c) => {
   try {
-    await ensureDbReady(c.env.DB, c.env);
     await ensureDbReady(c.env.DB, c.env);
     const rl = await checkRateLimit(c, "content_newsletter", 100, 60);
     if (!rl.allowed)
