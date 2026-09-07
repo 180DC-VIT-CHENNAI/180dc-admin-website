@@ -242,15 +242,23 @@ function getClientIp(c: any): string {
 // In-memory rate limit cache (resets when isolate dies — ideal for rate limiting)
 const rateLimitCache = new Map<string, { count: number; windowStart: number }>();
 
-// Periodic cleanup of expired rate limit entries (every 5 minutes)
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitCache) {
-    if (now - entry.windowStart > 360_000) { // 6 minutes max window
-      rateLimitCache.delete(key);
+// Periodic cleanup of expired rate limit entries — initialized lazily in first request
+let rateLimitCleanupStarted = false;
+function ensureRateLimitCleanup() {
+  if (rateLimitCleanupStarted) return;
+  rateLimitCleanupStarted = true;
+  // Use setTimeout chain instead of setInterval (safe for Workers)
+  const cleanup = () => {
+    const now = Date.now();
+    for (const [key, entry] of rateLimitCache) {
+      if (now - entry.windowStart > 360_000) {
+        rateLimitCache.delete(key);
+      }
     }
-  }
-}, 300_000);
+    setTimeout(cleanup, 300_000);
+  };
+  setTimeout(cleanup, 300_000);
+}
 
 // In-memory maintenance mode cache (refreshed every 60s)
 let maintenanceCache: { enabled: number; message: string } | null = null;
@@ -263,6 +271,7 @@ function checkRateLimitSync(
   maxRequests: number,
   windowSeconds = 60,
 ): { allowed: boolean; retryAfter: number } {
+  ensureRateLimitCleanup();
   const key = `${ip}:${endpoint}`;
   const now = Date.now();
   const entry = rateLimitCache.get(key);
