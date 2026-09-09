@@ -90,17 +90,16 @@ export default function SubscriberPage() {
 
       <div style={{ maxWidth: 420, width: "100%" }}>
         <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
-          <div
+          <img
+            src="/images/official-logo.png"
+            alt="180 Degrees Consulting"
             style={{
               width: 64, height: 64, borderRadius: 16,
-              background: "var(--accent)", color: "white",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 24, fontWeight: 800, margin: "0 auto 1rem",
+              objectFit: "contain",
+              margin: "0 auto 1rem",
               boxShadow: "0 4px 12px rgba(141, 198, 63, 0.3)",
             }}
-          >
-            180
-          </div>
+          />
           <h1 style={{ fontSize: "1.75rem", fontWeight: 800, margin: 0 }}>Subscribe to Newsletter</h1>
           <p style={{ color: "var(--text-secondary)", fontSize: "15px", marginTop: "8px" }}>
             Get our latest newsletters delivered to your inbox.
