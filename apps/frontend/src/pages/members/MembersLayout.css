@@ -978,12 +978,12 @@
 }
 
 /* Brand panel sits on a green gradient in both themes — lock headline
-   to white/light so "purpose" / "impact" never render black in dark mode. */
+   to white, with "purpose" / "impact" black in dark mode. */
 [data-theme="dark"] .login-brand-headline {
   color: #ffffff;
 }
 [data-theme="dark"] .login-brand-headline em {
-  color: #eaf7d4;
+  color: #000;
 }
 
 .login-brand-copy {
