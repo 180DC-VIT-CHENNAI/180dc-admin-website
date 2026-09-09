@@ -970,19 +970,9 @@
   line-height: 1.15;
   letter-spacing: -0.01em;
   margin: 0;
-  color: #ffffff;
 }
 .login-brand-headline em {
   font-style: italic;
-  color: #eaf7d4;
-}
-
-/* Brand panel sits on a green gradient in both themes — lock headline
-   to white/light so "purpose" / "impact" never render black in dark mode. */
-[data-theme="dark"] .login-brand-headline {
-  color: #ffffff;
-}
-[data-theme="dark"] .login-brand-headline em {
   color: #eaf7d4;
 }
 
