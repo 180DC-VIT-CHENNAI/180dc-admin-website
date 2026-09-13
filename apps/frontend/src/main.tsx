@@ -38,7 +38,7 @@ const PageLoader = (
 const PageError = (
   <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "var(--bg-primary)" }}>
     <div className="card-doodle" style={{ padding: 24, textAlign: "center", maxWidth: 420 }}>
-      <p style={{ fontSize: 16, fontWeight: 700, color: "#ef4444", margin: "0 0 8px" }}>Something went wrong</p>
+      <p style={{ fontSize: 16, fontWeight: 700, color: "var(--status-error)", margin: "0 0 8px" }}>Something went wrong</p>
       <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>Failed to load. Please refresh the page.</p>
     </div>
   </div>

@@ -50,7 +50,7 @@ export default function TransfersSection({ authToken }: { authToken: string }) {
                   const d = await res.json();
                   if (d.success) { load(); alert(d.message); } else alert(d.error);
                 }}>Accept</button>
-                <button className="btn outline" style={{ padding: "8px 16px", fontSize: 13, borderColor: "#ef4444", color: "#ef4444" }} onClick={async () => {
+                <button className="btn outline" style={{ padding: "8px 16px", fontSize: 13, borderColor: "var(--status-error)", color: "var(--status-error)" }} onClick={async () => {
                   const res = await fetch(apiUrl(`/api/my-role-transfers/${t.id}/decline`), { method: "POST", headers: { Authorization: `Bearer ${authToken}` } });
                   const d = await res.json();
                   if (d.success) { load(); alert(d.message); } else alert(d.error);

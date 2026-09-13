@@ -429,8 +429,8 @@ export default function NewsletterEditorPage() {
           </div>
 
           <div style={{ background: cardBg, padding: "2rem", borderRadius: 24, border: "1px solid var(--border-light)", boxShadow: "var(--shadow-lg)" }}>
-            {error && <p style={{ color: "#ef4444", fontSize: 13, margin: "0 0 12px", textAlign: "center" }}>{error}</p>}
-            {success && <p style={{ color: "#22c55e", fontSize: 13, margin: "0 0 12px", textAlign: "center" }}>{success}</p>}
+            {error && <p style={{ color: "var(--status-error)", fontSize: 13, margin: "0 0 12px", textAlign: "center" }}>{error}</p>}
+            {success && <p style={{ color: "var(--status-success)", fontSize: 13, margin: "0 0 12px", textAlign: "center" }}>{success}</p>}
 
             <input
               type="email"
@@ -469,7 +469,7 @@ export default function NewsletterEditorPage() {
           </div>
 
           <div style={{ background: cardBg, padding: "2rem", borderRadius: 24, border: "1px solid var(--border-light)", boxShadow: "var(--shadow-lg)" }}>
-            {error && <p style={{ color: "#ef4444", fontSize: 13, margin: "0 0 12px", textAlign: "center" }}>{error}</p>}
+            {error && <p style={{ color: "var(--status-error)", fontSize: 13, margin: "0 0 12px", textAlign: "center" }}>{error}</p>}
 
             <input
               type="text"
@@ -506,13 +506,13 @@ export default function NewsletterEditorPage() {
 
       <div style={{ maxWidth: 800, margin: "0 auto", paddingTop: 60 }}>
         {success && (
-          <div style={{ background: cardBg, padding: "1rem 1.25rem", borderRadius: 12, border: "1px solid var(--border-light)", marginBottom: 16, borderLeft: "4px solid #22c55e" }}>
-            <p style={{ margin: 0, color: "#22c55e", fontSize: 14 }}>{success}</p>
+          <div style={{ background: cardBg, padding: "1rem 1.25rem", borderRadius: 12, border: "1px solid var(--border-light)", marginBottom: 16, borderLeft: "4px solid var(--status-success)" }}>
+            <p style={{ margin: 0, color: "var(--status-success)", fontSize: 14 }}>{success}</p>
           </div>
         )}
         {error && (
-          <div style={{ background: cardBg, padding: "1rem 1.25rem", borderRadius: 12, border: "1px solid var(--border-light)", marginBottom: 16, borderLeft: "4px solid #ef4444" }}>
-            <p style={{ margin: 0, color: "#ef4444", fontSize: 14 }}>{error}</p>
+          <div style={{ background: cardBg, padding: "1rem 1.25rem", borderRadius: 12, border: "1px solid var(--border-light)", marginBottom: 16, borderLeft: "4px solid var(--status-error)" }}>
+            <p style={{ margin: 0, color: "var(--status-error)", fontSize: 14 }}>{error}</p>
           </div>
         )}
 
@@ -533,7 +533,7 @@ export default function NewsletterEditorPage() {
             onClick={() => { setEditorTab("events"); resetEventForm(); }}
             style={{
               ...btnBase, padding: "8px 20px",
-              background: editorTab === "events" ? "#e85d2c" : "transparent",
+              background: editorTab === "events" ? "var(--accent-hover)" : "transparent",
               color: editorTab === "events" ? "#fff" : "var(--text-secondary)",
               border: editorTab === "events" ? "none" : "1px solid var(--border-light)",
             }}
@@ -588,7 +588,7 @@ export default function NewsletterEditorPage() {
               ) : sourceFileName ? (
                 <div>
                   <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{sourceFileName}</p>
-                  <button onClick={(e) => { e.stopPropagation(); handleRemoveDocument(); }} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, color: "#ef4444", background: "transparent" }}>Remove</button>
+                  <button onClick={(e) => { e.stopPropagation(); handleRemoveDocument(); }} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, color: "var(--status-error)", background: "transparent" }}>Remove</button>
                 </div>
               ) : (
                 <div>
@@ -604,7 +604,7 @@ export default function NewsletterEditorPage() {
             {sourceFileUrl && (
               <div style={{ marginBottom: 12 }}>
                 <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-secondary)" }}>Preview:</p>
-                <iframe src={apiUrl(sourceFileUrl)} title="Preview" style={{ width: "100%", height: 400, border: "none", borderRadius: 8, background: "#f5f5f5" }} />
+                <iframe src={apiUrl(sourceFileUrl)} title="Preview" style={{ width: "100%", height: 400, border: "none", borderRadius: 8, background: "var(--surface-soft)" }} />
               </div>
             )}
 
@@ -643,7 +643,7 @@ export default function NewsletterEditorPage() {
                       </div>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                         {!nl.sent_at && (
-                          <button onClick={() => handleSend(nl.id)} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "#22c55e", color: "#fff" }}>Send</button>
+                          <button onClick={() => handleSend(nl.id)} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "var(--status-success)", color: "#fff" }}>Send</button>
                         )}
                         <button
                           onClick={() => {
@@ -656,7 +656,7 @@ export default function NewsletterEditorPage() {
                           }}
                           style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "var(--border-light)", color: "var(--text-primary)" }}
                         >Edit</button>
-                        <button onClick={() => handleDelete(nl.id)} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "transparent", color: "#ef4444" }}>Delete</button>
+                        <button onClick={() => handleDelete(nl.id)} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "transparent", color: "var(--status-error)" }}>Delete</button>
                       </div>
                     </div>
                   </div>
@@ -693,9 +693,9 @@ export default function NewsletterEditorPage() {
               onDrop={handleEventDrop}
               onClick={() => document.getElementById("event-file-input")?.click()}
               style={{
-                border: `2px dashed ${eventDragOver ? "#e85d2c" : "var(--border-light)"}`,
+                border: `2px dashed ${eventDragOver ? "var(--accent-hover)" : "var(--border-light)"}`,
                 borderRadius: 12, padding: "18px 16px", textAlign: "center", cursor: "pointer",
-                background: eventDragOver ? "rgba(232,93,44,0.05)" : "transparent", transition: "all 0.2s", marginBottom: 16,
+                background: eventDragOver ? "rgba(141,198,63,0.05)" : "transparent", transition: "all 0.2s", marginBottom: 16,
               }}
             >
               <input id="event-file-input" type="file" accept=".pdf,.docx" style={{ display: "none" }} onChange={handleEventFileInput} />
@@ -704,7 +704,7 @@ export default function NewsletterEditorPage() {
               ) : eventSourceFileName ? (
                 <div>
                   <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{eventSourceFileName}</p>
-                  <button onClick={(e) => { e.stopPropagation(); setEventSourceFileUrl(""); setEventSourceFileName(""); }} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, color: "#ef4444", background: "transparent" }}>Remove</button>
+                  <button onClick={(e) => { e.stopPropagation(); setEventSourceFileUrl(""); setEventSourceFileName(""); }} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, color: "var(--status-error)", background: "transparent" }}>Remove</button>
                 </div>
               ) : (
                 <div>
@@ -725,9 +725,9 @@ export default function NewsletterEditorPage() {
               onDrop={handleEventImageDrop}
               onClick={() => document.getElementById("event-image-input")?.click()}
               style={{
-                border: `2px dashed ${eventImageDragOver ? "#e85d2c" : "var(--border-light)"}`,
+                border: `2px dashed ${eventImageDragOver ? "var(--accent-hover)" : "var(--border-light)"}`,
                 borderRadius: 12, padding: "18px 16px", textAlign: "center", cursor: "pointer",
-                background: eventImageDragOver ? "rgba(232,93,44,0.05)" : "transparent", transition: "all 0.2s", marginBottom: 16,
+                background: eventImageDragOver ? "rgba(141,198,63,0.05)" : "transparent", transition: "all 0.2s", marginBottom: 16,
               }}
             >
               <input id="event-image-input" type="file" accept=".jpg,.jpeg,.png,.webp,.gif" style={{ display: "none" }} onChange={handleEventImageInput} />
@@ -736,7 +736,7 @@ export default function NewsletterEditorPage() {
               ) : eventImageFileName ? (
                 <div>
                   <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{eventImageFileName}</p>
-                  <button onClick={(e) => { e.stopPropagation(); setEventImageUrl(""); setEventImageFileName(""); }} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, color: "#ef4444", background: "transparent" }}>Remove</button>
+                  <button onClick={(e) => { e.stopPropagation(); setEventImageUrl(""); setEventImageFileName(""); }} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, color: "var(--status-error)", background: "transparent" }}>Remove</button>
                 </div>
               ) : (
                 <div>
@@ -762,7 +762,7 @@ export default function NewsletterEditorPage() {
               <button
                 onClick={handleEventSend}
                 disabled={eventSending || !eventSubject.trim()}
-                style={{ ...btnBase, padding: "8px 20px", background: eventSending || !eventSubject.trim() ? "var(--text-tertiary)" : "#e85d2c", color: "#fff" }}
+                style={{ ...btnBase, padding: "8px 20px", background: eventSending || !eventSubject.trim() ? "var(--text-tertiary)" : "var(--accent-hover)", color: "#fff" }}
               >
                 {eventSending ? "Sending..." : "Send Event Mail"}
               </button>

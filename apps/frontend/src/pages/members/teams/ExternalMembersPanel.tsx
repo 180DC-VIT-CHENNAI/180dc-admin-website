@@ -62,9 +62,9 @@ export default function ExternalMembersPanel({ instance, canManage, open, setOpe
         style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "0.85rem 1rem", background: "none", border: "none", cursor: "pointer", color: "var(--text-primary)", textAlign: "left" }}
       >
         <span className="material-symbols-outlined" style={{ transition: "transform 140ms ease", transform: open ? "none" : "rotate(-90deg)" }}>expand_more</span>
-        <span className="material-symbols-outlined" style={{ color: "#b45309" }}>person_pin</span>
+         <span className="material-symbols-outlined" style={{ color: "var(--status-warning)" }}>person_pin</span>
         <strong style={{ fontSize: 14 }}>Outside members</strong>
-        <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: "rgba(245, 158, 11, 0.14)", color: "#b45309" }}>
+        <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: "rgba(245, 158, 11, 0.14)", color: "var(--status-warning)" }}>
           {externals.length}
         </span>
         <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>people who aren't registered on the website</span>
@@ -91,7 +91,7 @@ export default function ExternalMembersPanel({ instance, canManage, open, setOpe
                   </div>
                 ) : (
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <div className="avatar-circle" style={{ width: 26, height: 26, fontSize: 11, background: "rgba(245, 158, 11, 0.20)", color: "#b45309" }}>
+                    <div className="avatar-circle" style={{ width: 26, height: 26, fontSize: 11, background: "rgba(245, 158, 11, 0.20)", color: "var(--status-warning)" }}>
                       {ext.name[0]?.toUpperCase()}
                     </div>
                     <strong style={{ fontSize: 13 }}>{ext.name}</strong>
@@ -103,7 +103,7 @@ export default function ExternalMembersPanel({ instance, canManage, open, setOpe
                     {canManage && (
                       <>
                         <button className="btn outline" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => { setEditId(ext.id); setEditDraft({ name: ext.name, email: ext.email || "", organization: ext.organization || "" }); }}>Edit</button>
-                        <button className="header-action-btn" style={{ color: "#ef4444" }} onClick={() => onDelete(ext)}>
+                        <button className="header-action-btn" style={{ color: "var(--status-error)" }} onClick={() => onDelete(ext)}>
                           <span className="material-symbols-outlined">delete</span>
                         </button>
                       </>
@@ -126,7 +126,7 @@ export default function ExternalMembersPanel({ instance, canManage, open, setOpe
                   {busy ? "Adding..." : "Add"}
                 </button>
               </div>
-              {error && <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444", fontWeight: 600 }}>{error}</div>}
+              {error && <div style={{ marginTop: 8, fontSize: 12, color: "var(--status-error)", fontWeight: 600 }}>{error}</div>}
             </div>
           )}
         </div>

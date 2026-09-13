@@ -272,7 +272,7 @@ export default function ClubFilesPanel({ authToken, powerLevel }: { authToken: s
                           <span className="material-symbols-outlined">download</span>
                         </button>
                         {powerLevel >= 50 && (
-                          <button onClick={() => handleDelete(file.id)} className="header-action-btn" style={{ color: "#ef4444" }} title="Delete">
+                          <button onClick={() => handleDelete(file.id)} className="header-action-btn" style={{ color: "var(--status-error)" }} title="Delete">
                             <span className="material-symbols-outlined">delete</span>
                           </button>
                         )}

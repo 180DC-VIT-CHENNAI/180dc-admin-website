@@ -240,7 +240,7 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
 
       {oauthError && (
         <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 999, background: "var(--bg-card)", padding: "1.5rem 2rem", borderRadius: 16, border: "2px solid var(--danger, #e74c3c)", boxShadow: "var(--shadow-lg)", color: "var(--text-primary)", fontSize: 15, maxWidth: 500, textAlign: "center", lineHeight: 1.5 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 32, color: "#e74c3c", display: "block", marginBottom: "0.75rem" }}>error</span>
+          <span className="material-symbols-outlined" style={{ fontSize: 32, color: "var(--status-error)", display: "block", marginBottom: "0.75rem" }}>error</span>
           {oauthError}
         </div>
       )}

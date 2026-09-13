@@ -267,7 +267,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
         <div className="card-doodle" style={{ padding: 24 }}>
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
-              Document <span style={{ color: "#dc3545" }}>*</span>
+              Document <span style={{ color: "var(--status-error)" }}>*</span>
             </label>
             {!extractedContent && !extracting && (
               <div
@@ -320,7 +320,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
                     </label>
                     <button
                       type="button"
-                      style={{ padding: "4px 10px", fontSize: 11, background: "#dc3545", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
+                      style={{ padding: "4px 10px", fontSize: 11, background: "var(--status-error)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
                       onClick={handleRemoveDocument}
                     >
                       Remove
@@ -351,7 +351,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
                       fontSize: 14,
                       lineHeight: 1.7,
                       fontFamily: "var(--font-sans)",
-                      background: "var(--bg-primary, #fff)",
+                      background: "var(--bg-primary)",
                     }}
                     dangerouslySetInnerHTML={{ __html: extractedContent }}
                   />
@@ -398,7 +398,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
           </div>
 
           {error && (
-            <div style={{ padding: "12px 16px", background: "#fef2f2", border: "2px solid #ef4444", borderRadius: 10, marginBottom: 16, color: "#dc2626", fontSize: 14, fontWeight: 600 }}>
+            <div style={{ padding: "12px 16px", background: "var(--status-error-bg, rgba(239,68,68,0.08))", border: "2px solid var(--status-error)", borderRadius: 10, marginBottom: 16, color: "var(--status-error)", fontSize: 14, fontWeight: 600 }}>
               {error}
             </div>
           )}
@@ -467,7 +467,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
                   )}
                   {canDelete && (
                     <button
-                      style={{ padding: "3px 10px", fontSize: 11, background: "#dc3545", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
+                      style={{ padding: "3px 10px", fontSize: 11, background: "var(--status-error)", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}
                       onClick={() => { if (confirm('Delete this case study permanently?')) handleDelete(cs.id); }}
                       disabled={processing === cs.id}
                     >

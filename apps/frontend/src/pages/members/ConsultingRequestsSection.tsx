@@ -114,7 +114,7 @@ export default function ConsultingRequestsSection({ authToken }: { authToken: st
       {pending.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-             <h3 style={{ margin: 0, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#f59e0b", fontWeight: 800 }}>Pending Review ({pending.length})</h3>
+             <h3 style={{ margin: 0, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--status-warning)", fontWeight: 800 }}>Pending Review ({pending.length})</h3>
              <div style={{ flex: 1, height: 1, background: "rgba(245, 158, 11, 0.2)" }} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -143,7 +143,7 @@ export default function ConsultingRequestsSection({ authToken }: { authToken: st
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button className="btn" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => openAcceptModal(req)}>Accept</button>
-                    <button className="btn outline" style={{ padding: "8px 16px", fontSize: 13, borderColor: "#ef4444", color: "#ef4444" }} onClick={() => openRejectModal(req)}>Reject</button>
+                    <button className="btn outline" style={{ padding: "8px 16px", fontSize: 13, borderColor: "var(--status-error)", color: "var(--status-error)" }} onClick={() => openRejectModal(req)}>Reject</button>
                   </div>
                 </div>
               </div>
@@ -157,7 +157,7 @@ export default function ConsultingRequestsSection({ authToken }: { authToken: st
           {accepted.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <h3 style={{ margin: 0, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#10b981", fontWeight: 800 }}>Accepted ({accepted.length})</h3>
+                  <h3 style={{ margin: 0, fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--status-success)", fontWeight: 800 }}>Accepted ({accepted.length})</h3>
                   <div style={{ flex: 1, height: 1, background: "rgba(16, 185, 129, 0.2)" }} />
                </div>
                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -167,7 +167,7 @@ export default function ConsultingRequestsSection({ authToken }: { authToken: st
                           <div style={{ fontSize: 14, fontWeight: 700 }}>{req.name}</div>
                           <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{req.organization}</div>
                        </div>
-                       <button className="header-action-btn" style={{ color: "#ef4444" }} onClick={async () => {
+                        <button className="header-action-btn" style={{ color: "var(--status-error)" }} onClick={async () => {
                          if (!confirm("Delete record?")) return;
                          await fetch(apiUrl(`/api/consulting-requests/${req.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
                          load();
@@ -191,7 +191,7 @@ export default function ConsultingRequestsSection({ authToken }: { authToken: st
                           <div style={{ fontSize: 14, fontWeight: 700 }}>{req.name}</div>
                           <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{req.organization}</div>
                        </div>
-                       <button className="header-action-btn" style={{ color: "#ef4444" }} onClick={async () => {
+                        <button className="header-action-btn" style={{ color: "var(--status-error)" }} onClick={async () => {
                          if (!confirm("Delete record?")) return;
                          await fetch(apiUrl(`/api/consulting-requests/${req.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
                          load();

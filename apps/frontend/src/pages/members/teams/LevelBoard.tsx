@@ -4,8 +4,8 @@ import type { DragPayload } from "./useTeamDrag";
 
 const STATUS_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
   active: { bg: "var(--accent-bg)", fg: "var(--primary-green)", label: "ACTIVE" },
-  eliminated: { bg: "rgba(239, 68, 68, 0.14)", fg: "#ef4444", label: "OUT" },
-  winner: { bg: "rgba(245, 158, 11, 0.18)", fg: "#b45309", label: "WINNER" },
+  eliminated: { bg: "rgba(239, 68, 68, 0.14)", fg: "var(--status-error)", label: "OUT" },
+  winner: { bg: "rgba(245, 158, 11, 0.18)", fg: "var(--status-warning)", label: "WINNER" },
 };
 
 /** A team as it appears on the progress ladder — draggable to the next level. */
@@ -43,7 +43,7 @@ function TeamChip({ team, instanceId, canManage, onSetStatus }: {
           {team.member_count || 0}
         </span>
         {!team.requirement_met && (
-          <span style={{ color: "#ef4444", fontWeight: 700 }}>under min</span>
+          <span style={{ color: "var(--status-error)", fontWeight: 700 }}>under min</span>
         )}
       </div>
       {canManage && (
@@ -124,7 +124,7 @@ function LevelColumn({ level, instance, teams, canManage, onMoveLevel, onSetStat
     <div className={`kb-col ${drop.isOver ? "kb-col--over" : ""}`} {...drop.handlers}>
       <div className="kb-col__head" style={{ cursor: "default" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 17, color: isLast ? "#b45309" : "var(--primary-green)" }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 17, color: isLast ? "var(--status-warning)" : "var(--primary-green)" }}>
             {isLast ? "trophy" : "flag"}
           </span>
           <strong style={{ fontSize: 13, flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>

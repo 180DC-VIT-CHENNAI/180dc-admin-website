@@ -79,13 +79,13 @@ export default function AdminNewsletterSection({ authToken }: Props) {
         </p>
 
         {success && (
-          <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(34,197,94,0.1)", borderLeft: "3px solid #22c55e", marginBottom: 12 }}>
-            <p style={{ margin: 0, fontSize: 13, color: "#22c55e" }}>{success}</p>
+          <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(34,197,94,0.1)", borderLeft: "3px solid var(--status-success)", marginBottom: 12 }}>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--status-success)" }}>{success}</p>
           </div>
         )}
         {error && (
-          <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(239,68,68,0.1)", borderLeft: "3px solid #ef4444", marginBottom: 12 }}>
-            <p style={{ margin: 0, fontSize: 13, color: "#ef4444" }}>{error}</p>
+          <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(239,68,68,0.1)", borderLeft: "3px solid var(--status-error)", marginBottom: 12 }}>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--status-error)" }}>{error}</p>
           </div>
         )}
 
@@ -131,7 +131,7 @@ export default function AdminNewsletterSection({ authToken }: Props) {
                 </div>
                 <button
                   className="btn"
-                  style={{ padding: "4px 12px", fontSize: 12, color: "#ef4444", background: "transparent" }}
+                  style={{ padding: "4px 12px", fontSize: 12, color: "var(--status-error)", background: "transparent" }}
                   onClick={() => handleRemove(e.email)}
                 >
                   Remove

@@ -7,18 +7,18 @@ const ACTION_LABELS: Record<string, { text: string; icon: string; color: string 
   team_instance_updated: { text: "updated the instance", icon: "edit", color: "var(--text-secondary)" },
   instance_group_created: { text: "added a group", icon: "corporate_fare", color: "var(--primary-green)" },
   instance_group_updated: { text: "renamed a group", icon: "edit", color: "var(--text-secondary)" },
-  instance_group_deleted: { text: "deleted a group", icon: "delete", color: "#ef4444" },
+  instance_group_deleted: { text: "deleted a group", icon: "delete", color: "var(--status-error)" },
   team_created: { text: "created a team", icon: "group_add", color: "var(--primary-green)" },
   team_updated: { text: "updated a team", icon: "edit", color: "var(--text-secondary)" },
-  team_deleted: { text: "deleted a team", icon: "delete", color: "#ef4444" },
+  team_deleted: { text: "deleted a team", icon: "delete", color: "var(--status-error)" },
   team_member_added: { text: "added a member", icon: "person_add", color: "var(--primary-green)" },
-  team_member_removed: { text: "removed a member", icon: "person_remove", color: "#ef4444" },
-  team_member_moved: { text: "moved a member", icon: "swap_horiz", color: "#3b82f6" },
-  team_outside_member_added: { text: "added an outside member", icon: "person_add", color: "#b45309" },
-  team_outside_member_removed: { text: "removed an outside member", icon: "person_remove", color: "#ef4444" },
-  outside_member_created: { text: "registered an outside member", icon: "person_pin", color: "#b45309" },
+  team_member_removed: { text: "removed a member", icon: "person_remove", color: "var(--status-error)" },
+  team_member_moved: { text: "moved a member", icon: "swap_horiz", color: "var(--info, #3b82f6)" },
+  team_outside_member_added: { text: "added an outside member", icon: "person_add", color: "var(--status-warning)" },
+  team_outside_member_removed: { text: "removed an outside member", icon: "person_remove", color: "var(--status-error)" },
+  outside_member_created: { text: "registered an outside member", icon: "person_pin", color: "var(--status-warning)" },
   outside_member_updated: { text: "updated an outside member", icon: "edit", color: "var(--text-secondary)" },
-  outside_member_deleted: { text: "deleted an outside member", icon: "delete", color: "#ef4444" },
+  outside_member_deleted: { text: "deleted an outside member", icon: "delete", color: "var(--status-error)" },
 };
 
 /** Strips the "in instance <id>" suffix the API appends for feed lookup. */
@@ -49,7 +49,7 @@ export default function ActivityFeed({ instanceId, authToken }: { instanceId: st
     return () => { cancelled = true; };
   }, [instanceId, authToken]);
 
-  if (error) return <p style={{ fontSize: 13, color: "#ef4444", marginTop: "1rem" }}>{error}</p>;
+  if (error) return <p style={{ fontSize: 13, color: "var(--status-error)", marginTop: "1rem" }}>{error}</p>;
   if (rows === null) return <p style={{ fontSize: 13, color: "var(--text-tertiary)", marginTop: "1rem" }}>Loading activity...</p>;
   if (rows.length === 0) return <p style={{ fontSize: 13, color: "var(--text-tertiary)", fontStyle: "italic", marginTop: "1rem" }}>Nothing has happened here yet.</p>;
 

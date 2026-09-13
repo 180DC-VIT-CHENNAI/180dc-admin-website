@@ -72,7 +72,7 @@ export default function DepartmentMeetsSection({ authToken, departments, powerLe
                 </button>
               )}
               {isLead && m.department_id === departmentId && (
-                <button className="header-action-btn" style={{ color: "#ef4444" }} title="Delete Meet" onClick={async () => {
+                <button className="header-action-btn" style={{ color: "var(--status-error)" }} title="Delete Meet" onClick={async () => {
                   if (!confirm("Delete meet?")) return;
                   await fetch(apiUrl(`/api/departments/${departmentId}/meets/${m.id}`), { method: "DELETE", headers });
                   setMeets(meets.filter((x) => x.id !== m.id));
