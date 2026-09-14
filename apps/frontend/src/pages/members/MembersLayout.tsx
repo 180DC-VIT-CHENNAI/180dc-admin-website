@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAuth, useClerk } from "@clerk/react";
 import MembersLogin from "./MembersLogin";
 import DepartmentPanel from "./DepartmentPanel";
@@ -34,15 +34,21 @@ function PomodoroTimer() {
 
   const WORK = 25 * 60;
   const BREAK = 5 * 60;
-  const total = mode === "work" ? WORK : BREAK;
-  const progress = ((total - time) / total) * 100;
-  const mins = Math.floor(time / 60);
-  const secs = time % 60;
-  const circ = 2 * Math.PI * 54;
-  const offset = circ - (progress / 100) * circ;
-  const color = mode === "work" ? "var(--primary-green)" : "#f59e0b";
 
-  const start = () => {
+  const { mins, secs, circ, offset, color } = useMemo(() => {
+    const total = mode === "work" ? WORK : BREAK;
+    const p = ((total - time) / total) * 100;
+    const c = 2 * Math.PI * 54;
+    return {
+      mins: Math.floor(time / 60),
+      secs: time % 60,
+      circ: c,
+      offset: c - (p / 100) * c,
+      color: mode === "work" ? "var(--primary-green)" : "var(--primary-dark-green, #75a633)",
+    };
+  }, [mode, time]);
+
+  const start = useCallback(() => {
     if (running) return;
     setRunning(true);
     intervalRef.current = setInterval(() => {
@@ -61,10 +67,10 @@ function PomodoroTimer() {
         return prev - 1;
       });
     }, 1000);
-  };
+  }, [running, mode]);
 
-  const pause = () => { clearInterval(intervalRef.current!); setRunning(false); };
-  const reset = () => { clearInterval(intervalRef.current!); setRunning(false); setMode("work"); setTime(WORK); };
+  const pause = useCallback(() => { clearInterval(intervalRef.current!); setRunning(false); }, []);
+  const reset = useCallback(() => { clearInterval(intervalRef.current!); setRunning(false); setMode("work"); setTime(WORK); }, []);
 
   return (
     <div className="dashboard-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "24px 22px" }}>
@@ -109,7 +115,7 @@ function PomodoroTimer() {
           <span style={{ fontWeight: 600 }}>{sessions}</span> sessions
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 14, color: "#f59e0b" }}>local_fire_department</span>
+          <span className="material-symbols-outlined" style={{ fontSize: 14, color: "var(--primary-green)" }}>local_fire_department</span>
           <span style={{ fontWeight: 600 }}>{sessions * 25}</span> min focused
         </div>
       </div>
@@ -121,7 +127,7 @@ function QuoteOfTheDay() {
   const [quote, setQuote] = useState<{ content: string; author: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchQuote = async () => {
+  const fetchQuote = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("https://api.quotable.io/random?minLength=80&maxLength=280");
@@ -131,13 +137,13 @@ function QuoteOfTheDay() {
       }
     } catch {}
     setLoading(false);
-  };
+  }, []);
 
-  useEffect(() => { fetchQuote(); }, []);
+  useEffect(() => { fetchQuote(); }, [fetchQuote]);
 
   return (
     <div className="members-grid" style={{ marginTop: "1.5rem" }}>
-      <div className="dashboard-card" style={{ gridColumn: "1 / -1", padding: "28px 32px", background: "linear-gradient(135deg, var(--surface) 0%, var(--surface-container-high) 100%)", position: "relative", overflow: "hidden" }}>
+      <div className="dashboard-card" style={{ gridColumn: "1 / -1", padding: "28px 32px", background: "linear-gradient(135deg, var(--green-50, rgba(141,198,63,0.06)) 0%, var(--surface) 50%, var(--green-50, rgba(141,198,63,0.06)) 100%)", position: "relative", overflow: "hidden", border: "1px solid var(--border-green, rgba(141,198,63,0.2))" }}>
         <div style={{ position: "absolute", top: -20, right: -10, fontSize: 120, fontWeight: 900, color: "var(--primary-green)", opacity: 0.04, lineHeight: 1, pointerEvents: "none" }}>"</div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -725,10 +731,10 @@ export default function MembersLayout() {
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {[
-                      { label: "Main Website", url: "https://180dcvitc.org", icon: "language", color: "var(--primary-green)" },
-                      { label: "Recruitments", url: "https://vitc-180dc.org", icon: "group_add", color: "#8b5cf6" },
-                      { label: "Newsletter Subscription", url: "https://180dcvitc.org/subscriber", icon: "mail", color: "#f59e0b" },
-                      { label: "Newsletter Management", url: "https://180dcvitc.org/subscriber/newsletter", icon: "edit_note", color: "#3b82f6" },
+                      { label: "Main Website", url: "https://180dcvitc.org", icon: "language", accent: "var(--primary-green)" },
+                      { label: "Recruitments", url: "https://vitc-180dc.org", icon: "group_add", accent: "var(--info, #3b82f6)" },
+                      { label: "Newsletter Subscription", url: "https://180dcvitc.org/subscriber", icon: "mail", accent: "var(--status-warning, #d97706)" },
+                      { label: "Newsletter Management", url: "https://180dcvitc.org/subscriber/newsletter", icon: "edit_note", accent: "var(--primary-green)" },
                     ].map((link) => (
                       <a
                         key={link.label}
@@ -741,33 +747,33 @@ export default function MembersLayout() {
                           gap: 12,
                           padding: "10px 14px",
                           borderRadius: 10,
-                          background: "var(--surface-container-high)",
+                          background: "var(--green-50, rgba(141,198,63,0.06))",
                           textDecoration: "none",
                           color: "inherit",
                           transition: "all 0.2s ease",
-                          border: "1px solid transparent",
+                          border: "1px solid var(--border-light)",
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.border = `1px solid ${link.color}40`;
-                          e.currentTarget.style.background = "var(--surface-container-highest, var(--surface-container-high))";
+                          e.currentTarget.style.borderColor = link.accent;
+                          e.currentTarget.style.background = "var(--green-100, rgba(141,198,63,0.12))";
                           e.currentTarget.style.transform = "translateX(4px)";
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.border = "1px solid transparent";
-                          e.currentTarget.style.background = "var(--surface-container-high)";
+                          e.currentTarget.style.borderColor = "var(--border-light)";
+                          e.currentTarget.style.background = "var(--green-50, rgba(141,198,63,0.06))";
                           e.currentTarget.style.transform = "translateX(0)";
                         }}
                       >
-                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: link.color }}>{link.icon}</span>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: link.accent }}>{link.icon}</span>
                         <span style={{ fontSize: 13, fontWeight: 500 }}>{link.label}</span>
                         <span className="material-symbols-outlined" style={{ fontSize: 14, color: "var(--text-tertiary)", marginLeft: "auto" }}>open_in_new</span>
                       </a>
                     ))}
                   </div>
 
-                  <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--surface-container-high)" }}>
+                  <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--border-light)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 16, color: "#ec4899" }}>sports_esports</span>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16, color: "var(--primary-green)" }}>sports_esports</span>
                       <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Games</span>
                     </div>
                     <a
@@ -780,22 +786,24 @@ export default function MembersLayout() {
                         gap: 12,
                         padding: "10px 14px",
                         borderRadius: 10,
-                        background: "linear-gradient(135deg, #ec489915, #8b5cf615)",
+                        background: "var(--green-50, rgba(141,198,63,0.06))",
                         textDecoration: "none",
                         color: "inherit",
                         transition: "all 0.2s ease",
-                        border: "1px solid #ec489930",
+                        border: "1px solid var(--border-light)",
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "linear-gradient(135deg, #ec489925, #8b5cf625)";
+                        e.currentTarget.style.borderColor = "var(--primary-green)";
+                        e.currentTarget.style.background = "var(--green-100, rgba(141,198,63,0.12))";
                         e.currentTarget.style.transform = "translateX(4px)";
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "linear-gradient(135deg, #ec489915, #8b5cf615)";
+                        e.currentTarget.style.borderColor = "var(--border-light)";
+                        e.currentTarget.style.background = "var(--green-50, rgba(141,198,63,0.06))";
                         e.currentTarget.style.transform = "translateX(0)";
                       }}
                     >
-                      <span className="material-symbols-outlined" style={{ fontSize: 18, color: "#ec4899" }}>rocket_launch</span>
+                      <span className="material-symbols-outlined" style={{ fontSize: 18, color: "var(--primary-green)" }}>rocket_launch</span>
                       <span style={{ fontSize: 13, fontWeight: 500 }}>Slingshot</span>
                       <span className="material-symbols-outlined" style={{ fontSize: 14, color: "var(--text-tertiary)", marginLeft: "auto" }}>open_in_new</span>
                     </a>
