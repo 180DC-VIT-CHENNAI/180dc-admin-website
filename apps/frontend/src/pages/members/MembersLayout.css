@@ -974,7 +974,8 @@
 }
 .login-brand-headline em {
   font-style: italic;
-  color: #eaf7d4;
+  color: #2de6c7;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
 /* Brand panel sits on a green gradient in both themes — lock headline
