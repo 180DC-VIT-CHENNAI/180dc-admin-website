@@ -587,26 +587,88 @@ export default function MembersLayout() {
                     </div>
                 </div>
 
-                <div className="dashboard-card">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                     <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 500 }}>Member Composition</h2>
+                <div className="dashboard-card" style={{ padding: "20px 22px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+                    <span className="material-symbols-outlined" style={{ color: "var(--primary-green)", fontSize: 20 }}>link</span>
+                    <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>Quick Links</h2>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {[
-                      { label: "Executive Board", pct: 12, color: "var(--primary-green)" },
-                      { label: "Lead Consultants", pct: 28, color: "var(--info, #3b82f6)" },
-                      { label: "General Members", pct: 60, color: "var(--status-warning)" },
-                    ].map((bar) => (
-                      <div key={bar.label} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700 }}>
-                          <span style={{ color: "var(--text-secondary)" }}>{bar.label}</span>
-                          <span>{bar.pct}%</span>
-                        </div>
-                        <div style={{ height: 6, background: "var(--surface-container-high)", borderRadius: 3, overflow: "hidden" }}>
-                          <div style={{ width: `${bar.pct}%`, height: "100%", background: bar.color }} />
-                        </div>
-                      </div>
+                      { label: "Main Website", url: "https://180dcvitc.org", icon: "language", color: "var(--primary-green)" },
+                      { label: "Recruitments", url: "https://vitc-180dc.org", icon: "group_add", color: "#8b5cf6" },
+                      { label: "Newsletter Subscription", url: "https://180dcvitc.org/subscriber", icon: "mail", color: "#f59e0b" },
+                      { label: "Newsletter Management", url: "https://180dcvitc.org/subscriber/newsletter", icon: "edit_note", color: "#3b82f6" },
+                    ].map((link) => (
+                      <a
+                        key={link.label}
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          padding: "10px 14px",
+                          borderRadius: 10,
+                          background: "var(--surface-container-high)",
+                          textDecoration: "none",
+                          color: "inherit",
+                          transition: "all 0.2s ease",
+                          border: "1px solid transparent",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.border = `1px solid ${link.color}40`;
+                          e.currentTarget.style.background = "var(--surface-container-highest, var(--surface-container-high))";
+                          e.currentTarget.style.transform = "translateX(4px)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.border = "1px solid transparent";
+                          e.currentTarget.style.background = "var(--surface-container-high)";
+                          e.currentTarget.style.transform = "translateX(0)";
+                        }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: link.color }}>{link.icon}</span>
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>{link.label}</span>
+                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: "var(--text-tertiary)", marginLeft: "auto" }}>open_in_new</span>
+                      </a>
                     ))}
+                  </div>
+
+                  <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--surface-container-high)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16, color: "#ec4899" }}>sports_esports</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Games</span>
+                    </div>
+                    <a
+                      href="https://slingshot-expo.vercel.app/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        background: "linear-gradient(135deg, #ec489915, #8b5cf615)",
+                        textDecoration: "none",
+                        color: "inherit",
+                        transition: "all 0.2s ease",
+                        border: "1px solid #ec489930",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "linear-gradient(135deg, #ec489925, #8b5cf625)";
+                        e.currentTarget.style.transform = "translateX(4px)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "linear-gradient(135deg, #ec489915, #8b5cf615)";
+                        e.currentTarget.style.transform = "translateX(0)";
+                      }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: 18, color: "#ec4899" }}>rocket_launch</span>
+                      <span style={{ fontSize: 13, fontWeight: 500 }}>Slingshot</span>
+                      <span className="material-symbols-outlined" style={{ fontSize: 14, color: "var(--text-tertiary)", marginLeft: "auto" }}>open_in_new</span>
+                    </a>
                   </div>
                 </div>
 
