@@ -587,10 +587,10 @@ export default function TeamInstancesSection({ authToken, powerLevel, department
 
   const kpis = [
     { icon: "diversity_3", label: "Instances", value: instances.length, bg: "rgba(141, 198, 63, 0.15)", color: "var(--primary-green)" },
-    { icon: "corporate_fare", label: "Groups", value: totals.groups, bg: "rgba(139, 92, 246, 0.15)", color: "#8b5cf6" },
-    { icon: "group_work", label: "Teams", value: totals.teams, bg: "rgba(59, 130, 246, 0.15)", color: "#3b82f6" },
-    { icon: "groups", label: "People placed", value: totals.internal + totals.external, bg: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" },
-    { icon: "error", label: "Teams under min", value: totals.understaffed, bg: "rgba(239, 68, 68, 0.15)", color: "#ef4444" },
+    { icon: "corporate_fare", label: "Groups", value: totals.groups, bg: "rgba(139, 92, 246, 0.15)", color: "var(--purple, #8b5cf6)" },
+    { icon: "group_work", label: "Teams", value: totals.teams, bg: "rgba(59, 130, 246, 0.15)", color: "var(--info, #3b82f6)" },
+    { icon: "groups", label: "People placed", value: totals.internal + totals.external, bg: "rgba(245, 158, 11, 0.15)", color: "var(--status-warning)" },
+    { icon: "error", label: "Teams under min", value: totals.understaffed, bg: "rgba(239, 68, 68, 0.15)", color: "var(--status-error)" },
   ];
 
 
@@ -668,7 +668,7 @@ export default function TeamInstancesSection({ authToken, powerLevel, department
           <div>
             <input className="input" placeholder="Search people..." value={panelSearch} onChange={(e) => setPanelSearch(e.target.value)} style={{ marginBottom: 10 }} />
             {team.is_full ? (
-              <p style={{ fontSize: 13, color: "#ef4444", margin: 0 }}>Team is full (limit {team.member_limit}).</p>
+              <p style={{ fontSize: 13, color: "var(--status-error)", margin: 0 }}>Team is full (limit {team.member_limit}).</p>
             ) : options.length === 0 ? (
               <p style={{ fontSize: 13, color: "var(--text-tertiary)", fontStyle: "italic", margin: 0 }}>Nobody left to add.</p>
             ) : (
@@ -800,7 +800,7 @@ export default function TeamInstancesSection({ authToken, powerLevel, department
               <div style={{ marginTop: 6, fontSize: 13, color: "var(--text-secondary)", display: "flex", gap: 14, flexWrap: "wrap" }}>
                 <span>{categoryTeams.length} team{categoryTeams.length === 1 ? "" : "s"}</span>
                 <span>{memberTotal} {memberTotal === 1 ? "person" : "people"}</span>
-                {short > 0 && <span style={{ color: "#ef4444", fontWeight: 700 }}>{short} under minimum</span>}
+                {short > 0 && <span style={{ color: "var(--status-error)", fontWeight: 700 }}>{short} under minimum</span>}
               </div>
               {openCategory?.description && (
                 <p style={{ marginTop: 8, marginBottom: 0, fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>{openCategory.description}</p>
@@ -824,7 +824,7 @@ export default function TeamInstancesSection({ authToken, powerLevel, department
                       <span className="material-symbols-outlined" style={{ fontSize: 17 }}>edit</span>
                       {editingCategory ? "Cancel" : "Edit"}
                     </button>
-                    <button className="header-action-btn" style={{ color: "#ef4444" }} onClick={async () => {
+                    <button className="header-action-btn" style={{ color: "var(--status-error)" }} onClick={async () => {
                       await deleteGroup(openInstance, openCategory);
                       setOpenCategoryId(null);
                     }}>
@@ -960,7 +960,7 @@ export default function TeamInstancesSection({ authToken, powerLevel, department
                 <span>{s.team_count || 0} teams</span>
                 <span>{s.member_count || 0} people{(s.external_count || 0) > 0 ? ` (${s.external_count} outside)` : ""}</span>
                 <span>{(openInstance.levels || []).length} level{(openInstance.levels || []).length === 1 ? "" : "s"}</span>
-                {(s.understaffed_count || 0) > 0 && <span style={{ color: "#ef4444", fontWeight: 700 }}>{s.understaffed_count} under min</span>}
+                {(s.understaffed_count || 0) > 0 && <span style={{ color: "var(--status-error)", fontWeight: 700 }}>{s.understaffed_count} under min</span>}
               </div>
               {openInstance.description && (
                 <p style={{ marginTop: 10, marginBottom: 0, fontSize: 14, color: "var(--text-primary)", lineHeight: 1.6 }}>{openInstance.description}</p>
@@ -970,7 +970,7 @@ export default function TeamInstancesSection({ authToken, powerLevel, department
                   <span key={l.position} style={{
                     fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 6,
                     background: i === (openInstance.levels || []).length - 1 ? "rgba(245, 158, 11, 0.16)" : "var(--surface-container-low)",
-                    color: i === (openInstance.levels || []).length - 1 ? "#b45309" : "var(--text-secondary)",
+                    color: i === (openInstance.levels || []).length - 1 ? "var(--status-warning)" : "var(--text-secondary)",
                     border: "1px solid var(--border-light)",
                   }}>
                     {l.position}. {l.name}
@@ -984,7 +984,7 @@ export default function TeamInstancesSection({ authToken, powerLevel, department
                   <span className="material-symbols-outlined" style={{ fontSize: 17 }}>settings</span>
                   {editingInstance ? "Cancel" : "Edit instance"}
                 </button>
-                <button className="header-action-btn" style={{ color: "#ef4444" }} onClick={() => deleteInstance(openInstance)}>
+                <button className="header-action-btn" style={{ color: "var(--status-error)" }} onClick={() => deleteInstance(openInstance)}>
                   <span className="material-symbols-outlined">delete</span>
                 </button>
               </div>
@@ -1120,7 +1120,7 @@ export default function TeamInstancesSection({ authToken, powerLevel, department
                         <span>{people} {people === 1 ? "person" : "people"}</span>
                       </div>
                       {shortN > 0 && (
-                        <div style={{ marginTop: 8, fontSize: 10, fontWeight: 800, color: "#ef4444" }}>
+                        <div style={{ marginTop: 8, fontSize: 10, fontWeight: 800, color: "var(--status-error)" }}>
                           {shortN} TEAM{shortN === 1 ? "" : "S"} UNDER MINIMUM
                         </div>
                       )}
@@ -1342,7 +1342,7 @@ export default function TeamInstancesSection({ authToken, powerLevel, department
                 </div>
               )}
               {(s.understaffed_count || 0) > 0 && (
-                <div style={{ marginTop: 10, fontSize: 10, fontWeight: 800, color: "#ef4444" }}>
+                <div style={{ marginTop: 10, fontSize: 10, fontWeight: 800, color: "var(--status-error)" }}>
                   {s.understaffed_count} TEAM{s.understaffed_count === 1 ? "" : "S"} UNDER MINIMUM
                 </div>
               )}

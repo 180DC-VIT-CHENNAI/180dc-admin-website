@@ -100,7 +100,7 @@ const PillNav = ({
             {logo ? (
               <img src={logo} alt={logoAlt} />
             ) : (
-              <span style={{ fontWeight: 700, fontSize: '0.8rem', color: '#111' }}>180DC</span>
+              <span style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--text-primary)' }}>180DC</span>
             )}
           </a>
           <span className="pill-brand-text">

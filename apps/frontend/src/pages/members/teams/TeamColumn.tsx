@@ -82,7 +82,7 @@ export default function TeamColumn({
           <span style={{
             fontSize: 11, fontWeight: 800, padding: "1px 7px", borderRadius: 5, flexShrink: 0,
             background: isFull ? "rgba(239, 68, 68, 0.12)" : needsMore ? "rgba(239, 68, 68, 0.12)" : "var(--accent-bg)",
-            color: isFull || needsMore ? "#ef4444" : "var(--primary-green)",
+            color: isFull || needsMore ? "var(--status-error)" : "var(--primary-green)",
           }}>
             {sizeBadge(team)}
           </span>
@@ -99,7 +99,7 @@ export default function TeamColumn({
         </div>
 
         {needsMore && (
-          <div style={{ marginTop: 5, fontSize: 10, fontWeight: 800, color: "#ef4444", letterSpacing: "0.03em" }}>
+          <div style={{ marginTop: 5, fontSize: 10, fontWeight: 800, color: "var(--status-error)", letterSpacing: "0.03em" }}>
             NEEDS {deficit} MORE
           </div>
         )}

@@ -57,7 +57,7 @@ export default function RosterView({ instance }: { instance: any }) {
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <strong style={{ fontWeight: 600 }}>{r.name}</strong>
                         {teams > 1 && (
-                          <span title={`On ${teams} teams in this instance`} style={{ fontSize: 10, fontWeight: 800, padding: "1px 6px", borderRadius: 5, background: "rgba(59, 130, 246, 0.14)", color: "#3b82f6" }}>
+                           <span title={`On ${teams} teams in this instance`} style={{ fontSize: 10, fontWeight: 800, padding: "1px 6px", borderRadius: 5, background: "rgba(59, 130, 246, 0.14)", color: "var(--info, #3b82f6)" }}>
                             ×{teams}
                           </span>
                         )}
@@ -68,7 +68,7 @@ export default function RosterView({ instance }: { instance: any }) {
                       <span style={{
                         fontSize: 10, fontWeight: 800, textTransform: "uppercase", padding: "2px 8px", borderRadius: 6,
                         background: r.kind === "external" ? "rgba(245, 158, 11, 0.14)" : "var(--accent-bg)",
-                        color: r.kind === "external" ? "#b45309" : "var(--primary-green)",
+                        color: r.kind === "external" ? "var(--status-warning)" : "var(--primary-green)",
                       }}>
                         {r.kind === "external" ? "Outside" : r.role}
                       </span>

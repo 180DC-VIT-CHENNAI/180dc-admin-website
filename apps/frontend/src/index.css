@@ -53,6 +53,8 @@
   --status-error: #dc2626;
   --status-success: #16a34a;
   --status-warning: #d97706;
+  --info: #3b82f6;
+  --purple: #8b5cf6;
 
   /* ── Legacy aliases (for compatibility with existing component CSS) ──── */
   --cream: #fafafa;

@@ -44,7 +44,7 @@ export default function PersonCard({
       <div className="avatar-circle" style={{
         width: 26, height: 26, fontSize: 11, flexShrink: 0,
         background: isExternal ? "rgba(245, 158, 11, 0.22)" : "var(--accent-bg)",
-        color: isExternal ? "#b45309" : "var(--accent)",
+        color: isExternal ? "var(--status-warning)" : "var(--accent)",
       }}>
         {name[0]?.toUpperCase()}
       </div>
@@ -54,7 +54,7 @@ export default function PersonCard({
         </div>
         {subtitle && (
           <div style={{
-            fontSize: 11, color: isExternal ? "#b45309" : "var(--text-tertiary)",
+            fontSize: 11, color: isExternal ? "var(--status-warning)" : "var(--text-tertiary)",
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
           }}>
             {subtitle}
@@ -64,7 +64,7 @@ export default function PersonCard({
       {(placedOn || 0) > 0 && fromTeamId === null && (
         <span
           title={`Already on ${placedOn} team${placedOn === 1 ? "" : "s"} — drag again to add to another`}
-          style={{ fontSize: 10, fontWeight: 800, padding: "1px 6px", borderRadius: 5, background: "rgba(59, 130, 246, 0.16)", color: "#3b82f6", flexShrink: 0 }}
+          style={{ fontSize: 10, fontWeight: 800, padding: "1px 6px", borderRadius: 5, background: "rgba(59, 130, 246, 0.16)", color: "var(--info, #3b82f6)", flexShrink: 0 }}
         >
           ×{placedOn}
         </span>

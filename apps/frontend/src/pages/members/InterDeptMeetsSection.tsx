@@ -75,7 +75,7 @@ export default function InterDeptMeetsSection({ authToken, departments, powerLev
                 </button>
               )}
               {canManage && (
-                <button className="header-action-btn" style={{ color: "#ef4444" }} title="Delete Meet" onClick={async () => {
+                <button className="header-action-btn" style={{ color: "var(--status-error)" }} title="Delete Meet" onClick={async () => {
                   if (!confirm("Delete meet?")) return;
                   await fetch(apiUrl(`/api/inter-dept-meets/${m.id}`), { method: "DELETE", headers });
                   setMeets(meets.filter((x) => x.id !== m.id));

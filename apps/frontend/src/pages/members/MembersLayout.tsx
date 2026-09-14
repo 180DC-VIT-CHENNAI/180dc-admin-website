@@ -449,7 +449,7 @@ export default function MembersLayout() {
             <button className="header-action-btn" onClick={() => setShowNotifications(v => !v)}>
               <span className="material-symbols-outlined">notifications</span>
               {announcements.length > 0 && (
-                <span style={{ position: "absolute", top: 2, right: 2, width: 8, height: 8, borderRadius: "50%", background: "#ef4444" }} />
+                <span style={{ position: "absolute", top: 2, right: 2, width: 8, height: 8, borderRadius: "50%", background: "var(--status-error)" }} />
               )}
             </button>
             {showNotifications && (
@@ -476,7 +476,7 @@ export default function MembersLayout() {
           <button className="header-action-btn" onClick={toggleTheme}>
             <span className="material-symbols-outlined">{isDark ? "light_mode" : "dark_mode"}</span>
           </button>
-          <button className="header-action-btn" onClick={() => setShowLogoutConfirm(true)} title="Logout" style={{ color: "#ef4444" }}>
+          <button className="header-action-btn" onClick={() => setShowLogoutConfirm(true)} title="Logout" style={{ color: "var(--status-error)" }}>
             <span className="material-symbols-outlined">logout</span>
           </button>
           <div className="user-profile-trigger" onClick={() => setActivePanel("profile")}>
@@ -536,7 +536,7 @@ export default function MembersLayout() {
               <span className="material-symbols-outlined">{sidebarCollapsed ? "side_navigation" : "menu_open"}</span>
               {!sidebarCollapsed && <span>{sidebarCollapsed ? "Expand" : "Collapse"} Sidebar</span>}
             </button>
-            <button className="nav-item" onClick={() => setShowLogoutConfirm(true)} style={{ color: "#ef4444" }}>
+            <button className="nav-item" onClick={() => setShowLogoutConfirm(true)} style={{ color: "var(--status-error)" }}>
               <span className="material-symbols-outlined">logout</span>
               {!sidebarCollapsed && <span>Logout</span>}
             </button>
@@ -555,9 +555,9 @@ export default function MembersLayout() {
               <div className="dashboard-grid">
                 {[
                   { icon: "account_tree", label: "Active Projects", value: stats.projectsCount, bg: "rgba(141, 198, 63, 0.15)", color: "var(--primary-green)" },
-                  { icon: "groups", label: "Total Members", value: stats.membersCount, bg: "rgba(59, 130, 246, 0.15)", color: "#3b82f6" },
-                  { icon: "event_available", label: "Upcoming Meets", value: stats.upcomingMeetsCount, bg: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" },
-                  { icon: "campaign", label: "Announcements", value: stats.announcementsCount, bg: "rgba(139, 92, 246, 0.15)", color: "#8b5cf6" },
+                  { icon: "groups", label: "Total Members", value: stats.membersCount, bg: "rgba(59, 130, 246, 0.15)", color: "var(--info, #3b82f6)" },
+                  { icon: "event_available", label: "Upcoming Meets", value: stats.upcomingMeetsCount, bg: "rgba(245, 158, 11, 0.15)", color: "var(--status-warning)" },
+                  { icon: "campaign", label: "Announcements", value: stats.announcementsCount, bg: "rgba(139, 92, 246, 0.15)", color: "var(--purple, #8b5cf6)" },
                 ].map((kpi) => (
                   <div key={kpi.label} className="kpi-card">
                     <div className="kpi-header">
@@ -594,8 +594,8 @@ export default function MembersLayout() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     {[
                       { label: "Executive Board", pct: 12, color: "var(--primary-green)" },
-                      { label: "Lead Consultants", pct: 28, color: "#3b82f6" },
-                      { label: "General Members", pct: 60, color: "#f59e0b" },
+                      { label: "Lead Consultants", pct: 28, color: "var(--info, #3b82f6)" },
+                      { label: "General Members", pct: 60, color: "var(--status-warning)" },
                     ].map((bar) => (
                       <div key={bar.label} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700 }}>
@@ -842,7 +842,7 @@ export default function MembersLayout() {
                       <div style={{ marginTop: 12, whiteSpace: "pre-wrap", color: "var(--text-secondary)", fontSize: 14 }}>{stripHtmlTags(a.content)}</div>
                     </div>
                     {powerLevel >= 100 && (
-                      <button className="header-action-btn" style={{ color: "#ef4444" }} onClick={async () => {
+                      <button className="header-action-btn" style={{ color: "var(--status-error)" }} onClick={async () => {
                         if (!confirm("Delete this announcement?")) return;
                         await fetch(apiUrl(`/api/announcements/${a.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
                         setAnnouncements(announcements.filter((x: any) => x.id !== a.id));
@@ -1012,7 +1012,7 @@ export default function MembersLayout() {
         <div style={{ position: "fixed", inset: 0, zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
           <div onClick={() => setShowLogoutConfirm(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }} />
           <div style={{ position: "relative", maxWidth: 400, width: "100%", background: "var(--bg-card)", borderRadius: 24, border: "1px solid var(--border-light)", boxShadow: "var(--shadow-lg)", padding: "2rem", textAlign: "center" }}>
-            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(239,68,68,0.12)", color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem" }}>
+            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(239,68,68,0.12)", color: "var(--status-error)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.25rem" }}>
               <span className="material-symbols-outlined" style={{ fontSize: 28 }}>logout</span>
             </div>
             <h3 style={{ margin: "0 0 8px", fontSize: "1.15rem", fontWeight: 800 }}>Sign out?</h3>
@@ -1021,7 +1021,7 @@ export default function MembersLayout() {
             </p>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn outline" style={{ flex: 1, justifyContent: "center", padding: "0.75rem" }} onClick={() => setShowLogoutConfirm(false)}>Cancel</button>
-              <button className="btn" style={{ flex: 1, justifyContent: "center", padding: "0.75rem", background: "#ef4444", border: "2px solid #1a1a1a", boxShadow: "3px 3px 0 #1a1a1a" }} onClick={async () => {
+              <button className="btn" style={{ flex: 1, justifyContent: "center", padding: "0.75rem", background: "var(--status-error)", border: "2px solid var(--text-primary)", boxShadow: "3px 3px 0 var(--text-primary)" }} onClick={async () => {
                 setShowLogoutConfirm(false);
                 sessionStorage.clear();
                 sessionStorage.setItem("loggedOut", "true");

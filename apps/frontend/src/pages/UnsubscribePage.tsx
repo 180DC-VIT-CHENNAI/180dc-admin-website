@@ -113,7 +113,7 @@ export default function UnsubscribePage() {
           <div
             style={{
               width: 64, height: 64, borderRadius: "50%",
-              background: status === "success" || status === "already" ? "#22c55e" : "var(--accent)",
+              background: status === "success" || status === "already" ? "var(--status-success)" : "var(--accent)",
               color: "white",
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 28, fontWeight: 800, margin: "0 auto 1.25rem",
@@ -150,7 +150,7 @@ export default function UnsubscribePage() {
               <button
                 type="submit"
                 style={{
-                  display: "inline-block", padding: "10px 28px", background: "#ef4444", color: "#fff",
+                  display: "inline-block", padding: "10px 28px", background: "var(--status-error)", color: "#fff",
                   border: "none", borderRadius: 50, fontSize: 13, fontWeight: 800,
                   textTransform: "uppercase" as const, letterSpacing: 1, cursor: "pointer",
                 }}

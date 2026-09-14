@@ -250,7 +250,7 @@ export default function AdminConsole({
              <div className="admin-sub-label">Daily Email Quota</div>
              <div style={{ flex: 1 }}>
                 <div className="admin-progress-bar">
-                   <div className="admin-progress-fill" style={{ width: `${Math.min(stats.todayEmailCount, 100)}%`, background: stats.todayEmailCount > 90 ? "#ef4444" : "var(--primary-green)" }} />
+                   <div className="admin-progress-fill" style={{ width: `${Math.min(stats.todayEmailCount, 100)}%`, background: stats.todayEmailCount > 90 ? "var(--status-error)" : "var(--primary-green)" }} />
                 </div>
                 <div className="admin-progress-text">{stats.todayEmailCount} / 100 Sent Today</div>
              </div>
@@ -264,7 +264,7 @@ export default function AdminConsole({
                    </span>
                    <span style={{
                      width: 10, height: 10, borderRadius: "50%",
-                     background: maintenanceMode?.enabled ? "#ef4444" : "var(--primary-green)",
+                     background: maintenanceMode?.enabled ? "var(--status-error)" : "var(--primary-green)",
                      display: "inline-block",
                    }} />
                 </div>
@@ -597,10 +597,10 @@ export default function AdminConsole({
 
   function renderDangerZone() {
     return (
-      <div className="dashboard-card" style={{ gridColumn: "1 / -1", borderColor: "#ef4444" }}>
+      <div className="dashboard-card" style={{ gridColumn: "1 / -1", borderColor: "var(--status-error)" }}>
         <div className="section-header">
-           <span className="material-symbols-outlined" style={{ color: "#ef4444" }}>warning</span>
-           <h3 style={{ color: "#ef4444" }}>Danger Zone</h3>
+           <span className="material-symbols-outlined" style={{ color: "var(--status-error)" }}>warning</span>
+           <h3 style={{ color: "var(--status-error)" }}>Danger Zone</h3>
         </div>
         <div className="admin-grid-2">
           <div className="admin-sub-card">

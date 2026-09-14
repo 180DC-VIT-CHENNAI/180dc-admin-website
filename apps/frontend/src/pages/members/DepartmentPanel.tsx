@@ -129,7 +129,7 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
                     if (data.success) alert(`Email sent.`);
                     else alert(data.error);
                   }} disabled={sendingEmail === m.id}><span className="material-symbols-outlined">mail</span></button>
-                  <button className="header-action-btn" style={{ color: "#ef4444" }} onClick={async () => {
+                  <button className="header-action-btn" style={{ color: "var(--status-error)" }} onClick={async () => {
                     if (!confirm("Delete meet?")) return;
                     await fetch(apiUrl(`/api/departments/${departmentId}/meets/${m.id}`), { method: "DELETE", headers });
                     setMeets(meets.filter((x) => x.id !== m.id));
@@ -179,12 +179,12 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
                      <span style={{ 
                        fontSize: 10, fontWeight: 800, textTransform: "uppercase", padding: "2px 8px", borderRadius: 4,
                        background: inst.priority === "high" || inst.priority === "urgent" ? "rgba(239, 68, 68, 0.1)" : "rgba(59, 130, 246, 0.1)",
-                       color: inst.priority === "high" || inst.priority === "urgent" ? "#ef4444" : "#3b82f6"
+                       color: inst.priority === "high" || inst.priority === "urgent" ? "var(--status-error)" : "var(--info, #3b82f6)"
                      }}>{inst.priority}</span>
                   </div>
                   <div style={{ fontSize: 13, color: "var(--text-secondary)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{inst.content}</div>
                 </div>
-                <button className="header-action-btn" style={{ color: "#ef4444", marginLeft: 12 }} onClick={async () => {
+                <button className="header-action-btn" style={{ color: "var(--status-error)", marginLeft: 12 }} onClick={async () => {
                   if (!confirm("Delete instruction?")) return;
                   await fetch(apiUrl(`/api/departments/${departmentId}/instructions/${inst.id}`), { method: "DELETE", headers });
                   setInstructions(instructions.filter((x) => x.id !== inst.id));

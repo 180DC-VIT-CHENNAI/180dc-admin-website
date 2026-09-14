@@ -161,14 +161,14 @@ export default function ProjectsSection({ authToken, departments, allUsers, powe
                         <span style={{ 
                           fontSize: 10, fontWeight: 800, textTransform: "uppercase", padding: "2px 10px", borderRadius: 20,
                           background: p.status === "completed" ? "rgba(16, 185, 129, 0.1)" : "rgba(245, 158, 11, 0.1)",
-                          color: p.status === "completed" ? "#10b981" : "#f59e0b",
+                          color: p.status === "completed" ? "var(--status-success)" : "var(--status-warning)",
                           border: `1px solid ${p.status === "completed" ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 158, 11, 0.2)"}`
                         }}>{p.status}</span>
                       </div>
                       <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 6, display: "flex", gap: 16, flexWrap: "wrap" }}>
                         {p.company_org && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span className="material-symbols-outlined" style={{ fontSize: 16 }}>business</span>{p.company_org}</span>}
                         {p.year && <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span className="material-symbols-outlined" style={{ fontSize: 16 }}>calendar_today</span>{p.year}</span>}
-                        {p.deadline && <span style={{ display: "flex", alignItems: "center", gap: 4, color: new Date(p.deadline) < new Date() && p.status !== "completed" ? "#ef4444" : "inherit" }}><span className="material-symbols-outlined" style={{ fontSize: 16 }}>alarm</span>Due: {p.deadline.slice(0, 10)}</span>}
+                        {p.deadline && <span style={{ display: "flex", alignItems: "center", gap: 4, color: new Date(p.deadline) < new Date() && p.status !== "completed" ? "var(--status-error)" : "inherit" }}><span className="material-symbols-outlined" style={{ fontSize: 16 }}>alarm</span>Due: {p.deadline.slice(0, 10)}</span>}
                       </div>
                       <div style={{ marginTop: 12, display: "flex", gap: 6, flexWrap: "wrap" }}>
                         {p.departments?.map((d: any) => (
@@ -188,7 +188,7 @@ export default function ProjectsSection({ authToken, departments, allUsers, powe
                         }}>Reopen</button>
                       )}
                       {isBoard && (
-                        <button className="header-action-btn" style={{ color: "#ef4444" }} onClick={async () => {
+                        <button className="header-action-btn" style={{ color: "var(--status-error)" }} onClick={async () => {
                           if (!confirm(`Delete project "${p.name}"?`)) return;
                           const res = await fetch(apiUrl(`/api/projects/${p.id}`), { method: "DELETE", headers: { Authorization: `Bearer ${authToken}` } });
                           const data = await res.json();

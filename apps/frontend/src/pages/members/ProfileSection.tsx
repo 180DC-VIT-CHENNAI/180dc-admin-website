@@ -112,12 +112,12 @@ export default function ProfileSection({ authToken, email, powerLevel, departmen
             : "rgba(16, 185, 129, 0.1)",
           border: `1px solid ${
             statusMsg.toLowerCase().includes("fail") || statusMsg.toLowerCase().includes("error")
-              ? "#ef4444"
-              : "#10b981"
+              ? "var(--status-error)"
+              : "var(--status-success)"
           }`,
           color: statusMsg.toLowerCase().includes("fail") || statusMsg.toLowerCase().includes("error")
-            ? "#ef4444"
-            : "#10b981",
+            ? "var(--status-error)"
+            : "var(--status-success)",
           fontSize: 14,
           fontWeight: 600,
           display: "flex",
@@ -166,8 +166,8 @@ export default function ProfileSection({ authToken, email, powerLevel, departmen
                  Power {powerLevel}
                </span>
                <span style={{ 
-                 padding: "4px 12px", borderRadius: 20, background: "rgba(16, 185, 129, 0.1)", 
-                 fontSize: 12, fontWeight: 700, color: "#10b981",
+                  padding: "4px 12px", borderRadius: 20, background: "rgba(16, 185, 129, 0.1)", 
+                  fontSize: 12, fontWeight: 700, color: "var(--status-success)",
                  display: "flex", alignItems: "center", gap: 4
                }}>
                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>verified</span>
@@ -190,7 +190,7 @@ export default function ProfileSection({ authToken, email, powerLevel, departmen
                   <div style={{ fontWeight: 700, fontSize: 14 }}>Token-based Login</div>
                   <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>Secure API & session access</div>
                 </div>
-                <span style={{ fontSize: 10, fontWeight: 800, background: "#10b981", color: "white", padding: "2px 8px", borderRadius: 4, textTransform: "uppercase" }}>Primary</span>
+                  <span style={{ fontSize: 10, fontWeight: 800, background: "var(--status-success)", color: "white", padding: "2px 8px", borderRadius: 4, textTransform: "uppercase" }}>Primary</span>
               </div>
             </div>
 
@@ -210,7 +210,7 @@ export default function ProfileSection({ authToken, email, powerLevel, departmen
               </div>
               <div style={{ marginTop: "1rem" }}>
                 {oauthEnabled ? (
-                  <button onClick={handleDisconnect} className="btn outline" disabled={disconnecting} style={{ width: "100%", padding: "8px", fontSize: 13, borderColor: "#ef4444", color: "#ef4444" }}>
+                  <button onClick={handleDisconnect} className="btn outline" disabled={disconnecting} style={{ width: "100%", padding: "8px", fontSize: 13, borderColor: "var(--status-error)", color: "var(--status-error)" }}>
                     {disconnecting ? "Unlinking..." : "Unlink Google Account"}
                   </button>
                 ) : (
@@ -267,7 +267,7 @@ export default function ProfileSection({ authToken, email, powerLevel, departmen
           </div>
 
           {rotateError && (
-            <div style={{ marginTop: "1rem", color: "#ef4444", fontSize: 13, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ marginTop: "1rem", color: "var(--status-error)", fontSize: 13, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>info</span>
               {rotateError}
             </div>

@@ -33,7 +33,7 @@ export default function InstructionsSection({ authToken, departmentId }: { authT
               <span style={{ 
                 fontSize: 10, fontWeight: 800, textTransform: "uppercase", padding: "4px 10px", borderRadius: 20,
                 background: inst.priority === "high" ? "rgba(239, 68, 68, 0.1)" : "rgba(59, 130, 246, 0.1)",
-                color: inst.priority === "high" ? "#ef4444" : "#3b82f6",
+                color: inst.priority === "high" ? "var(--status-error)" : "var(--info, #3b82f6)",
                 border: `1px solid ${inst.priority === "high" ? "#ef444433" : "#3b82f633"}`
               }}>
                 {inst.priority}

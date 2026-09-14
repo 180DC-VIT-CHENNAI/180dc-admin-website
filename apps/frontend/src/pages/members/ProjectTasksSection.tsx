@@ -62,7 +62,7 @@ export default function ProjectTasksSection({ authToken, projectId, projectStatu
             opacity: t.status === "completed" ? 0.6 : 1
           }}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: 1 }}>
-              <span className="material-symbols-outlined" style={{ color: t.status === "completed" ? "#10b981" : "var(--text-tertiary)", fontSize: 20 }}>
+              <span className="material-symbols-outlined" style={{ color: t.status === "completed" ? "var(--status-success)" : "var(--text-tertiary)", fontSize: 20 }}>
                 {t.status === "completed" ? "check_circle" : "radio_button_unchecked"}
               </span>
               <div>
