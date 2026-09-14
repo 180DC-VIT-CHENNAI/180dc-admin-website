@@ -1,0 +1,148 @@
+/* ═══ Cosmic 3D Gallery Viewport & HUD ═════════════════════════════════════
+   Cinematic presentation adhering to 180DC design tokens.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.cosmic-gallery-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: calc(100vh - 220px);
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  background: var(--surface-canvas);
+  transition: background 300ms ease;
+  z-index: 1;
+  transform: none;
+}
+
+.cosmic-gallery-viewport:active {
+  cursor: grabbing;
+}
+
+.cosmic-gallery-viewport.is-hovering {
+  cursor: pointer;
+}
+
+.cosmic-gallery-viewport canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  outline: none;
+}
+
+/* Hide canvas when modal is open to prevent 3D content showing through */
+.cosmic-gallery-viewport.modal-open canvas {
+  display: none !important;
+}
+
+.cosmic-gallery-viewport.modal-open {
+  pointer-events: none;
+}
+
+/* Subtle Cosmic Vignettes — adapt to theme */
+.cosmic-gallery-viewport::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 120px;
+  background: linear-gradient(to bottom, var(--surface-canvas) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.9;
+}
+
+.cosmic-gallery-viewport::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 120px;
+  background: linear-gradient(to top, var(--surface-canvas) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.95;
+}
+
+/* Hover HUD Badge */
+.cosmic-hover-badge {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 22px;
+  border-radius: var(--radius-xl);
+  background: var(--accent-soft);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border-green);
+  box-shadow:
+    0 12px 36px var(--shadow-ambient),
+    0 0 20px var(--accent-glow);
+  animation: popHoverBadge 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  max-width: 90vw;
+}
+
+@keyframes popHoverBadge {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+.hover-badge-category {
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-primary);
+}
+
+.hover-badge-title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.hover-badge-date {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+
+/* ── Mobile Tweaks ───────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .cosmic-gallery-viewport {
+    min-height: calc(100vh - 200px);
+  }
+
+  .cosmic-hover-badge {
+    bottom: 20px;
+    padding: 8px 16px;
+  }
+
+  .hover-badge-title {
+    font-size: 0.875rem;
+  }
+}

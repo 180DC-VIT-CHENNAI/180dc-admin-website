@@ -6,6 +6,7 @@ interface Props {
   fallback?: ReactNode;
   rootMargin?: string;
   style?: CSSProperties;
+  sectionId?: string;
 }
 
 export default function LazyReveal({
@@ -13,6 +14,7 @@ export default function LazyReveal({
   fallback = null,
   rootMargin = "400px",
   style,
+  sectionId,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -32,6 +34,18 @@ export default function LazyReveal({
     observer.observe(el);
     return () => observer.disconnect();
   }, [rootMargin]);
+
+  useEffect(() => {
+    if (!sectionId) return;
+    const handler = (e: Event) => {
+      const target = (e as CustomEvent).detail;
+      if (target === `#${sectionId}`) {
+        setVisible(true);
+      }
+    };
+    window.addEventListener("force-mount-section", handler);
+    return () => window.removeEventListener("force-mount-section", handler);
+  }, [sectionId]);
 
   return (
     <div ref={ref} style={style}>
