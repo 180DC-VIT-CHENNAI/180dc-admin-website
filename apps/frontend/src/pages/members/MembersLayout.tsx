@@ -49,6 +49,21 @@ function PomodoroTimer() {
     };
   }, [mode, time]);
 
+  const playBeep = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 800;
+      gain.gain.value = 0.3;
+      osc.start();
+      osc.stop(ctx.currentTime + 0.5);
+      setTimeout(() => ctx.close(), 600);
+    } catch {}
+  }, []);
+
   const start = useCallback(() => {
     if (running) return;
     setRunning(true);
@@ -57,6 +72,7 @@ function PomodoroTimer() {
         if (prev <= 1) {
           clearInterval(intervalRef.current!);
           setRunning(false);
+          playBeep();
           if (mode === "work") {
             setSessions((s) => s + 1);
             setMode("break");
@@ -68,7 +84,7 @@ function PomodoroTimer() {
         return prev - 1;
       });
     }, 1000);
-  }, [running, mode]);
+  }, [running, mode, playBeep]);
 
   const pause = useCallback(() => { clearInterval(intervalRef.current!); setRunning(false); }, []);
   const reset = useCallback(() => { clearInterval(intervalRef.current!); setRunning(false); setMode("work"); setTime(WORK); }, []);
