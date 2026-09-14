@@ -25,6 +25,155 @@ import { stripHtmlTags } from "../../lib/sanitize";
 import { DEPT_NAMES } from "./constants";
 import "./MembersLayout.css";
 
+function PomodoroTimer() {
+  const [mode, setMode] = useState<"work" | "break">("work");
+  const [time, setTime] = useState(25 * 60);
+  const [running, setRunning] = useState(false);
+  const [sessions, setSessions] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const WORK = 25 * 60;
+  const BREAK = 5 * 60;
+  const total = mode === "work" ? WORK : BREAK;
+  const progress = ((total - time) / total) * 100;
+  const mins = Math.floor(time / 60);
+  const secs = time % 60;
+  const circ = 2 * Math.PI * 54;
+  const offset = circ - (progress / 100) * circ;
+  const color = mode === "work" ? "var(--primary-green)" : "#f59e0b";
+
+  const start = () => {
+    if (running) return;
+    setRunning(true);
+    intervalRef.current = setInterval(() => {
+      setTime((prev) => {
+        if (prev <= 1) {
+          clearInterval(intervalRef.current!);
+          setRunning(false);
+          if (mode === "work") {
+            setSessions((s) => s + 1);
+            setMode("break");
+            return BREAK;
+          }
+          setMode("work");
+          return WORK;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const pause = () => { clearInterval(intervalRef.current!); setRunning(false); };
+  const reset = () => { clearInterval(intervalRef.current!); setRunning(false); setMode("work"); setTime(WORK); };
+
+  return (
+    <div className="dashboard-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "24px 22px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, alignSelf: "flex-start" }}>
+        <span className="material-symbols-outlined" style={{ color: "var(--primary-green)", fontSize: 20 }}>timer</span>
+        <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>Pomodoro Timer</h2>
+      </div>
+
+      <div style={{ position: "relative", width: 130, height: 130 }}>
+        <svg width="130" height="130" style={{ transform: "rotate(-90deg)" }}>
+          <circle cx="65" cy="65" r="54" fill="none" stroke="var(--surface-container-high)" strokeWidth="8" />
+          <circle cx="65" cy="65" r="54" fill="none" stroke={color} strokeWidth="8" strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset} style={{ transition: "stroke-dashoffset 0.5s ease, stroke 0.3s ease" }} />
+        </svg>
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ fontSize: 32, fontWeight: 700, fontVariantNumeric: "tabular-nums", letterSpacing: 1, color }}>
+            {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
+          </span>
+          <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "1px", color: "var(--text-tertiary)", marginTop: 2 }}>
+            {mode === "work" ? "Focus" : "Break"}
+          </span>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        {!running ? (
+          <button onClick={start} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 20px", borderRadius: 10, border: "none", background: color, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "opacity 0.2s" }} onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.85")} onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>play_arrow</span> Start
+          </button>
+        ) : (
+          <button onClick={pause} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 20px", borderRadius: 10, border: "none", background: "var(--surface-container-high)", color: "inherit", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "opacity 0.2s" }} onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.85")} onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>pause</span> Pause
+          </button>
+        )}
+        <button onClick={reset} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, border: "1px solid var(--border-light)", background: "transparent", color: "inherit", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "opacity 0.2s" }} onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")} onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>restart_alt</span>
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 16, fontSize: 12, color: "var(--text-secondary)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 14, color: "var(--primary-green)" }}>check_circle</span>
+          <span style={{ fontWeight: 600 }}>{sessions}</span> sessions
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 14, color: "#f59e0b" }}>local_fire_department</span>
+          <span style={{ fontWeight: 600 }}>{sessions * 25}</span> min focused
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuoteOfTheDay() {
+  const [quote, setQuote] = useState<{ content: string; author: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchQuote = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("https://api.quotable.io/random?minLength=80&maxLength=280");
+      if (res.ok) {
+        const data = await res.json();
+        setQuote({ content: data.content, author: data.author });
+      }
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchQuote(); }, []);
+
+  return (
+    <div className="members-grid" style={{ marginTop: "1.5rem" }}>
+      <div className="dashboard-card" style={{ gridColumn: "1 / -1", padding: "28px 32px", background: "linear-gradient(135deg, var(--surface) 0%, var(--surface-container-high) 100%)", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -20, right: -10, fontSize: 120, fontWeight: 900, color: "var(--primary-green)", opacity: 0.04, lineHeight: 1, pointerEvents: "none" }}>"</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span className="material-symbols-outlined" style={{ color: "var(--primary-green)", fontSize: 20 }}>format_quote</span>
+            <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>Quote of the Day</h2>
+          </div>
+          <button onClick={fetchQuote} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 14px", borderRadius: 8, border: "1px solid var(--border-light)", background: "transparent", color: "var(--text-secondary)", fontSize: 12, fontWeight: 500, cursor: "pointer", transition: "all 0.2s" }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--primary-green)"; e.currentTarget.style.color = "var(--primary-green)"; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-light)"; e.currentTarget.style.color = "var(--text-secondary)"; }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>refresh</span>
+            New Quote
+          </button>
+        </div>
+        {loading && !quote ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0.5rem 0" }}>
+            <div style={{ width: 20, height: 20, border: "2px solid var(--primary-green)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+            <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Fetching inspiration...</span>
+          </div>
+        ) : quote ? (
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <p style={{ margin: 0, fontSize: 17, lineHeight: 1.65, fontWeight: 500, fontStyle: "italic", color: "var(--text-primary)", maxWidth: "85%" }}>
+              &ldquo;{quote.content}&rdquo;
+            </p>
+            <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--primary-green)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff" }}>
+                {quote.author.charAt(0)}
+              </div>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>&mdash; {quote.author}</span>
+            </div>
+          </div>
+        ) : (
+          <p style={{ fontSize: 13, color: "var(--text-tertiary)", fontStyle: "italic" }}>Could not load quote. Try refreshing.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function MembersLayout() {
   const { isDark, toggle: toggleTheme } = useTheme();
   const { userId: clerkUserId, getToken, isLoaded: clerkLoaded } = useAuth();
@@ -120,12 +269,6 @@ export default function MembersLayout() {
       clerk.signOut().catch(() => {});
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Day index (Mon=0..Sun=6) in IST for the Club Activity chart
-  const todayIndex = (() => {
-    const day = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Kolkata", weekday: "short" }).format(new Date());
-    return { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 }[day] ?? 3;
-  })();
 
   const handleClickOutsideNotif = useCallback((e: MouseEvent) => {
     if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
@@ -572,20 +715,7 @@ export default function MembersLayout() {
               </div>
 
               <div className="members-grid" style={{ marginTop: "1.5rem" }}>
-                <div className="dashboard-card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                       <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 500 }}>Club Activity</h2>
-                       <span style={{ fontSize: 11, color: "var(--text-tertiary)", fontWeight: 700, textTransform: "uppercase" }}>Last 7 Days</span>
-                   </div>
-                    <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 100, padding: "10px 0" }}>
-                       {[35, 60, 40, 85, 55, 75, 50].map((h, i) => (
-                         <div key={i} style={{ flex: 1, height: `${h}%`, background: i === todayIndex ? "var(--primary-green)" : "var(--surface-container-high)", borderRadius: "4px 4px 0 0", transition: "height 0.3s" }} />
-                       ))}
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--text-tertiary)", fontWeight: 800 }}>
-                       <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
-                    </div>
-                </div>
+                <PomodoroTimer />
 
                 <div className="dashboard-card" style={{ padding: "20px 22px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
@@ -699,6 +829,8 @@ export default function MembersLayout() {
                   </div>
                 </div>
               </div>
+
+              <QuoteOfTheDay />
 
               {/* Recent Announcements */}
               <div className="members-grid" style={{ marginTop: "1.5rem" }}>
