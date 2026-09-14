@@ -5,3 +5,14 @@ allowBuilds:
   esbuild: true
   sharp: true
   workerd: true
+overrides:
+  "@xmldom/xmldom": ">=0.8.15"
+  "undici": ">=6.28.0"
+  "postcss": ">=8.5.23"
+  "sharp": ">=0.35.4"
+  "esbuild": ">=0.24.3"
+  "ws": ">=8.20.1"
+  "vite": ">=8.0.16"
+  "baseline-browser-mapping": ">=2.11.0"
+  "brace-expansion": ">=5.0.9"
+  "browserslist": ">=4.28.7"

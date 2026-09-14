@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import DOMPurify from "dompurify";
 import { apiUrl } from "../../lib/api";
 
 function escapeHtml(str: string): string {
@@ -114,7 +115,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
         return;
       }
 
-      setExtractedContent(html);
+      setExtractedContent(DOMPurify.sanitize(html));
       setSuggestedTitle(suggestedTitle);
       setSuggestedDescription(suggestedDescription);
 
@@ -206,7 +207,7 @@ export default function CaseStudySection({ authToken, powerLevel }: { authToken:
     setTag(cs.tag === "Uncategorized" ? "" : (cs.tag || ""));
     setTitle(cs.title === "Untitled" ? "" : (cs.title || ""));
     setDescription(cs.description || "");
-    setExtractedContent(cs.content || "");
+    setExtractedContent(DOMPurify.sanitize(cs.content || ""));
     setSourceFileUrl(cs.source_file_url || "");
     setSourceFileKey("");
     setSourceFileName(cs.source_file_url ? "Source document" : "");

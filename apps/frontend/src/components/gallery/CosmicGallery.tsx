@@ -168,7 +168,6 @@ export default function CosmicGallery({
             return;
           }
           const tex = new THREE.CanvasTexture(bitmap);
-          tex.flipY = false;
           tex.colorSpace = THREE.SRGBColorSpace;
           tex.minFilter = THREE.LinearMipmapLinearFilter;
           tex.generateMipmaps = true;
@@ -335,12 +334,12 @@ export default function CosmicGallery({
     window.addEventListener("resize", handleResize);
 
     let lastHoveredId: string | null = null;
-    const clock = new THREE.Clock();
+    let startTime = performance.now();
 
     const animate = () => {
       if (disposed) return;
       animationFrameId = requestAnimationFrame(animate);
-      const t = clock.getElapsedTime();
+      const t = (performance.now() - startTime) * 0.001;
 
       if (!isDragging) {
         if (Math.abs(velocity) > 0.00008) {
