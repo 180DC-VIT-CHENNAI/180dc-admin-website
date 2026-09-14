@@ -1,0 +1,94 @@
+# Implementation Plan — 180DC VIT Chennai Platform
+
+This plan describes the target state and a safe path to reach it. It is not a fixed schedule; it is a dependency map for agents and maintainers.
+
+## Target state
+
+The platform should have:
+
+1. A clean separation of concerns:
+   - `admin-api` continues to serve the members portal and admin functions.
+   - `public-api` becomes a dedicated public API (newsletter, consulting, content, completed projects).
+   - `job-processor` becomes a real queue consumer for email batching, bulk operations, and background tasks.
+2. A proper database package with versioned, non-destructive migrations.
+3. A unit and integration test suite.
+4. Amazon SES for bulk newsletter sends with Resend as fallback.
+5. A documented public API surface and stable environment contracts.
+6. Reduced single-file size of `apps/admin-api/index.ts` by splitting into routers/modules.
+
+## Current state prerequisites
+
+Before any large restructuring, all existing code and data must be preserved:
+
+- Token-based auth in `admin_tokens`.
+- D1 schema in `apps/admin-api/index.ts`.
+- R2 keys and bucket names.
+- Public routes used by the frontend landing page.
+- Frontend `sessionStorage` and `localStorage` keys.
+- Wrangler bindings and route patterns.
+
+## Migration roadmap
+
+### Phase 0 — Stabilize documentation and tests
+
+- Keep all existing behavior.
+- Add documentation (`AGENTS.md`, this tree).
+- Add a minimal test harness and a few integration tests for critical paths (login, rate limits, email quota).
+
+### Phase 1 — Safe schema and code hygiene
+
+- Remove or replace `packages/db/schema.sql` with a migration directory that matches `admin-api/index.ts`.
+- Split `apps/admin-api/index.ts` into logical modules (auth, members, projects, meets, newsletter, etc.) without changing routes.
+- Add a central route table and auth map.
+
+### Phase 2 — Public API extraction
+
+- Move public endpoints to `apps/public-api/index.ts`.
+- Add `wrangler.toml` routes for `public-api`.
+- Update `apps/frontend/functions/_middleware.ts` to route public calls to `public-api` while preserving the current `admin-api` proxy for a compatibility window.
+- Add compatibility contract tests.
+
+### Phase 3 — Job processor
+
+- Replace `queueOrSendMeetEmails` pending/D1 approach with real Queue messages.
+- Implement `job-processor` to consume meet and bulk email jobs.
+- Add retry logic and dead-letter handling.
+
+### Phase 4 — Bulk email with Amazon SES
+
+- Implement `architecture/NEWSLETTER_BULK_SEND_DECISION.md`.
+- Add SES credentials and sender domain.
+- Keep Resend as transactional fallback.
+
+### Phase 5 — Continuous improvement
+
+- Add comprehensive tests.
+- Refactor frontend to consume new public API cleanly.
+- Introduce a shared validation library.
+
+## Exit criteria per phase
+
+| Phase | Done when |
+|-------|-----------|
+| 0 | Docs merged; at least three critical integration tests pass in CI. |
+| 1 | `packages/db/schema.sql` replaced; `admin-api` split into modules; all existing routes still pass. |
+| 2 | `public-api` serves public routes; `admin-api` still proxies them during the transition; no frontend breakage. |
+| 3 | Queue producer sends messages; `job-processor` consumes and sends emails; `pending_emails` table can be deprecated. |
+| 4 | Newsletter bulk send uses SES with Resend fallback; feature flag controlled. |
+| 5 | 80% of API endpoints covered by automated tests; frontend uses new public API. |
+
+## Risk register
+
+| Risk | Mitigation |
+|------|------------|
+| Splitting `admin-api/index.ts` introduces regressions | Do it module by module; keep the same Hono app and route strings; add contract tests before and after. |
+| Moving public routes to `public-api` breaks the landing page | Keep `admin-api` public endpoints as deprecated aliases for one release; test all landing-page fetches. |
+| Schema changes break deployed D1 | Every migration is idempotent and `ALTER TABLE ... ADD COLUMN` in a `try/catch`; never drop columns/tables used by current code. |
+| Email quota changes cause missed notifications | Implement queue + job processor before changing email provider; preserve 100/day cap logic. |
+| Losing `admin_tokens` state | Tokens are D1 rows; keep the table and auth middleware intact across all phases. |
+
+## Current branch strategy
+
+- `main` remains deployable at all times.
+- Feature work for each phase should happen on a dedicated branch and be merged via pull request.
+- Documentation updates (like this tree) live on `docs/agent-first` and merge first.
