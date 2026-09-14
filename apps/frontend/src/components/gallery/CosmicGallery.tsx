@@ -47,6 +47,9 @@ export default function CosmicGallery({
     const container = containerRef.current;
     if (!container) return;
 
+    galleryTextureCache.forEach((tex) => tex.dispose());
+    galleryTextureCache.clear();
+
     let animationFrameId: number;
     let disposed = false;
     const width = container.clientWidth || window.innerWidth;
@@ -168,6 +171,7 @@ export default function CosmicGallery({
             return;
           }
           const tex = new THREE.CanvasTexture(bitmap);
+          tex.flipY = false;
           tex.colorSpace = THREE.SRGBColorSpace;
           tex.minFilter = THREE.LinearMipmapLinearFilter;
           tex.generateMipmaps = true;
