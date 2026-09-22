@@ -282,6 +282,26 @@ This document describes the public and authenticated surface of `admin-api.techn
 | POST | `/api/newsletter/send` | board | Send newsletter to subscribers. |
 | POST | `/api/newsletter/upload-source` | board | Upload newsletter source file. |
 
+## Letter Studio (OTP session)
+
+The Letter Studio at `/letters` is the official letterhead generator (appointment, promotion, termination, transfer, resignation, show-cause, service, relieving, recognition, MOU, announcement, department report, LDI). Access is OTP-based; only emails in `letter_authorized_emails` can request an OTP.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/letter-studio/otp/send` | letter session | Send OTP to an authorized email. |
+| POST | `/api/letter-studio/otp/verify` | letter session | Verify OTP, issue 24h session token. |
+| POST | `/api/letter-studio/logout` | letter session | Delete letter session. |
+| GET | `/api/letter-studio/me` | letter session | Get session email. |
+| POST | `/api/letter-studio/upload` | letter session | Upload generated letter PDF to R2 `letters/` folder. |
+| POST | `/api/letter-studio/send` | letter session | Send the letter PDF with a standard per-type mail via Resend. Respects daily 100-email cap and rate limits. Logs to `letters_sent`. |
+| GET | `/api/letter-studio/members` | letter session | Member directory (name, email, role, department) for the recipient picker. Excludes advisory members. |
+| GET | `/api/letter-studio/files/*` | letter session (via `?t=` token) | Download a stored letter PDF. |
+| GET | `/api/letter-studio/admin/authorized-emails` | board | List authorized emails. |
+| POST | `/api/letter-studio/admin/authorized-emails` | board | Add authorized email. |
+| DELETE | `/api/letter-studio/admin/authorized-emails/:email` | board | Remove authorized email. |
+
+Standard mail subjects/bodies are generated server-side per document type (`letterEmailSubject` / `letterEmailHtml`) with the PDF attached from R2. Generated PDFs are produced client-side (html2canvas + jsPDF) in `apps/frontend/src/pages/letters/`.
+
 ## Implementation notes
 
 - All `director` endpoints assume `power_level >= 50` and, where department scoping applies, the user's `department_id` matches the resource.

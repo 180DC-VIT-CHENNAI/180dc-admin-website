@@ -459,6 +459,47 @@ This table is for the public leadership page, not the `users` table.
 | expires_at | DATETIME | NOT NULL | 24h expiry |
 | created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | |
 
+### `letter_authorized_emails`
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| email | TEXT | PRIMARY KEY | |
+| added_by | TEXT | | |
+| created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | |
+
+### `letter_otp_codes`
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| id | TEXT | PRIMARY KEY | |
+| email | TEXT | NOT NULL | |
+| code | TEXT | NOT NULL | |
+| expires_at | DATETIME | NOT NULL | |
+| used | INTEGER | DEFAULT 0 | |
+| created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | |
+
+### `letter_sessions`
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| id | TEXT | PRIMARY KEY | Session token |
+| email | TEXT | NOT NULL | |
+| expires_at | DATETIME | NOT NULL | 24h expiry |
+| created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | |
+
+### `letters_sent`
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| id | TEXT | PRIMARY KEY | |
+| docnum | TEXT | | Ref. No. e.g. `180DC-XXXX` |
+| doc_type | TEXT | | appointment, promotion, ... |
+| member_name | TEXT | | |
+| recipient_email | TEXT | NOT NULL | |
+| file_key | TEXT | | R2 key under `letters/` in CLUB_FILES |
+| created_by | TEXT | | Letter Studio session email |
+| created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | |
+
 ## Migrations applied at runtime
 
 `runMigrations` in `apps/admin-api/index.ts` performs the following idempotent changes:
@@ -476,6 +517,7 @@ This table is for the public leadership page, not the `users` table.
 - Drops recruitment tables if they still exist.
 - Seeds `maintenance_mode` row `(1, 0, default message)`.
 - Creates newsletter tables if missing.
+- Creates letter studio tables (`letter_authorized_emails`, `letter_otp_codes`, `letter_sessions`, `letters_sent`) if missing.
 
 ## Indexes and constraints
 
@@ -498,3 +540,7 @@ The `CLUB_FILES` bucket uses custom metadata to store file metadata instead of a
 - `description`
 
 This is a design choice; if you add a D1 table for club files, keep the R2 metadata in sync or migrate it.
+
+## Letter Studio R2 usage
+
+Generated letter PDFs are stored in the `CLUB_FILES` bucket (`180dc-club-files`) under the `letters/` folder with keys like `letters/<docnum>-<uuid>.pdf` and `application/pdf` content type. Uploaded via `POST /api/letter-studio/upload` (letter session auth) and read back by `POST /api/letter-studio/send` for email attachments.

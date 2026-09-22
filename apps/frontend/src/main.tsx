@@ -12,6 +12,7 @@ const RequestAccount = lazy(() => import("./pages/RequestAccount.tsx"));
 const MembersLayout = lazy(() => import("./pages/members/MembersLayout.tsx"));
 const SubscriberPage = lazy(() => import("./pages/SubscriberPage.tsx"));
 const NewsletterEditorPage = lazy(() => import("./pages/NewsletterEditorPage.tsx"));
+const LetterStudioPage = lazy(() => import("./pages/letters/LetterStudioPage.tsx"));
 const UnsubscribePage = lazy(() => import("./pages/UnsubscribePage.tsx"));
 const ClerkGate = lazy(() => import("./components/ClerkGate.tsx"));
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -98,6 +99,16 @@ createRoot(document.getElementById("root")!).render(
               <ErrorBoundary fallback={PageError}>
                 <Suspense fallback={PageLoader}>
                   <NewsletterEditorPage />
+                </Suspense>
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/letters"
+            element={
+              <ErrorBoundary fallback={PageError}>
+                <Suspense fallback={PageLoader}>
+                  <LetterStudioPage />
                 </Suspense>
               </ErrorBoundary>
             }

@@ -16,6 +16,7 @@ import ConsultingRequestsSection from "./ConsultingRequestsSection";
 import SendMailSection from "./SendMailSection";
 import CaseStudySection from "./CaseStudySection";
 import AdminNewsletterSection from "./NewsletterSection";
+import LetterAccessSection from "./LetterAccessSection";
 import TransfersSection from "./TransfersSection";
 import AdminConsole from "./AdminConsole";
 import AdminDataLoader from "./AdminDataLoader";
@@ -537,6 +538,7 @@ export default function MembersLayout() {
         { id: "consulting", label: "Consulting", minPower: 100, icon: "business_center" },
         { id: "sendmail", label: "Send Mail", minPower: 50, icon: "alternate_email" },
         { id: "newsletter", label: "Newsletter", minPower: 100, icon: "mail" },
+        { id: "letters", label: "Letter Studio", minPower: 100, icon: "description" },
         { id: "admin", label: "Admin Console", minPower: 100, icon: "terminal" },
       ],
     });
@@ -736,6 +738,7 @@ export default function MembersLayout() {
                       { label: "Recruitments", url: "https://vitc-180dc.org", icon: "group_add", color: "#8b5cf6" },
                       { label: "Newsletter Subscription", url: "https://180dcvitc.org/subscriber", icon: "mail", color: "#f59e0b" },
                       { label: "Newsletter Management", url: "https://180dcvitc.org/subscriber/newsletter", icon: "edit_note", color: "#3b82f6" },
+                      { label: "Letter Studio", url: "https://180dcvitc.org/letters", icon: "description", color: "#0b7a53" },
                     ].map((link) => (
                       <a
                         key={link.label}
@@ -997,6 +1000,10 @@ export default function MembersLayout() {
 
           {activePanel === "newsletter" && powerLevel >= 100 && (
             <AdminNewsletterSection authToken={authToken!} />
+          )}
+
+          {activePanel === "letters" && powerLevel >= 100 && (
+            <LetterAccessSection authToken={authToken!} />
           )}
 
           {activePanel === "announcements" && (

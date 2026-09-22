@@ -974,6 +974,10 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS newsletter_authorized_emails (email TEXT PRIMARY KEY, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS newsletter_otp_codes (id TEXT PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, expires_at DATETIME NOT NULL, used INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS newsletter_sessions (id TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS letter_authorized_emails (email TEXT PRIMARY KEY, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS letter_otp_codes (id TEXT PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, expires_at DATETIME NOT NULL, used INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS letter_sessions (id TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS letters_sent (id TEXT PRIMARY KEY, docnum TEXT, doc_type TEXT, member_name TEXT, recipient_email TEXT NOT NULL, file_key TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     `);
   await runMigrations(db);
 }
@@ -1215,6 +1219,34 @@ async function runMigrations(db: any) {
     );
   } catch {
     console.warn("Migration: newsletter_sessions table");
+  }
+  try {
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS letter_authorized_emails (email TEXT PRIMARY KEY, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+    );
+  } catch {
+    console.warn("Migration: letter_authorized_emails table");
+  }
+  try {
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS letter_otp_codes (id TEXT PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, expires_at DATETIME NOT NULL, used INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+    );
+  } catch {
+    console.warn("Migration: letter_otp_codes table");
+  }
+  try {
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS letter_sessions (id TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+    );
+  } catch {
+    console.warn("Migration: letter_sessions table");
+  }
+  try {
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS letters_sent (id TEXT PRIMARY KEY, docnum TEXT, doc_type TEXT, member_name TEXT, recipient_email TEXT NOT NULL, file_key TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+    );
+  } catch {
+    console.warn("Migration: letters_sent table");
   }
   try {
     await db.exec("ALTER TABLE audit_log ADD COLUMN instance_id TEXT");
@@ -1700,6 +1732,15 @@ app.use("*", async (c, next) => {
   if (
     url.pathname.startsWith("/api/newsletter-editor/") &&
     !url.pathname.startsWith("/api/newsletter-editor/admin/")
+  ) {
+    await next();
+    return;
+  }
+
+  // Letter studio OTP routes use their own auth (not admin tokens)
+  if (
+    url.pathname.startsWith("/api/letter-studio/") &&
+    !url.pathname.startsWith("/api/letter-studio/admin/")
   ) {
     await next();
     return;
@@ -3273,6 +3314,593 @@ app.delete(
     }
   },
 );
+
+// ---------------------------------------------------------
+// LETTER STUDIO (OTP-BASED, SEPARATE FROM MEMBERS)
+// ---------------------------------------------------------
+
+function letterOtpEmailHtml(otp: string): string {
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#0b7a53;padding:28px 24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dcvitc.org/images/official-logo.png" alt="180DC" width="56" style="margin-bottom:8px">
+<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:28px;margin:0;font-weight:600;text-shadow:2px 2px 0 rgba(0,0,0,0.15)">180 Degrees Consulting</h1>
+<p style="color:#dff2e9;font-size:13px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
+</td></tr>
+<tr><td style="padding:28px 28px 20px">
+<p style="font-size:15px;color:#1a1a1a;margin:0 0 16px;line-height:1.6;font-weight:600">Hey!</p>
+<p style="font-size:14px;color:#555555;margin:0 0 20px;line-height:1.6">Your one-time password for the 180DC Letter Studio. It expires in 5 minutes.</p>
+<div style="background:#edf7f1;border:3px solid #0b7a53;border-radius:12px;padding:16px 20px;margin:0 0 20px;text-align:center">
+<p style="font-size:11px;color:#777777;margin:0 0 8px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">Your OTP</p>
+<code style="font-size:28px;font-weight:800;color:#07583d;letter-spacing:6px;font-family:monospace">${escapeHtml(otp)}</code>
+</div>
+<p style="font-size:12px;color:#777777;margin:0;line-height:1.5">Didn't request this? You can safely ignore this email.</p>
+</td></tr>
+<tr><td style="background:#f5f3ee;border-top:3px solid #0b7a53;padding:16px 28px;text-align:center">
+<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting @ VIT Chennai</p>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+}
+
+async function verifyLetterSession(c: any): Promise<string | null> {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  const token = authHeader.slice(7);
+  const row = await c.env.DB.prepare(
+    "SELECT email, expires_at FROM letter_sessions WHERE id = ?",
+  )
+    .bind(token)
+    .first();
+  if (!row) return null;
+  if (new Date(row.expires_at as string) < new Date()) {
+    await c.env.DB.prepare("DELETE FROM letter_sessions WHERE id = ?")
+      .bind(token)
+      .run();
+    return null;
+  }
+  return row.email as string;
+}
+
+// OTP: Send code to authorized email
+app.post("/api/letter-studio/otp/send", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const body = await c.req.json();
+    const email = validateEmail(body.email);
+    if (!email) return c.json({ error: "Valid email required" }, 400);
+
+    const rl = await checkRateLimit(c, "letter_studio_otp_send", 5, 300);
+    if (!rl.allowed)
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
+
+    const authorized = await c.env.DB.prepare(
+      "SELECT email FROM letter_authorized_emails WHERE email = ?",
+    )
+      .bind(email)
+      .first();
+    if (!authorized)
+      return c.json(
+        { error: "Email not authorized for the Letter Studio" },
+        403,
+      );
+
+    const code = generateOtp();
+    const id = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
+    await c.env.DB.prepare(
+      "INSERT INTO letter_otp_codes (id, email, code, expires_at) VALUES (?, ?, ?, ?)",
+    )
+      .bind(id, email, code, expiresAt)
+      .run();
+
+    const apiKey = c.env.RESEND_API_KEY;
+    if (apiKey) {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "180DC Letter Studio <team@180dcvitc.org>",
+          to: email,
+          subject: "Your 180DC Letter Studio OTP",
+          html: letterOtpEmailHtml(code),
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        console.error(
+          "[letter-studio] OTP email failed:",
+          res.status,
+          errBody,
+        );
+        return c.json({ error: "Failed to send OTP email" }, 500);
+      }
+    } else {
+      console.warn("[letter-studio] RESEND_API_KEY not set, OTP:", code);
+    }
+
+    return c.json({ success: true, message: "OTP sent to " + email });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// OTP: Verify code and return session token
+app.post("/api/letter-studio/otp/verify", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const body = await c.req.json();
+    const email = validateEmail(body.email);
+    const code = sanitizeStr(body.code, 10);
+    if (!email || !code)
+      return c.json({ error: "Email and code required" }, 400);
+
+    const rl = await checkRateLimit(c, "letter_studio_otp_verify", 10, 300);
+    if (!rl.allowed)
+      return c.json(
+        {
+          error: "Too many attempts. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
+
+    const row = await c.env.DB.prepare(
+      "SELECT id, code, expires_at, used FROM letter_otp_codes WHERE email = ? ORDER BY created_at DESC LIMIT 1",
+    )
+      .bind(email)
+      .first();
+    if (!row) return c.json({ error: "No OTP found. Request a new one." }, 400);
+    if (row.used)
+      return c.json({ error: "OTP already used. Request a new one." }, 400);
+    if (new Date(row.expires_at as string) < new Date())
+      return c.json({ error: "OTP expired. Request a new one." }, 400);
+    if (row.code !== code) return c.json({ error: "Invalid OTP" }, 400);
+
+    await c.env.DB.prepare(
+      "UPDATE letter_otp_codes SET used = 1 WHERE id = ?",
+    )
+      .bind(row.id)
+      .run();
+
+    const sessionId = crypto.randomUUID();
+    const sessionExpires = new Date(
+      Date.now() + 24 * 60 * 60 * 1000,
+    ).toISOString();
+    await c.env.DB.prepare(
+      "INSERT INTO letter_sessions (id, email, expires_at) VALUES (?, ?, ?)",
+    )
+      .bind(sessionId, email, sessionExpires)
+      .run();
+
+    return c.json({ success: true, token: sessionId, email });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Logout
+app.post("/api/letter-studio/logout", async (c) => {
+  try {
+    const authHeader = c.req.header("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      await c.env.DB.prepare("DELETE FROM letter_sessions WHERE id = ?")
+        .bind(authHeader.slice(7))
+        .run();
+    }
+    return c.json({ success: true });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Check session
+app.get("/api/letter-studio/me", async (c) => {
+  try {
+    const email = await verifyLetterSession(c);
+    if (!email) return c.json({ error: "Not authenticated" }, 401);
+    return c.json({ success: true, email });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Admin: Manage authorized emails for the Letter Studio (Board only)
+app.get("/api/letter-studio/admin/authorized-emails", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100)
+      return c.json({ error: "Forbidden: Board only" }, 403);
+    const rows = await c.env.DB.prepare(
+      "SELECT * FROM letter_authorized_emails ORDER BY created_at DESC",
+    ).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+app.post("/api/letter-studio/admin/authorized-emails", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100)
+      return c.json({ error: "Forbidden: Board only" }, 403);
+    const body = await c.req.json();
+    const email = validateEmail(body.email);
+    if (!email) return c.json({ error: "Valid email required" }, 400);
+
+    const existing = await c.env.DB.prepare(
+      "SELECT email FROM letter_authorized_emails WHERE email = ?",
+    )
+      .bind(email)
+      .first();
+    if (existing) return c.json({ error: "Email already authorized" }, 409);
+
+    await c.env.DB.prepare(
+      "INSERT INTO letter_authorized_emails (email, added_by) VALUES (?, ?)",
+    )
+      .bind(email, user.email)
+      .run();
+    await addAuditLog(
+      c,
+      "letter_authorized_email_added",
+      "letter",
+      null,
+      "Authorized " + email + " for Letter Studio by " + user.email,
+    );
+    return c.json({ success: true });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+app.delete("/api/letter-studio/admin/authorized-emails/:email", async (c) => {
+  try {
+    const user: any = c.get("user");
+    if (!user || user.power_level < 100)
+      return c.json({ error: "Forbidden: Board only" }, 403);
+    const email = c.req.param("email");
+    await c.env.DB.prepare(
+      "DELETE FROM letter_authorized_emails WHERE email = ?",
+    )
+      .bind(email)
+      .run();
+    await addAuditLog(
+      c,
+      "letter_authorized_email_removed",
+      "letter",
+      null,
+      "Removed " + email + " from Letter Studio by " + user.email,
+    );
+    return c.json({ success: true });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Members list for the Letter Studio recipient picker (Letter session auth only)
+app.get("/api/letter-studio/members", async (c) => {
+  try {
+    const email = await verifyLetterSession(c);
+    if (!email) return c.json({ error: "Not authenticated" }, 401);
+    const rows = await c.env.DB.prepare(
+      "SELECT u.id, u.name, u.email, u.role_id, u.department_id, r.name as role_name, r.power_level, d.name as department_name FROM users u JOIN roles r ON u.role_id = r.id LEFT JOIN departments d ON u.department_id = d.id WHERE r.power_level != 30 ORDER BY u.name ASC",
+    ).all();
+    return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Upload a generated letter PDF to R2 (letters/ folder in CLUB_FILES bucket)
+app.post("/api/letter-studio/upload", async (c) => {
+  try {
+    const email = await verifyLetterSession(c);
+    if (!email) return c.json({ error: "Not authenticated" }, 401);
+    const rl = await checkRateLimit(c, "letter_studio_upload", 30, 3600);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
+
+    const fd = await c.req.formData();
+    const file = fd.get("file");
+    if (!file || typeof file === "string")
+      return c.json({ error: "No file provided" }, 400);
+    const typedFile = file as File;
+    const ext = typedFile.name.split(".").pop()?.toLowerCase();
+    if (ext !== "pdf")
+      return c.json({ error: "Only PDF files can be uploaded" }, 400);
+    if (typedFile.size > MAX_DOC_SIZE)
+      return c.json({ error: "File too large. Max 20 MB" }, 400);
+
+    const docnum = sanitizeStr(fd.get("docnum"), 64) || "letter";
+    const safeDoc = docnum.replace(/[^a-zA-Z0-9-]/g, "-");
+    const key = `letters/${safeDoc}-${crypto.randomUUID().slice(0, 8)}.pdf`;
+    const arrayBuffer = await typedFile.arrayBuffer();
+    await c.env.CLUB_FILES.put(key, arrayBuffer, {
+      httpMetadata: { contentType: "application/pdf" },
+      customMetadata: {
+        uploadedBy: email,
+        docnum: safeDoc,
+        createdAt: new Date().toISOString(),
+      },
+    });
+    return c.json({ success: true, key });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Serve a stored letter PDF (session token via query param for direct downloads)
+app.get("/api/letter-studio/files/*", async (c) => {
+  try {
+    const token = c.req.query("t") || "";
+    const row = await c.env.DB.prepare(
+      "SELECT email, expires_at FROM letter_sessions WHERE id = ?",
+    )
+      .bind(token)
+      .first();
+    if (!row) return c.json({ error: "Not authenticated" }, 401);
+    if (new Date(row.expires_at as string) < new Date())
+      return c.json({ error: "Session expired" }, 401);
+
+    const prefix = "/api/letter-studio/files/";
+    const pathname = new URL(c.req.url).pathname;
+    const key = decodeURIComponent(pathname.slice(prefix.length)).replace(/^\//, "");
+    if (!key.startsWith("letters/") || key.includes(".."))
+      return c.json({ error: "Invalid key" }, 400);
+
+    const obj = await c.env.CLUB_FILES.get(key);
+    if (!obj) return c.json({ error: "File not found" }, 404);
+
+    return new Response(obj.body, {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${key.split("/").pop()}"`,
+        "Cache-Control": "private, max-age=3600",
+      },
+    });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Standard mail subject per document type
+function letterEmailSubject(type: string, name: string): string {
+  const map: Record<string, string> = {
+    appointment: "Your Appointment Letter | 180 Degrees Consulting VIT Chennai",
+    promotion: "Letter of Promotion | 180 Degrees Consulting VIT Chennai",
+    termination: "Letter of Termination | 180 Degrees Consulting VIT Chennai",
+    transfer: "Letter of Department Transfer | 180 Degrees Consulting VIT Chennai",
+    resignation: "Letter of Resignation | 180 Degrees Consulting VIT Chennai",
+    showcause: "Show-Cause / Warning Letter | 180 Degrees Consulting VIT Chennai",
+    service: "Service Certificate | 180 Degrees Consulting VIT Chennai",
+    relieving: "Relieving Letter | 180 Degrees Consulting VIT Chennai",
+    recognition: "Recognition Letter | 180 Degrees Consulting VIT Chennai",
+    mou: "Memorandum of Understanding | 180 Degrees Consulting VIT Chennai",
+    announcement: "Announcement | 180 Degrees Consulting VIT Chennai",
+    "department-report": "Department Report | 180 Degrees Consulting VIT Chennai",
+    ldi: "LDI Form | 180 Degrees Consulting VIT Chennai",
+  };
+  const base = map[type] || "Official Letter | 180 Degrees Consulting VIT Chennai";
+  return name ? `${base} — ${name}` : base;
+}
+
+// Standard branded mail body per document type
+function letterEmailHtml(type: string, d: any): string {
+  const name = d.name || "";
+  const position = d.position || "";
+  const team = d.team || "";
+  const docnum = d.docnum || "";
+  const dateStr = d.dateStr || "";
+  const title = (type.charAt(0).toUpperCase() + type.slice(1)).replace(/-/g, " ");
+  const greeting = `<p style="font-size:15px;color:#1a1a1a;margin:0 0 14px;line-height:1.6;font-weight:600">Dear ${escapeHtml(name || "Member")},</p>`;
+
+  const bodyByType: Record<string, string> = {
+    appointment: `${greeting}
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">Congratulations on your appointment! We are delighted to welcome you to <strong>180 Degrees Consulting, VIT Chennai Chapter</strong> as <strong>${escapeHtml(position)}</strong> in the <strong>${escapeHtml(team)}</strong> department for the 2026-27 tenure.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">Your official Letter of Appointment is attached to this email. Please keep it safe for your records.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">We look forward to working with you and building something meaningful together.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Warm regards,<br><strong>Board of Directors</strong><br>180 Degrees Consulting, VIT Chennai</p>`,
+    promotion: `${greeting}
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">Congratulations on your promotion! We are thrilled to recognise your performance and contribution to the Organisation.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">Your official Letter of Promotion is attached to this email. Please keep it safe for your records.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Warm regards,<br><strong>Board of Directors</strong><br>180 Degrees Consulting, VIT Chennai</p>`,
+    termination: `${greeting}
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">This email is to formally communicate the termination of your association with 180 Degrees Consulting, VIT Chennai Chapter. Your official Letter of Termination is attached to this email.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">We request you to complete any pending handover and return Organisation property, records, or materials, as applicable.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Regards,<br><strong>Board of Directors</strong><br>180 Degrees Consulting, VIT Chennai</p>`,
+    transfer: `${greeting}
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">This email is to formally communicate your department transfer within 180 Degrees Consulting, VIT Chennai Chapter. Your official Letter of Department Transfer is attached to this email.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">We wish you success in your new department and look forward to your continued contribution.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Warm regards,<br><strong>Board of Directors</strong><br>180 Degrees Consulting, VIT Chennai</p>`,
+    resignation: `${greeting}
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">We acknowledge the receipt of your resignation from 180 Degrees Consulting, VIT Chennai Chapter. Your Letter of Resignation is attached to this email for your records.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">Thank you for your time with the Organisation. We wish you continued success in all your future endeavours.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Warm regards,<br><strong>Board of Directors</strong><br>180 Degrees Consulting, VIT Chennai</p>`,
+    showcause: `${greeting}
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">This email is to formally communicate a Show-Cause / Warning letter issued in respect of a matter recorded with the Organisation. The official letter is attached to this email.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">You are requested to provide an explanation regarding the matter and to ensure that such concerns are addressed appropriately.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Regards,<br><strong>Faculty Coordinator</strong><br>180 Degrees Consulting, VIT Chennai</p>`,
+    service: `${greeting}
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">We are pleased to provide your official Service Certificate, issued by 180 Degrees Consulting, VIT Chennai Chapter. It is attached to this email.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">This certificate is issued upon request for official and professional purposes.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Warm regards,<br><strong>Board of Directors</strong><br>180 Degrees Consulting, VIT Chennai</p>`,
+    relieving: `${greeting}
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">This email is to formally acknowledge the conclusion of your association with 180 Degrees Consulting, VIT Chennai Chapter. Your official Relieving Letter is attached to this email.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">We thank you for your contribution and wish you continued success in your future endeavours.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Warm regards,<br><strong>Board of Directors</strong><br>180 Degrees Consulting, VIT Chennai</p>`,
+    recognition: `${greeting}
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">We are pleased to recognise and appreciate your contribution to 180 Degrees Consulting, VIT Chennai Chapter. Your official Recognition Letter is attached to this email.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">Thank you for your effort, commitment, and contribution. We look forward to your continued involvement.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Warm regards,<br><strong>Board of Directors</strong><br>180 Degrees Consulting, VIT Chennai</p>`,
+    mou: `
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">Please find attached the executed <strong>Memorandum of Understanding</strong> between 180 Degrees Consulting, VIT Chennai Chapter and the other party named therein.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">The signed MOU is attached to this email for official records.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Regards,<br><strong>180 Degrees Consulting, VIT Chennai</strong></p>`,
+    announcement: `
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">Please find attached an official announcement letter from 180 Degrees Consulting, VIT Chennai Chapter.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">Kindly take note of the announcement and the information provided.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Regards,<br><strong>180 Degrees Consulting, VIT Chennai</strong></p>`,
+    "department-report": `
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">Please find attached the department report for <strong>${escapeHtml(team)}</strong> at 180 Degrees Consulting, VIT Chennai Chapter.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">The report records the current position, responsibilities, priorities, people structure, and forward direction of the department.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Regards,<br><strong>Board of Directors</strong><br>180 Degrees Consulting, VIT Chennai</p>`,
+    ldi: `${greeting}
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">Please find attached the LDI (Leadership Decision / Initiative) Form submitted by <strong>${escapeHtml(name)}</strong>. The completed form is attached to this email for review and record.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">The proposal will be reviewed and you will be updated on the decision.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Regards,<br><strong>Board of Directors</strong><br>180 Degrees Consulting, VIT Chennai</p>`,
+  };
+  const body = bodyByType[type] || `${greeting}
+      <p style="font-size:14px;color:#444;margin:0 0 14px;line-height:1.7">Please find attached your official letter from 180 Degrees Consulting, VIT Chennai Chapter.</p>
+      <p style="font-size:14px;color:#444;margin:0;line-height:1.7">Warm regards,<br><strong>Board of Directors</strong><br>180 Degrees Consulting, VIT Chennai</p>`;
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<tr><td style="background:#0b7a53;padding:26px 24px;text-align:center;border-bottom:3px solid #1a1a1a">
+<img src="https://180dcvitc.org/images/official-logo.png" alt="180DC" width="52" style="margin-bottom:8px">
+<h1 style="font-family:'Nunito',sans-serif;color:#ffffff;font-size:20px;margin:0;font-weight:800">${escapeHtml(title)}</h1>
+<p style="color:#dff2e9;font-size:12px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">180 Degrees Consulting · VIT Chennai</p>
+</td></tr>
+<tr><td style="padding:28px 28px 20px">
+${body}
+${docnum ? `<p style="font-size:12px;color:#888;margin:16px 0 0;line-height:1.5">Reference No.: <strong>${escapeHtml(docnum)}</strong>${dateStr ? ` &nbsp;·&nbsp; Date: <strong>${escapeHtml(dateStr)}</strong>` : ""}</p>` : ""}
+</td></tr>
+<tr><td style="background:#edf7f1;border-top:3px solid #0b7a53;padding:16px 28px;text-align:center">
+<p style="font-size:11px;color:#555;margin:0;line-height:1.5;font-weight:600">This is an official communication from 180 Degrees Consulting @ VIT Chennai. The official letter is attached as a PDF.</p>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+}
+
+// Send the generated letter PDF to a recipient with a standard mail per case
+app.post("/api/letter-studio/send", async (c) => {
+  try {
+    const email = await verifyLetterSession(c);
+    if (!email) return c.json({ error: "Not authenticated" }, 401);
+
+    const rl = await checkRateLimit(c, "letter_studio_send", 30, 3600);
+    if (!rl.allowed)
+      return c.json(
+        {
+          error: "Too many requests. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
+
+    const apiKey = c.env.RESEND_API_KEY;
+    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
+
+    const body = await c.req.json();
+    const fileKey = sanitizeStr(body.fileKey, 300);
+    const recipientEmail = validateEmail(body.recipientEmail);
+    const docType = sanitizeStr(body.docType, 32) || "appointment";
+    if (!fileKey || !recipientEmail)
+      return c.json({ error: "fileKey and recipientEmail required" }, 400);
+    if (!fileKey.startsWith("letters/"))
+      return c.json({ error: "Invalid file key" }, 400);
+
+    const currentCount = await getTodayEmailCount(c.env.DB);
+    if (currentCount >= 100) {
+      return c.json(
+        { error: "Daily email quota reached (100). Try again after 24 hours." },
+        429,
+      );
+    }
+
+    const r2Obj = await c.env.CLUB_FILES.get(fileKey);
+    if (!r2Obj) return c.json({ error: "Letter PDF not found" }, 404);
+    const buf = await r2Obj.arrayBuffer();
+    const b64 = arrayBufferToBase64(buf);
+    const attachment = {
+      filename: (fileKey.split("/").pop() || "letter.pdf").replace(/[^a-zA-Z0-9._-]/g, "-"),
+      content: b64,
+    };
+
+    const details = {
+      name: sanitizeStr(body.name, 200) || "",
+      position: sanitizeStr(body.position, 200) || "",
+      team: sanitizeStr(body.team, 200) || "",
+      docnum: sanitizeStr(body.docnum, 64) || "",
+      dateStr: sanitizeStr(body.dateStr, 64) || "",
+    };
+
+    const payload: any = {
+      from: "180DC Letter Studio <team@180dcvitc.org>",
+      to: recipientEmail,
+      subject: letterEmailSubject(docType, details.name),
+      html: letterEmailHtml(docType, details),
+      attachments: [attachment],
+    };
+
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error("[letter-studio] send failed:", res.status, errBody);
+      return c.json({ error: "Failed to send email" }, 500);
+    }
+
+    await incrementEmailCount(c.env.DB);
+
+    await c.env.DB.prepare(
+      "INSERT INTO letters_sent (id, docnum, doc_type, member_name, recipient_email, file_key, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+      .bind(
+        crypto.randomUUID(),
+        details.docnum || null,
+        docType,
+        details.name || null,
+        recipientEmail,
+        fileKey,
+        email,
+      )
+      .run();
+
+    await addAuditLog(
+      c,
+      "letter_sent",
+      "letter",
+      null,
+      "Sent " + docType + " letter (" + (details.docnum || fileKey) + ") to " + recipientEmail + " by " + email,
+    );
+
+    return c.json({ success: true, message: "Letter sent to " + recipientEmail });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
 
 // ---------------------------------------------------------
 // 1. ADD NEW MEMBER (Only Pres / VP)
