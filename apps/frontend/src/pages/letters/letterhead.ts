@@ -460,14 +460,14 @@ export function buildLetterHTML(d: LetterData): string {
     </tr>` : isShowCause ? `<tr>
       <td colspan="3"><span class="name">Dr. Balaji J</span>Faculty Coordinator<br>180 Degrees Consulting, VIT Chennai<div class="digisig">Digitally Signed</div></td>
     </tr>` : isRecognition ? `<tr class="four">
-      <td><span class="name">Sharan S</span>Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
+      <td><span class="name">Sharan K</span>Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
       <td><span class="name">Sanjana Chejeti</span>Vice Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
       <td><span class="name">Sonakshi Agarwal</span>Gen Secretary<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
       <td><span class="name">Sanjay Sivakumar</span>Secretary<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
     </tr><tr>
       <td colspan="4"><span class="name">Dr. Balaji J</span>Faculty Coordinator<br>180 Degrees Consulting, VIT Chennai<div class="digisig">Digitally Signed</div></td>
     </tr>` : `<tr class="four">
-      <td><span class="name">Sharan S</span>Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
+      <td><span class="name">Sharan K</span>Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
       <td><span class="name">Sanjana Chejeti</span>Vice Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
       <td><span class="name">Sonakshi Agarwal</span>Gen Secretary<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
       <td><span class="name">Sanjay Sivakumar</span>Secretary<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
