@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { apiUrl } from "../../lib/api";
 import { useTheme } from "../../context/ThemeContext";
 import {
@@ -544,7 +544,7 @@ export default function LetterStudioPage() {
     transition: "all 0.15s",
   };
 
-  // â”€â”€ Login View â”€â”€
+  // ── Login View ──
   if (view === "login") {
     return (
       <div style={{ background: "var(--bg-primary)", minHeight: "100vh", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
@@ -586,7 +586,7 @@ export default function LetterStudioPage() {
     );
   }
 
-  // â”€â”€ OTP View â”€â”€
+  // ── OTP View ──
   if (view === "otp") {
     return (
       <div style={{ background: "var(--bg-primary)", minHeight: "100vh", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: "1.5rem" }}>
@@ -630,7 +630,7 @@ export default function LetterStudioPage() {
     );
   }
 
-  // â”€â”€ Studio View â”€â”€
+  // ── Studio View ──
   return (
     <div style={{ background: "var(--bg-primary)", minHeight: "100vh", width: "100%" }}>
       <StudioTopBar isDark={isDark} toggleTheme={toggleTheme} sessionEmail={sessionEmail} onLogout={handleLogout} />
@@ -1098,7 +1098,7 @@ export default function LetterStudioPage() {
                 <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
                   {recentLetters.map((l, i) => (
                     <div key={i} style={{ fontSize: 11, color: "var(--text-secondary)", padding: "6px 8px", border: "1px solid var(--border-light)", borderRadius: 8, background: "var(--surface-container-low, rgba(0,0,0,0.02))" }}>
-                      <strong style={{ color: "var(--text-primary)" }}>{l.docnum}</strong> Â· {l.type} Â· {l.name || "â€”"} Â· {l.letterDate?.slice(0, 10)}
+                      <strong style={{ color: "var(--text-primary)" }}>{l.docnum}</strong> · {l.type} · {l.name || "—"} · {l.letterDate?.slice(0, 10)}
                     </div>
                   ))}
                 </div>
@@ -1110,10 +1110,10 @@ export default function LetterStudioPage() {
             <div className="preview-toolbar">
               <div>
                 <div className="preview-title">Live preview</div>
-                <div className="preview-meta">A4 Â· {Math.round(previewZoom * 100)}%</div>
+                <div className="preview-meta">A4 · {Math.round(previewZoom * 100)}%</div>
               </div>
               <div className="preview-actions">
-                <button onClick={() => setPreviewZoom((z) => Math.max(0.75, z - 0.05))}>âˆ’</button>
+                <button onClick={() => setPreviewZoom((z) => Math.max(0.75, z - 0.05))}>−</button>
                 <output>{Math.round(previewZoom * 100)}%</output>
                 <button onClick={() => setPreviewZoom((z) => Math.min(1.15, z + 0.05))}>+</button>
                 <button onClick={() => setPreviewZoom(1)}>Reset</button>
