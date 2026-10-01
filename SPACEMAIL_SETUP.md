@@ -108,8 +108,154 @@ well inside the hourly cap. Because the body is shared across a BCC batch, the
 per-recipient unsubscribe link must become a link to the unsubscribe page
 (`https://180dcvitc.org/unsubscribe`) where the user enters their email.
 
-## Related changes tracked elsewhere
+## Backend migration plan: Resend → Spacemail SMTP
 
-- Backend email refactor (single SMTP `sendEmail()` choke point replacing all Resend
-  calls in `apps/admin-api/index.ts`) — implementation plan pending.
-- The Ken-style web-hosted newsletter viewer — implementation plan pending.
+### Sending architecture
+
+Spacemail has **no REST API for sending email** — it is SMTP-only:
+
+- SMTP host: `mail.spacemail.com`
+- Port `465` (implicit SSL/TLS) or `587` (STARTTLS)
+- Auth: full mailbox address (`team@180dcvitc.org`) + mailbox password
+- From Cloudflare Workers: use the outbound TLS TCP support (`connect()` from
+  `cloudflare:sockets`) and speak SMTP directly (EHLO → AUTH LOGIN → MAIL FROM →
+  RCPT TO → DATA). A minimal SMTP client is ~150 lines with no npm dependencies.
+
+### Step 1 — Single choke-point function
+
+Add one `sendEmail(c, { from, to[], subject, html, attachments })` helper in
+`apps/admin-api/index.ts` that:
+
+- Batches `to[]` into groups of 50 and sends one SMTP message per batch with all
+  recipients in **BCC** (Spacemail's 50-recipient-per-message limit).
+- Builds a MIME message (base64 body, optional PDF attachment).
+- Replaces the `daily_email_count` / `MAX_DAILY = 100` logic with Spacemail-aware
+  accounting (each 50-recipient batch = 1 message against the 500/hour mailbox cap).
+- Keeps the `pending_emails` overflow pattern for anything over the cap.
+
+### Step 2 — Replace every Resend call site
+
+All sending currently goes through `fetch("https://api.resend.com/emails", ...)` in
+`apps/admin-api/index.ts`. Full inventory (line numbers as of this doc):
+
+| Lines | Function / endpoint | Purpose |
+|-------|---------------------|---------|
+| 414–447 | `sendTokenEmail()` | Admin access-token email |
+| 524–564 | `sendMeetEmail()` | New meet notification |
+| 580–636 | `queueOrSendMeetEmails()` | Bulk meet emails (rate-limited loop) |
+| 681–738 | `sendProjectAssignmentEmail()` | Project assigned to department leads |
+| 747–796 | `sendRoleAssignmentEmail()` | Role assigned for a project |
+| 804–850 | `sendRoleChangeEmail()` | Role updated |
+| 2242–2255 | `sendWelcomeEmail()` | First newsletter subscription welcome |
+| 2302–2315 | `sendWelcomeBackEmail()` | Re-subscribe welcome |
+| 2351, 2365 | `POST /api/newsletter/subscribe` | Triggers the welcome emails above |
+| 2616–2711 | `POST /api/newsletter/send` | Board bulk newsletter send |
+| 2817–2843 | `POST /api/newsletter-editor/otp/send` | Newsletter editor OTP |
+| 3064–3156 | `POST /api/newsletter-editor/send` | Editor bulk newsletter send |
+| 3175–3256 | `POST /api/newsletter-editor/send-event` | Event announcement bulk send |
+| 3410–3436 | `POST /api/letter-studio/otp/send` | Letter Studio OTP |
+| 3816–3902 | `POST /api/letter-studio/send` | Letter PDF send |
+| 9401–9434 | `POST /api/consulting-requests/:id/accept` | Consulting accept email |
+| 9490–9530 | `POST /api/consulting-requests/:id/reject` | Consulting reject email |
+| 9828–9919 | `POST /api/send-email` | Board/director arbitrary email |
+
+### Step 3 — Secrets
+
+Replace the `RESEND_API_KEY` binding with:
+
+| Secret | Value |
+|--------|-------|
+| `SPACEMAIL_SMTP_USER` | Full mailbox address, e.g. `team@180dcvitc.org` |
+| `SPACEMAIL_SMTP_PASS` | Mailbox password |
+
+Set via `npx wrangler secret put` and mirrored in `.dev.vars`.
+
+### Step 4 — Unsubscribe UX change (BCC consequence)
+
+A BCC batch shares one email body, so per-recipient
+`/unsubscribe?email={subscriber_email}` links can no longer be embedded. Change the
+footer to link to `https://180dcvitc.org/unsubscribe` and add a fallback "enter your
+email" input on the existing `UnsubscribePage.tsx` when `?email=` is absent.
+
+## The Ken-style newsletter plan (web-hosted content)
+
+How The Ken works: the email carries a short teaser plus a "Read on theken.com" button;
+the full article lives as a polished page on the website. The 180DC newsletter will do
+the same — the email becomes a notification, and the full content is read on the site.
+
+### What exists today
+
+- `newsletters` table already stores full HTML `content`, `title`, `description`,
+  `image_url`, `source_file_url` (`apps/admin-api/index.ts` schema).
+- `GET /api/newsletter` (`index.ts:2421`) lists the last 10 newsletters but does **not**
+  return `content`.
+- `newsletterEmailHtml()` (`index.ts:1899`) embeds the full description in the email and
+  its "Read on Website" CTA points at `https://180dcvitc.org/#newsletter` (a section
+  scroll, not an article page).
+
+### Phase A — Backend: public article endpoint
+
+Add `GET /api/newsletter/:id` (public, rate-limited) returning:
+
+```json
+{
+  "id": "...",
+  "title": "...",
+  "description": "...",
+  "content": "<sanitized html>",
+  "image_url": "...",
+  "created_at": "..."
+}
+```
+
+- Reuse the existing sanitization already applied on newsletter create
+  (`INV-CONTENT-01` in `docs/domain/invariants.md`) — never serve raw content.
+- Keep `GET /api/newsletter` (list) lightweight; do not add `content` to it.
+
+### Phase B — Frontend: viewer + archive on the existing SPA (recommended)
+
+Add to `apps/frontend` (Vite React SPA on Cloudflare Pages):
+
+1. **Viewer page** `src/pages/NewsletterViewerPage.tsx` at route `/newsletter/:id`:
+   - Fetches `GET /api/newsletter/:id` and renders a The-Ken-style article layout:
+     branding header, title, date, description/dek, full content HTML, footer with
+     subscribe + share links.
+   - Register in `src/main.tsx` alongside `/subscriber`, `/unsubscribe`, etc.
+2. **Archive page** `/newsletters`: lists all published editions from `GET /api/newsletter`,
+   each linking to its viewer page.
+3. **Email template rewrite**: `newsletterEmailHtml()` becomes a teaser — title,
+   description preview, and one primary CTA button "Read the full newsletter" →
+   `https://180dcvitc.org/newsletter/{id}`. PDF attachment becomes optional (archive
+   only, not the primary read path).
+4. **CSP check**: the viewer renders stored HTML that may carry inline styles — confirm
+   `apps/frontend/functions/_middleware.ts` CSP permits them (style-src), and keep
+   sanitization as the first line of defense.
+
+### Phase C — Why the SPA, not a standalone Worker
+
+- A standalone Worker serving HTML would work (`newsletter.180dcvitc.org` or a
+  `180dcvitc.org/newsletter/*` route with a D1 binding) — deploy a Worker, bind D1, serve
+  rendered pages. Nothing blocks it.
+- But it duplicates the design system, CSP headers, SEO handling, and adds a second
+  deploy pipeline for no functional gain here. The SPA route is one page component in
+  the existing deploy; it is also what `/unsubscribe` and `/subscriber` already do.
+
+### Phase D — Send flow after both changes
+
+1. Editor saves/publishes newsletter (unchanged) → `newsletters.content` holds the HTML.
+2. `POST /api/newsletter-editor/send` chunks active subscribers into 50-recipient BCC
+   batches → SMTP via `sendEmail()` → each subscriber gets the teaser + link.
+3. CTA points to `https://180dcvitc.org/newsletter/{id}` → SPA viewer renders the full
+   article to anyone (public archive), same as The Ken's public article pages.
+4. Event mails (`send-event`) stay as-is in format but also ship through `sendEmail()`
+   and link to the site.
+
+## Docs to update when this is implemented
+
+- `NEWSLETTER_EDITOR.md` — replace the "Resend Configuration" section with Spacemail
+  details.
+- `docs/contracts/api-contract.md` — add `GET /api/newsletter/:id`.
+- `docs/domain/business-logic.md` — BCC batching rule, 500/hour accounting, unsubscribe
+  form change.
+- `docs/operations/deployment.md` — new secrets, SMTP note.
+- `docs/execution/current-state.md` — mark SES ADR as superseded by Spacemail.
