@@ -148,12 +148,12 @@ Directors and board can create "instances" (events, case competitions, applicati
 | Queue-based job processor | Not implemented. | `apps/job-processor/index.ts` is a placeholder. |
 | Amazon SES bulk email | Not implemented. | Decision recorded; Resend still used. |
 | Recruitment system | Removed. | Tables are dropped by `runMigrations`. |
-| Real-time chat | Partially present in `REPORT.md` but no code found in `main`. | Treat as not implemented. |
-| AI chatbot (ConsultAI) | Partially present in `REPORT.md` but no code found in `main`. | Treat as not implemented. |
+| Real-time chat | Partially present in `docs/product/REPORT.md` but no code found in `main`. | Treat as not implemented. |
+| AI chatbot (ConsultAI) | Partially present in `docs/product/REPORT.md` but no code found in `main`. | Treat as not implemented. |
 
 ## Non-goals on `main`
 
 - Adding a separate recruitment system.
-- Rebuilding the frontend on Next.js or moving to Cloudflare Access (per `architecture/backend-architecture-cloudflare.txt`, which is historical).
+- Rebuilding the frontend on Next.js or moving to Cloudflare Access (per `docs/architecture/backend-architecture-cloudflare.txt`, which is historical).
 - Replacing the custom token auth with Clerk for the members portal.
 - Implementing real-time chat or AI chatbot without an explicit new plan.

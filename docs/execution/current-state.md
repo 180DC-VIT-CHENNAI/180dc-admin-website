@@ -4,7 +4,7 @@ This document describes the repository as it exists on the `main` branch. It is 
 
 ## Overall status
 
-The project is a **brownfield** Cloudflare-native monorepo. The `admin-api` Worker and the Vite/React frontend are the production system. The `public-api` and `job-processor` Workers are placeholders. Several documents in `architecture/` and `REPORT.md` describe aspirational features that do not exist in code.
+The project is a **brownfield** Cloudflare-native monorepo. The `admin-api` Worker and the Vite/React frontend are the production system. The `public-api` and `job-processor` Workers are placeholders. Several documents in `docs/architecture/` and `docs/product/REPORT.md` describe aspirational features that do not exist in code.
 
 ## What is implemented
 
@@ -55,23 +55,23 @@ The frontend is deployed as a Cloudflare Pages project named `180dc-admin-fronte
 | `public-api` Worker | `apps/public-api/index.ts` | Returns "Hello from public-api!" only. No routes or logic. |
 | `job-processor` Worker | `apps/job-processor/index.ts` | Returns `{ success: true }` only. Queue consumer configured but no messages are produced. |
 | `packages/db` | `packages/db/schema.sql` | Contains destructive `DROP TABLE` statements and a partial schema. Not used at runtime. |
-| `architecture/backend-architecture-cloudflare.txt` | `architecture/` | Historical/aspirational design. Mentions Cloudflare Access, Next.js, Zod, KV caching, and presigned R2 uploads that do not exist in code. |
-| Recruitment system | Mentioned in `REPORT.md` | Removed from code. `runMigrations` drops recruitment tables. |
-| Real-time chat | Mentioned in `REPORT.md` | Not implemented in `main`. |
-| AI chatbot (ConsultAI) | Mentioned in `REPORT.md` | Not implemented in `main`. |
-| Amazon SES | `SES_SETUP.md`, `architecture/NEWSLETTER_BULK_SEND_DECISION.md` | Decision made, not implemented. Resend is still used. |
+| `docs/architecture/backend-architecture-cloudflare.txt` | `docs/architecture/` | Historical/aspirational design. Mentions Cloudflare Access, Next.js, Zod, KV caching, and presigned R2 uploads that do not exist in code. |
+| Recruitment system | Mentioned in `docs/product/REPORT.md` | Removed from code. `runMigrations` drops recruitment tables. |
+| Real-time chat | Mentioned in `docs/product/REPORT.md` | Not implemented in `main`. |
+| AI chatbot (ConsultAI) | Mentioned in `docs/product/REPORT.md` | Not implemented in `main`. |
+| Amazon SES | `docs/operations/SES_SETUP.md`, `architecture/NEWSLETTER_BULK_SEND_DECISION.md` | Decision made, not implemented. Resend is still used. Spacemail migration planned (`docs/operations/SPACEMAIL_SETUP.md`). |
 
 ## Important discrepancies between documentation and code
 
 | Document/code | Claims | Reality | Classification |
 |---------------|--------|---------|----------------|
-| `architecture/backend-architecture-cloudflare.txt` | Cloudflare Access enforces Google OAuth before admin requests. | Auth is custom token-based; Clerk is only used for Google login in the frontend, not Cloudflare Access. | ACCIDENTAL/HISTORICAL |
-| `architecture/backend-architecture-cloudflare.txt` | Public API is a separate Hono Worker at `api.180dc-vit.in`. | `public-api` is a placeholder. All API calls are served by `admin-api`. | ACCIDENTAL/HISTORICAL |
-| `architecture/backend-architecture-cloudflare.txt` | KV caching for public API. | KV is bound but not used for caching. | ACCIDENTAL/HISTORICAL |
-| `architecture/backend-architecture-cloudflare.txt` | Zod validation. | No Zod schemas in code. | ACCIDENTAL/HISTORICAL |
-| `REPORT.md` | Recruitment, chat, AI chatbot features. | Not implemented in `main`. | UNKNOWN/PLANNED |
+| `docs/architecture/backend-architecture-cloudflare.txt` | Cloudflare Access enforces Google OAuth before admin requests. | Auth is custom token-based; Clerk is only used for Google login in the frontend, not Cloudflare Access. | ACCIDENTAL/HISTORICAL |
+| `docs/architecture/backend-architecture-cloudflare.txt` | Public API is a separate Hono Worker at `api.180dc-vit.in`. | `public-api` is a placeholder. All API calls are served by `admin-api`. | ACCIDENTAL/HISTORICAL |
+| `docs/architecture/backend-architecture-cloudflare.txt` | KV caching for public API. | KV is bound but not used for caching. | ACCIDENTAL/HISTORICAL |
+| `docs/architecture/backend-architecture-cloudflare.txt` | Zod validation. | No Zod schemas in code. | ACCIDENTAL/HISTORICAL |
+| `docs/product/REPORT.md` | Recruitment, chat, AI chatbot features. | Not implemented in `main`. | UNKNOWN/PLANNED |
 | `packages/db/schema.sql` | "Placeholder for D1 schema and migrations." | File is dangerous and out of sync with runtime schema. | BUG (for documentation only) |
-| `NEWSLETTER_EDITOR.md` | Describes newsletter editor accurately. | Current and accurate. | REQUIRED |
+| `docs/operations/NEWSLETTER_EDITOR.md` | Describes newsletter editor accurately. | Current and accurate. | REQUIRED |
 | `TEAM_INSTANCES_PLAN.md` | Describes team instances feature. | Implemented in `admin-api/index.ts` and `TeamInstancesSection.tsx`. | REQUIRED |
 
 ## Deployment topology
@@ -135,4 +135,4 @@ The following are used by the frontend:
 - No formal migration files; schema evolution is in `admin-api/index.ts`.
 - `public-api` and `job-processor` are not used.
 - `packages/db` is a placeholder and misleading.
-- `architecture/backend-architecture-cloudflare.txt` is historical and may confuse new agents.
+- `docs/architecture/backend-architecture-cloudflare.txt` is historical and may confuse new agents.

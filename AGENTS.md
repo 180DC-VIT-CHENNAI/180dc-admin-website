@@ -33,9 +33,9 @@ For different kinds of work, consult these documents in this order:
 | What API endpoints exist and who can call them? | `docs/contracts/api-contract.md` |
 | What must stay compatible? | `docs/compatibility/compatibility-contracts.md` |
 | How do I build, test, and deploy? | `docs/operations/deployment.md`, `docs/quality/testing-strategy.md` |
-| Where are design and UX constraints? | `DESIGN.md`, `frontend-design/plan.md`, `REPORT.md` |
-| Where are newsletter-specific details? | `NEWSLETTER_EDITOR.md`, `SES_SETUP.md` |
-| Where are architecture decisions? | `architecture/NEWSLETTER_BULK_SEND_DECISION.md`, `architecture/TEAM_INSTANCES_PLAN.md`, `architecture/backend-architecture-cloudflare.txt` |
+| Where are design and UX constraints? | `docs/design/DESIGN.md`, `docs/design/plan.md`, `docs/product/REPORT.md` |
+| Where are newsletter-specific details? | `docs/operations/NEWSLETTER_EDITOR.md`, `docs/operations/SPACEMAIL_SETUP.md`, `docs/operations/SES_SETUP.md` |
+| Where are architecture decisions? | `docs/architecture/decisions/README.md` (ADR index), `docs/architecture/backend-architecture-cloudflare.txt` |
 
 Index of all new docs: `docs/INDEX.md`.
 
@@ -59,10 +59,10 @@ Index of all new docs: `docs/INDEX.md`.
 - `apps/admin-api/index.ts` is the canonical backend. Any new API route, schema change, or business rule belongs there unless you are explicitly building a new service.
 - `apps/frontend/` is the public site and members portal. It is a Vite React SPA.
 - `packages/db/` is currently a placeholder. Do not add production SQL migrations there without also updating `admin-api/index.ts`.
-- `architecture/` contains both current decisions and historical/aspirational documents. Read `architecture/backend-architecture-cloudflare.txt` with care: it describes a Cloudflare Access + Next.js design that was not implemented.
-- `DESIGN.md` and `frontend-design/plan.md` are the source of truth for visual design.
-- `REPORT.md` is a plain-English feature inventory and is useful for product context.
-- `NEWSLETTER_EDITOR.md` and `SES_SETUP.md` are operational docs for the newsletter subsystem.
+- `docs/architecture/` contains both current decisions and historical/aspirational documents (ADR index under `docs/architecture/decisions/`). Read `docs/architecture/backend-architecture-cloudflare.txt` with care: it describes a Cloudflare Access + Next.js design that was not implemented.
+- `docs/design/DESIGN.md` and `docs/design/plan.md` are the source of truth for visual design.
+- `docs/product/REPORT.md` is a plain-English feature inventory and is useful for product context.
+- `docs/operations/NEWSLETTER_EDITOR.md`, `SPACEMAIL_SETUP.md`, and `SES_SETUP.md` are operational docs for the newsletter/email subsystem.
 
 ## Commands to use
 
