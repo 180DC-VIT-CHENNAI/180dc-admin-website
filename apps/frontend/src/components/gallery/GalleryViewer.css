@@ -1,0 +1,350 @@
+/* ═══ Gallery viewer (event pop-up) ═══════════════════════════════════════
+   Photo-first overlay: snap-scroll row with dimmed neighbours, translucent
+   blurred backdrop (the gallery page shows through), bordered info card,
+   thumbnail strip. Always dark so photos read well in both themes. Only
+   transform/opacity are animated.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+   .gv-root {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(0.75rem, 2vh, 1.25rem);
+    padding: clamp(0.75rem, 2vh, 1.25rem) 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    isolation: isolate;
+  
+    /* translucent tint + blur of whatever is behind (the gallery page) */
+    background: rgba(6, 9, 4, 0.55);
+    backdrop-filter: blur(18px) saturate(1.2);
+    -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  
+    color: #ffffff;
+    font-family: var(--font-sans, 'Plus Jakarta Sans', system-ui, sans-serif);
+    --sw: min(72vw, 880px);
+    --gap: 16px;
+    animation: gv-in 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  
+  @keyframes gv-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  /* ── Backdrop decoration (light SVG + dot grid + glows) ──
+     Slightly softer than the main gallery page so it never competes
+     with the photos. */
+  .gv-deco {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  
+  /* These rules override the strokeOpacity / fillOpacity attributes in the SVG.
+     Circles 1-3 are one cluster, 4-6 the other; each fades outward. */
+  .gv-deco g:first-child circle {
+    stroke-width: 1.8;
+  }
+  
+  .gv-deco g:first-child circle:nth-child(3n + 1) { stroke-opacity: 0.5; }
+  .gv-deco g:first-child circle:nth-child(3n + 2) { stroke-opacity: 0.36; }
+  .gv-deco g:first-child circle:nth-child(3n + 3) { stroke-opacity: 0.22; }
+  
+  .gv-deco g:first-child path {
+    stroke-width: 2;
+    stroke-opacity: 0.45;
+  }
+  
+  .gv-deco g:last-child circle {
+    r: 4;
+    fill-opacity: 0.65;
+  }
+  
+  /* dot grid */
+  .gv-root::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.8;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Ccircle cx='2' cy='2' r='1.2' fill='%238dc63f' fill-opacity='0.35'/%3E%3C/svg%3E");
+  }
+  
+  /* soft green glows */
+  .gv-root::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 12% 18%, rgba(141, 198, 63, 0.22), transparent 45%),
+      radial-gradient(circle at 88% 82%, rgba(141, 198, 63, 0.2), transparent 48%);
+  }
+  
+  /* ── Top bar ── */
+  .gv-top {
+    margin-top: auto;
+    display: flex;
+    justify-content: center;
+  }
+  
+  .gv-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    border-radius: var(--radius-full, 999px);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: #ffffff;
+    font: 600 0.8125rem/1 var(--font-sans, 'Plus Jakarta Sans', system-ui, sans-serif);
+    cursor: pointer;
+    transition: transform 250ms cubic-bezier(0.32, 0.72, 0, 1), background-color 250ms ease;
+  }
+  
+  .gv-back:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateX(-2px);
+  }
+  
+  /* ── Photo row ── */
+  .gv-stage {
+    position: relative;
+  }
+  
+  .gv-track {
+    position: relative;
+    display: flex;
+    gap: var(--gap);
+    overflow-x: auto;
+    padding: 12px 0;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  
+  .gv-track::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Spacers let the first and last photo sit in the centre. */
+  .gv-track::before,
+  .gv-track::after {
+    content: '';
+    flex: 0 0 calc((100% - var(--sw)) / 2 - var(--gap));
+  }
+  
+  .gv-slide {
+    flex: 0 0 var(--sw);
+    margin: 0;
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+    opacity: 0.35;
+    transform: scale(0.92);
+    transition: opacity 350ms ease, transform 350ms cubic-bezier(0.32, 0.72, 0, 1);
+    cursor: pointer;
+  }
+  
+  .gv-slide.is-active {
+    opacity: 1;
+    transform: none;
+    cursor: default;
+  }
+  
+  /* Blurred copy fills any space the uncropped photo leaves, so there is
+     never an empty bar around a photo. */
+  .gv-frame {
+    position: relative;
+    height: min(56vh, 580px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: #111111;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  }
+  
+  .gv-blur {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(22px) brightness(0.6);
+    transform: scale(1.15);
+  }
+  
+  .gv-img {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  
+  .gv-arrow {
+    position: absolute;
+    top: 50%;
+    z-index: 2;
+    width: 44px;
+    height: 44px;
+    margin-top: -22px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: #ffffff;
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+    transition: transform 250ms cubic-bezier(0.32, 0.72, 0, 1), background-color 250ms ease;
+  }
+  
+  .gv-arrow:hover {
+    background: rgba(0, 0, 0, 0.65);
+    transform: scale(1.08);
+  }
+  
+  .gv-arrow-l { left: clamp(8px, 2vw, 28px); }
+  .gv-arrow-r { right: clamp(8px, 2vw, 28px); }
+  
+  /* ── Info card ── */
+  .gv-info {
+    width: min(92vw, 640px);
+    max-height: min(26vh, 220px);
+    margin: 0 auto;
+    padding: 14px 18px 16px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  
+  .gv-info-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  
+  .gv-overline {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-primary, #8dc63f);
+  }
+  
+  .gv-count {
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: rgba(255, 255, 255, 0.7);
+  }
+  
+  /* explicit white: global heading colour was making this unreadable */
+  .gv-title {
+    margin: 6px 0 6px;
+    color: #ffffff;
+    font-family: var(--font-serif, 'Instrument Serif', Georgia, serif);
+    font-size: clamp(1.4rem, 2.4vw, 1.9rem);
+    font-weight: 400;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+  }
+  
+  .gv-desc {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 300;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.85);
+  }
+  
+  /* ── Thumbnails ── */
+  .gv-strip {
+    position: relative;
+    display: flex;
+    gap: 8px;
+    width: min(92vw, 880px);
+    margin: 0 auto auto;
+    padding: 4px 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    justify-content: safe center;
+  }
+  
+  .gv-strip::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .gv-thumb {
+    flex: 0 0 64px;
+    height: 46px;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background: #111111;
+    opacity: 0.55;
+    cursor: pointer;
+    transition: opacity 250ms ease, transform 250ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  
+  .gv-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  
+  .gv-thumb:hover {
+    opacity: 0.85;
+  }
+  
+  .gv-thumb.is-active {
+    opacity: 1;
+    border-color: var(--accent-primary, #8dc63f);
+    transform: translateY(-2px);
+  }
+  
+  /* ── Focus + responsive + motion ── */
+  .gv-back:focus-visible,
+  .gv-arrow:focus-visible,
+  .gv-thumb:focus-visible {
+    outline: 3px solid var(--accent-primary, #8dc63f);
+    outline-offset: 2px;
+  }
+  
+  @media (max-width: 640px) {
+    .gv-root { --sw: 80vw; --gap: 12px; }
+    .gv-frame { height: min(46vh, 420px); }
+  }
+  
+  @media (hover: none) {
+    .gv-arrow { display: none; }
+  }
+  
+  @media (prefers-reduced-motion: reduce) {
+    .gv-root { animation: none; }
+    .gv-slide,
+    .gv-thumb,
+    .gv-back,
+    .gv-arrow { transition: none; }
+  }
+  
+  /* END OF FILE */
