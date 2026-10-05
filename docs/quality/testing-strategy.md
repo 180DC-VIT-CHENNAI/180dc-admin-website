@@ -36,11 +36,11 @@ Run against a local `wrangler dev` instance or a Miniflare D1 mock. Candidates:
 - `TEST-AUTH-04` — revoked token returns 401.
 - `TEST-AUTH-05` — maintenance mode blocks non-board members.
 - `TEST-RATE-01` — rate limit returns 429 after exceeded.
-- `TEST-QUOTA-01` — 101st email is rejected or queued.
+- `TEST-QUOTA-01` — SMTP sends stop at 500 messages/hour; remaining recipients are reported as `queued`/stored in `pending_emails`.
 - `TEST-PROJECT-01` — board can create a project; member cannot.
 - `TEST-PROJECT-02` — completed project regenerates `static/completedProjects.json`.
 - `TEST-TEAM-01` — adding a member beyond `member_limit` returns 400.
-- `TEST-NEWS-01` — newsletter send respects daily quota and updates `recipient_count`.
+- `TEST-NEWS-01` — newsletter send batches recipients into BCC groups of 50, respects the hourly SMTP cap, and updates `recipient_count`.
 - `TEST-MEET-01` — meet link hidden after 24 hours.
 
 ### End-to-end tests
@@ -60,7 +60,7 @@ For each `COMP-*` in `docs/compatibility/compatibility-contracts.md`, verify the
 - `COMP-AUTH-01` token contract.
 - `COMP-UI-01` storage keys.
 - `COMP-DEPLOY-01` Pages middleware proxy.
-- `COMP-EMAIL-01` from address and daily quota.
+- `COMP-EMAIL-01` from addresses and `COMP-EMAIL-02` quotas/batching.
 
 ## Recommended test harness
 

@@ -17,7 +17,8 @@ This single file is the entire production backend. It is a Hono Worker with:
 - R2 object storage for case-study images, source files, club files, and static completed-projects JSON.
 - KV for auth sessions (bound as `AUTH_SESSIONS` but not actively used in `main`; the token registry lives in D1).
 - Queue producer binding (`QUEUE`) configured but unused.
-- Resend-based email sending.
+- Unified email delivery: `sendEmail()` sends through Spacemail SMTP (primary, BCC batches of 50, `cloudflare:sockets`) with automatic per-recipient Resend fallback.
+- Hourly/daily email accounting in D1 (`email_hour_count`, `resend_daily_count`, `daily_email_count`).
 - Rate limiting in D1.
 - HTML sanitization (`sanitizeBlogHtml`).
 - Password hashing (PBKDF2) but no password login flow currently used.
@@ -33,6 +34,20 @@ A Vite + React + TypeScript SPA with React Router.
 - `/unsubscribe` public unsubscribe page.
 - `/recruitments` and `/request-account` public pages.
 - Cloudflare Pages `_middleware.ts` proxies `/api/*` to `admin-api.technical-vitc.workers.dev` and adds security headers.
+
+### Newsletter API (prep for the separate newsletter site, ADR-004)
+
+- `GET /api/newsletter/:id` public endpoint exists — rate-limited, returns newsletter
+  detail with `content` sanitized via `sanitizeBlogHtml` (never raw stored HTML).
+  The planned separate newsletter site (own repo, `newsletter.180dcvitc.org`) fetches
+  `GET /api/newsletter` (list), `GET /api/newsletter/:id` (detail), subscribe, and
+  unsubscribe.
+- CORS/CSRF allowlist (`ALLOWED_ORIGINS` in `apps/admin-api/index.ts`) includes
+  `https://newsletter.180dcvitc.org`.
+- `NEWSLETTER_SITE_URL` is declared in `wrangler.toml` `[vars]` and `.dev.vars`.
+  Bulk email CTAs consume it when non-empty (`{site}/newsletter/{id}`); it is
+  intentionally set to `""` until the separate newsletter site is deployed, which keeps
+  CTAs on `https://180dcvitc.org/#newsletter`.
 
 ### D1 data
 
@@ -109,9 +124,12 @@ The following bindings and secrets are used by `admin-api`:
 | `CASE_STUDIES` | R2 bucket | Case study images and newsletter source files. |
 | `AUTH_SESSIONS` | KV namespace | Bound but not actively used in `main`. |
 | `QUEUE` | Queue producer | Bound but not used in `main`. |
-| `RESEND_API_KEY` | Secret | Resend email API. |
+| `RESEND_API_KEY` | Secret | Fallback email sender (used when Spacemail SMTP fails). |
 | `CLERK_SECRET_KEY` | Secret | Clerk JWT verification. |
 | `ENVIRONMENT` | Var | Set to `production` on the deployed worker. |
+| `NEWSLETTER_SITE_URL` | Var | Base URL of the separate newsletter site (ADR-004). Consumed by bulk email templates when non-empty; set to `""` in production until the site is deployed. |
+| `SPACEMAIL_SMTP_USER` | Secret | Authenticated SMTP mailbox (`technical@180dcvitc.org`). Not set in production yet; when absent, all email uses the Resend fallback. |
+| `SPACEMAIL_SMTP_PASS` | Secret | Mailbox password for SMTP AUTH. Not set in production yet. |
 
 The following are used by the frontend:
 
@@ -136,3 +154,39 @@ The following are used by the frontend:
 - `public-api` and `job-processor` are not used.
 - `packages/db` is a placeholder and misleading.
 - `docs/architecture/backend-architecture-cloudflare.txt` is historical and may confuse new agents.
+
+## Next steps — newsletter system (Spacemail + separate newsletter site)
+
+Ordered by dependency. `[done]` items are merged in code on this branch but must not be
+deployed until the Spacemail secrets are set (email otherwise silently stays on Resend,
+which still works).
+
+1. **Cloudflare DNS:** `[done]` root `180dcvitc.org` has MX `mx1/mx2.spacemail.com`
+   (priority 0), SPF `v=spf1 include:spf.spacemail.com ~all`, and DKIM at
+   `spacemail._domainkey` (verified live 2026-10-06). DMARC stays `p=none`. Resend keeps
+   authenticating via its own `resend._domainkey` DKIM, so no root SPF include is needed.
+2. **Spacemail Manager:** `[done]` domain verified (`fbf0abfa...` TXT present); DKIM TXT
+   added. Mailbox `technical@180dcvitc.org` exists and SMTP AUTH works; all From addresses
+   were switched to this mailbox, so Spacemail's sender-ownership check passes without an
+   alias. The old `mail.180dcvitc.org` MX/SPF records are gone.
+3. **Separate newsletter repo:** build the newsletter site (Cloudflare Pages or Worker at
+   `newsletter.180dcvitc.org`) that fetches `GET /api/newsletter`, `GET /api/newsletter/:id`,
+   `POST /api/newsletter/subscribe`, and `GET /api/newsletter/unsubscribe`. Include the
+   unsubscribe page with an email-entry form (BCC batches can't carry per-recipient links).
+4. **DNS:** add CNAME `newsletter` → the Pages/Worker host.
+5. **Deploy admin-api:** `[done]` public `GET /api/newsletter/:id`, CORS origin, and the
+   SMTP email layer are in `apps/admin-api/index.ts`; deploy after secret setup.
+6. **Secrets:** set `SPACEMAIL_SMTP_USER=technical@180dcvitc.org` / `SPACEMAIL_SMTP_PASS`
+   via `wrangler secret put` and `.dev.vars`; SMTP AUTH and sender acceptance are already
+   verified live.
+7. **SMTP migration:** `[done]` `sendEmail()` choke-point (SMTP via `cloudflare:sockets`,
+   BCC batches of 50, MIME + attachments, 500/hour accounting, Resend fallback) replaces all
+   16 Resend call sites. Until the secrets exist it transparently uses the Resend fallback.
+8. **Email templates:** `[done]` bulk CTAs consume `NEWSLETTER_SITE_URL` with a safe
+   `180dcvitc.org/#newsletter` fallback. The var is intentionally `""` in `wrangler.toml`
+   until the newsletter site is live; set it to `https://newsletter.180dcvitc.org` then.
+9. **Verify:** test send `From: technical@180dcvitc.org`, confirm SPF/DKIM pass; keep DMARC
+   `p=none` for a week after switch, then consider `p=quarantine`.
+10. **Docs cleanup:** `[done]` for `NEWSLETTER_EDITOR.md`, `api-contract.md`,
+    `business-logic.md`, `invariants.md`, `deployment.md`. Still pending: mark the SES
+    decision as superseded when the newsletter site is deployed.

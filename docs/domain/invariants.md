@@ -136,13 +136,31 @@ Invariants are properties that must never become false while the system is runni
 - **Related business rules:** RULE-RATE-01.
 - **Current status:** ENFORCED.
 
-### INV-QUOTA-01: Daily email quota is 100
+### INV-QUOTA-01: Spacemail hourly send cap is 500 messages
 
-- **Statement:** No more than 100 emails may be sent per day through Resend. This is checked before each batch send.
-- **Reason:** Resend free-tier and deliverability protection.
-- **Where enforced:** `getTodayEmailCount`, `daily_email_count` table, and send handlers.
-- **How verified:** Attempt to send more than 100 emails; confirm 429.
-- **Related business rules:** RULE-QUOTA-01.
+- **Statement:** No more than 500 Spacemail SMTP messages may be sent per UTC hour, where one message carries up to 50 BCC recipients.
+- **Reason:** Spacemail mailbox limits (500 messages/hour, 50 recipients/message) and deliverability protection.
+- **Where enforced:** `sendEmail()`, `smtpSendMessage()`, and the `email_hour_count` table.
+- **How verified:** Send more than 500 batches in an hour; confirm remaining recipients are reported as `queued` and no further SMTP messages are attempted.
+- **Related business rules:** RULE-QUOTA-01, RULE-QUOTA-02.
+- **Current status:** ENFORCED.
+
+### INV-QUOTA-02: Resend fallback is capped at 100 recipients/day
+
+- **Statement:** Resend is used only when Spacemail SMTP fails, and no more than 100 recipients may be delivered through it per day.
+- **Reason:** Resend deliverability and account limits.
+- **Where enforced:** `sendEmail()` and the `resend_daily_count` table.
+- **How verified:** Force SMTP failure with more than 100 recipients queued; confirm sends stop at 100 and the rest are `queued`.
+- **Related business rules:** RULE-QUOTA-03.
+- **Current status:** ENFORCED.
+
+### INV-QUOTA-03: Bulk email bodies are shared per BCC batch
+
+- **Statement:** BCC batches share one rendered body; per-recipient unsubscribe links must not be embedded in bulk sends.
+- **Reason:** Recipients in a BCC batch would receive another subscriber's link.
+- **Where enforced:** `newsletterEmailHtml()`/`eventMailEmailHtml()` are called with `subscriberEmail = undefined` in the bulk handlers, so the footer links to the public `/unsubscribe` page.
+- **How verified:** Render a bulk email and confirm the unsubscribe link has no `?email=` parameter.
+- **Related business rules:** RULE-NEWS-08, RULE-QUOTA-02.
 - **Current status:** ENFORCED.
 
 ## Content and security invariants

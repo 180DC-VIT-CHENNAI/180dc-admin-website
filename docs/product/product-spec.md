@@ -146,7 +146,7 @@ Directors and board can create "instances" (events, case competitions, applicati
 | Team instances | Implemented. | Added in latest `main`. |
 | Public API split | Not implemented. | `apps/public-api/index.ts` is a placeholder. |
 | Queue-based job processor | Not implemented. | `apps/job-processor/index.ts` is a placeholder. |
-| Amazon SES bulk email | Not implemented. | Decision recorded; Resend still used. |
+| Amazon SES bulk email | Not implemented. Superseded by the Spacemail SMTP migration (`docs/operations/SPACEMAIL_SETUP.md`); Resend remains an automatic fallback. |
 | Recruitment system | Removed. | Tables are dropped by `runMigrations`. |
 | Real-time chat | Partially present in `docs/product/REPORT.md` but no code found in `main`. | Treat as not implemented. |
 | AI chatbot (ConsultAI) | Partially present in `docs/product/REPORT.md` but no code found in `main`. | Treat as not implemented. |

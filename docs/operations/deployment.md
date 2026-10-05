@@ -31,9 +31,15 @@
 Create `apps/admin-api/.dev.vars` for local development:
 
 ```ini
+# Resend fallback — keep set while Spacemail is being rolled out
 RESEND_API_KEY=re_...
 CLERK_SECRET_KEY=sk_test_...
 ENVIRONMENT=development
+# Spacemail SMTP primary sender (authenticated mailbox; team@ is an alias on it)
+SPACEMAIL_SMTP_USER=technical@180dcvitc.org
+SPACEMAIL_SMTP_PASS=
+# Leave empty until the separate newsletter site (ADR-004) is deployed
+NEWSLETTER_SITE_URL=
 ```
 
 The frontend needs `VITE_CLERK_PUBLISHABLE_KEY` in `apps/frontend/.env.local`:
@@ -112,11 +118,17 @@ queue = "jobs-queue"
 
 [vars]
 ENVIRONMENT = "production"
+# Empty until the ADR-004 newsletter site is deployed; newsletters then link to {url}/newsletter/{id}
+NEWSLETTER_SITE_URL = ""
 
 # Secrets must be set via `wrangler secret put`
-# RESEND_API_KEY
+# RESEND_API_KEY          (fallback sender — keep while Spacemail is rolled out)
 # CLERK_SECRET_KEY
+# SPACEMAIL_SMTP_USER     (technical@180dcvitc.org — team@ must be an alias on it)
+# SPACEMAIL_SMTP_PASS     (mailbox password)
 ```
+
+> SMTP note: `sendEmail()` speaks SMTP directly from the Worker using `cloudflare:sockets` to `mail.spacemail.com:465` (implicit TLS). Workers cannot use port 25. Set the mailbox password with `npx wrangler secret put SPACEMAIL_SMTP_PASS` — never commit it.
 
 The actual `database_id` and KV IDs are stored in `wrangler.toml` and should not be committed if they are sensitive. The repository currently has them in the file; this is a known configuration pattern but should be reviewed.
 

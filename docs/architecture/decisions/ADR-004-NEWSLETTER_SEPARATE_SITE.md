@@ -1,6 +1,6 @@
 # ADR-004: Separate newsletter website (Ken-style) in its own repository
 
-- **Status:** decided (pending implementation)
+- **Status:** decided (API side implemented; separate site repo pending)
 - **Date:** 2026-10-01
 
 ## Context
@@ -88,12 +88,19 @@ newsletter viewer and archive.
 ## Migration impact
 
 1. Add `GET /api/newsletter/:id` (public, rate-limited, sanitized content) + CORS
-   headers for `newsletter.180dcvitc.org` in `admin-api`.
+   headers for `newsletter.180dcvitc.org` in `admin-api`. **Done** — endpoint exists;
+   `ALLOWED_ORIGINS` includes the newsletter origin. `NEWSLETTER_SITE_URL` placeholder
+   var is defined in `wrangler.toml`/`.dev.vars` but not yet consumed.
 2. Create the new repo and Pages project; add CNAME `newsletter.180dcvitc.org`.
 3. Rewrite `newsletterEmailHtml()` to a teaser with a CTA pointing at
-   `https://newsletter.180dcvitc.org/newsletter/{id}`.
+   `https://newsletter.180dcvitc.org/newsletter/{id}`. **Done (gated)** — bulk templates
+   consume `NEWSLETTER_SITE_URL` and emit `{site}/newsletter/{id}` when it is non-empty.
+   The var is intentionally empty in `wrangler.toml` until the new site is deployed, so
+   CTAs fall back to `https://180dcvitc.org/#newsletter`.
 4. Point existing email footers/unsubscribe links at the new site (BCC batches mean the
-   unsubscribe link becomes a page with an email-entry form).
+   unsubscribe link becomes a page with an email-entry form). **Done (email-entry form
+   already exists on `/unsubscribe`; bulk footers now link there without a per-recipient
+   parameter).** Point at the new site's unsubscribe page when it deploys.
 
 ## Conditions for reconsideration
 

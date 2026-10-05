@@ -120,18 +120,22 @@ Special attention:
 - `project_departments` and `instance_departments` composite keys.
 - `daily_email_count.date` is the primary key.
 
-## COMP-EMAIL-01 Resend address and signature
+## COMP-EMAIL-01 Sender addresses and templates
 
-Emails are sent from these addresses and use the 180DC VIT Chennai branded template. Changing the from address or template shape may affect deliverability.
+Emails are sent from these addresses and use the 180DC VIT Chennai branded template. Changing the from address, provider, or template shape may affect deliverability. Spacemail SMTP is primary; Resend is the fallback.
 
-- `180DC Admin <team@180dcvitc.org>`
-- `180DC Consulting <team@180dcvitc.org>`
-- `180DC Newsletter <team@180dcvitc.org>`
-- `180DC Events <team@180dcvitc.org>`
+- `180DC Admin <technical@180dcvitc.org>`
+- `180DC Consulting <technical@180dcvitc.org>`
+- `180DC Newsletter <technical@180dcvitc.org>`
+- `180DC Events <technical@180dcvitc.org>`
+- `180DC Letter Studio <technical@180dcvitc.org>`
 
-## COMP-EMAIL-02 Daily quota
+## COMP-EMAIL-02 Send quotas and batching
 
-The daily email cap is 100. Any raise or removal must be coordinated with the email provider and documented.
+- SMTP sends are capped at 500 messages/hour, and each message carries at most 50 BCC recipients (`email_hour_count`).
+- The Resend fallback is capped at 100 recipients/day (`resend_daily_count`).
+- Bulk email bodies are shared across a BCC batch, so per-recipient unsubscribe links are not embedded; the footer links to the public `/unsubscribe` page.
+- Changing these caps or the batching model requires coordination with the email provider and a docs update.
 
 ## COMP-R2-01 Bucket keys
 

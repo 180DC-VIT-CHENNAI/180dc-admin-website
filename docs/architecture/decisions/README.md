@@ -7,7 +7,7 @@ This directory records decisions that future agents should understand before cha
 | ADR | Document | Status | Summary |
 |-----|----------|--------|---------|
 | ADR-001 | `docs/architecture/backend-architecture-cloudflare.txt` | HISTORICAL/ASPIRATIONAL | Early design proposing Cloudflare Access, Next.js/Astro, separate public API with KV caching, Zod validation, and presigned R2 uploads. This was not implemented. |
-| ADR-002 | `architecture/NEWSLETTER_BULK_SEND_DECISION.md` | DECIDED, NOT YET IMPLEMENTED | Choose Amazon SES for bulk newsletter sends, keep Resend for transactional. Subscribers remain in the same D1 database. |
+| ADR-002 | `architecture/NEWSLETTER_BULK_SEND_DECISION.md` | SUPERSEDED | Chose Amazon SES for bulk newsletter sends, keep Resend for transactional. Superseded by the Spacemail SMTP migration (`docs/operations/SPACEMAIL_SETUP.md`), which keeps Resend as fallback. |
 | ADR-003 | `architecture/TEAM_INSTANCES_PLAN.md` | IMPLEMENTED | Team instances feature for events/case competitions with teams, member limits, and minimums. Implemented in `apps/admin-api/index.ts` and `TeamInstancesSection.tsx`. |
 | ADR-004 | `docs/architecture/decisions/ADR-004-NEWSLETTER_SEPARATE_SITE.md` | DECIDED (PENDING IMPLEMENTATION) | Host the Ken-style newsletter viewer/archive in a separate repository and Cloudflare Pages site at `newsletter.180dcvitc.org`, reading public `admin-api` endpoints. Supersedes the SES-only plan for the newsletter surface. |
 

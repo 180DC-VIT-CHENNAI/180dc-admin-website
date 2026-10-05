@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
 import { verifyToken } from "@clerk/backend";
+import { connect } from "cloudflare:sockets";
 
 type Bindings = {
   DB: any;
@@ -15,6 +16,9 @@ type Bindings = {
   CLERK_SECRET_KEY?: string;
   GEMINI_API_KEY?: string;
   GROQ_API_KEY?: string;
+  SPACEMAIL_SMTP_USER?: string;
+  SPACEMAIL_SMTP_PASS?: string;
+  NEWSLETTER_SITE_URL?: string;
 };
 
 type Variables = {
@@ -56,6 +60,12 @@ function isPublicRoute(pathname: string, method: string): boolean {
   if (pathname.startsWith("/api/gallery-cdn/") && method === "GET") return true;
   if (pathname === "/api/admin/maintenance" && method === "GET") return true;
   if (pathname === "/api/newsletter" && method === "GET") return true;
+  if (
+    method === "GET" &&
+    /^\/api\/newsletter\/[^/]+$/.test(pathname) &&
+    !pathname.startsWith("/api/newsletter/admin")
+  )
+    return true;
 
   return false;
 }
@@ -411,39 +421,20 @@ async function sendTokenEmail(
   token: string,
   name: string,
 ): Promise<{ ok: boolean; status?: number; error?: string }> {
-  const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.warn("RESEND_API_KEY not configured @ skipping email to " + email);
-    return { ok: false, error: "RESEND_API_KEY not configured" };
+  const result = await sendEmail(c, {
+    from: "180DC Admin <technical@180dcvitc.org>",
+    to: email,
+    subject: "Your 180DC Admin Access Token",
+    html: tokenEmailHtml(token, name),
+  });
+  if (result.sent > 0) {
+    console.log(`[email] Token email OK to=${email}`);
+    return { ok: true };
   }
-  const from = "180DC Admin <team@180dcvitc.org>";
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: email,
-        subject: "Your 180DC Admin Access Token",
-        html: tokenEmailHtml(token, name),
-      }),
-    });
-    const body = await res.text();
-    if (!res.ok) {
-      console.error(
-        `[email] Resend FAILED (${res.status}) to=${email}: ${body}`,
-      );
-      return { ok: false, status: res.status, error: body };
-    }
-    console.log(`[email] Resend OK (${res.status}) to=${email}: ${body}`);
-    return { ok: true, status: res.status };
-  } catch (e: any) {
-    console.error("[email] Resend error to=" + email + ": " + e.message);
-    return { ok: false, error: e.message };
-  }
+  console.error(
+    `[email] Token email FAILED to=${email}: ${result.error || "all delivery paths failed"}`,
+  );
+  return { ok: false, error: result.error || "Email delivery failed" };
 }
 
 function meetEmailHtml(
@@ -501,14 +492,533 @@ async function getTodayEmailCount(db: any): Promise<number> {
   return row ? row.count : 0;
 }
 
-async function incrementEmailCount(db: any) {
+async function incrementEmailCount(db: any, amount = 1) {
   const today = new Date().toISOString().slice(0, 10);
   await db
     .prepare(
-      "INSERT INTO daily_email_count (date, count) VALUES (?, 1) ON CONFLICT(date) DO UPDATE SET count = count + 1",
+      "INSERT INTO daily_email_count (date, count) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET count = count + ?",
     )
-    .bind(today)
+    .bind(today, amount, amount)
     .run();
+}
+
+const SMTP_HOST = "mail.spacemail.com";
+const SMTP_PORT = 465;
+const SMTP_BATCH_SIZE = 50;
+const SMTP_MAX_PER_HOUR = 500;
+const RESEND_MAX_PER_DAY = 100;
+const SMTP_TIMEOUT_MS = 20000;
+
+type EmailAttachment = {
+  filename: string;
+  content: string;
+  contentType?: string;
+};
+
+type SendEmailOptions = {
+  from: string;
+  to: string | string[];
+  subject: string;
+  html: string;
+  attachments?: EmailAttachment[];
+};
+
+type SendEmailResult = {
+  sent: number;
+  failed: number;
+  skipped: number;
+  viaResend: number;
+  error?: string;
+};
+
+function utf8ToBase64(input: string): string {
+  return arrayBufferToBase64(new TextEncoder().encode(input).buffer as ArrayBuffer);
+}
+
+function wrapBase64(b64: string): string {
+  const clean = b64.replace(/\s+/g, "");
+  let out = "";
+  for (let i = 0; i < clean.length; i += 76) {
+    out += (i > 0 ? "\r\n" : "") + clean.slice(i, i + 76);
+  }
+  return out;
+}
+
+function sanitizeHeaderValue(value: string): string {
+  return value.replace(/[\r\n]+/g, " ").trim();
+}
+
+function encodeEmailSubject(subject: string): string {
+  const clean = sanitizeHeaderValue(subject);
+  if (/^[\x20-\x7E]*$/.test(clean)) return clean;
+  return "=?UTF-8?B?" + utf8ToBase64(clean) + "?=";
+}
+
+function extractEmailAddress(from: string): string {
+  const match = /<([^>]+)>/.exec(from);
+  return (match ? match[1] : from).trim();
+}
+
+function attachmentContentType(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  if (ext === "pdf") return "application/pdf";
+  if (ext === "png") return "image/png";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "webp") return "image/webp";
+  return "application/octet-stream";
+}
+
+function buildMimeMessage(message: {
+  from: string;
+  to: string[];
+  subject: string;
+  html: string;
+  attachments?: EmailAttachment[];
+}): string {
+  const boundary = "180dc-" + crypto.randomUUID().replace(/-/g, "");
+  const headers = [
+    "From: " + sanitizeHeaderValue(message.from),
+    "To: " +
+      (message.to.length === 1 ? message.to[0] : "undisclosed-recipients:;"),
+    "Subject: " + encodeEmailSubject(message.subject),
+    "Date: " + new Date().toUTCString(),
+    "Message-ID: <" + crypto.randomUUID() + "@180dcvitc.org>",
+    "MIME-Version: 1.0",
+  ];
+  const htmlPart = wrapBase64(utf8ToBase64(message.html));
+  if (!message.attachments || message.attachments.length === 0) {
+    headers.push('Content-Type: text/html; charset="UTF-8"');
+    headers.push("Content-Transfer-Encoding: base64");
+    return headers.join("\r\n") + "\r\n\r\n" + htmlPart + "\r\n";
+  }
+  headers.push('Content-Type: multipart/mixed; boundary="' + boundary + '"');
+  const parts: string[] = [];
+  parts.push(
+    "--" +
+      boundary +
+      '\r\nContent-Type: text/html; charset="UTF-8"\r\nContent-Transfer-Encoding: base64\r\n\r\n' +
+      htmlPart +
+      "\r\n",
+  );
+  for (const attachment of message.attachments) {
+    const filename = sanitizeHeaderValue(attachment.filename).replace(/"/g, "");
+    const contentType =
+      attachment.contentType || attachmentContentType(filename);
+    parts.push(
+      "--" +
+        boundary +
+        "\r\nContent-Type: " +
+        contentType +
+        '; name="' +
+        filename +
+        '"\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename="' +
+        filename +
+        '"\r\n\r\n' +
+        wrapBase64(attachment.content) +
+        "\r\n",
+    );
+  }
+  parts.push("--" + boundary + "--\r\n");
+  return headers.join("\r\n") + "\r\n\r\n" + parts.join("");
+}
+
+class SmtpReader {
+  private reader: ReadableStreamDefaultReader<Uint8Array>;
+  private decoder = new TextDecoder();
+  private buffer = "";
+  private ended = false;
+
+  constructor(readable: ReadableStream<Uint8Array>) {
+    this.reader = readable.getReader();
+  }
+
+  private async fill(): Promise<boolean> {
+    if (this.ended) return false;
+    const { value, done } = await this.reader.read();
+    if (done) {
+      this.ended = true;
+      return false;
+    }
+    this.buffer += this.decoder.decode(value, { stream: true });
+    return true;
+  }
+
+  async readLine(): Promise<string> {
+    for (;;) {
+      const index = this.buffer.indexOf("\r\n");
+      if (index !== -1) {
+        const line = this.buffer.slice(0, index);
+        this.buffer = this.buffer.slice(index + 2);
+        return line;
+      }
+      if (!(await this.fill())) {
+        const line = this.buffer;
+        this.buffer = "";
+        return line;
+      }
+    }
+  }
+
+  async readReply(): Promise<{ code: number; text: string }> {
+    let text = "";
+    for (;;) {
+      const line = await this.readLine();
+      text += (text ? "\n" : "") + line;
+      const match = /^(\d{3})([ -])/.exec(line);
+      if (match && match[2] === " ") return { code: Number(match[1]), text };
+      if (match && match[2] === "-") continue;
+      if (line === "") continue;
+      throw new Error("Unexpected SMTP response: " + line);
+    }
+  }
+
+  release() {
+    try {
+      this.reader.releaseLock();
+    } catch {}
+  }
+}
+
+async function smtpSendMessage(
+  user: string,
+  pass: string,
+  message: {
+    from: string;
+    to: string[];
+    subject: string;
+    html: string;
+    attachments?: EmailAttachment[];
+  },
+): Promise<{
+  ok: boolean;
+  accepted: string[];
+  rejected: string[];
+  error?: string;
+}> {
+  let socket: any = null;
+  let writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+  let reader: SmtpReader | null = null;
+  let timer: any = null;
+  try {
+    const encoder = new TextEncoder();
+    socket = connect(
+      { hostname: SMTP_HOST, port: SMTP_PORT },
+      { secureTransport: "on" },
+    );
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("SMTP timeout")),
+        SMTP_TIMEOUT_MS,
+      );
+    });
+    const session = (async () => {
+      writer = socket.writable.getWriter();
+      reader = new SmtpReader(socket.readable as ReadableStream<Uint8Array>);
+      const read = () => reader!.readReply();
+      const send = async (line: string) => {
+        await writer!.write(encoder.encode(line + "\r\n"));
+        return read();
+      };
+      const expect = async (line: string, codes: number[]) => {
+        const reply = await send(line);
+        if (!codes.includes(reply.code)) {
+          throw new Error(
+            "SMTP " +
+              line.split(" ")[0] +
+              " failed (" +
+              reply.code +
+              "): " +
+              reply.text,
+          );
+        }
+        return reply;
+      };
+
+      const greeting = await read();
+      if (greeting.code !== 220) {
+        throw new Error("SMTP greeting failed: " + greeting.text);
+      }
+      const ehlo = await expect("EHLO 180dcvitc.org", [250]);
+      const authText = ehlo.text.toUpperCase();
+      if (/AUTH[^\n]*\bPLAIN\b/.test(authText)) {
+        await expect(
+          "AUTH PLAIN " + utf8ToBase64("\u0000" + user + "\u0000" + pass),
+          [235],
+        );
+      } else if (/AUTH[^\n]*\bLOGIN\b/.test(authText)) {
+        await expect("AUTH LOGIN", [334]);
+        await expect(utf8ToBase64(user), [334]);
+        await expect(utf8ToBase64(pass), [235]);
+      } else {
+        throw new Error(
+          "SMTP server does not advertise AUTH PLAIN or AUTH LOGIN",
+        );
+      }
+
+      await expect("MAIL FROM:<" + extractEmailAddress(message.from) + ">", [
+        250,
+      ]);
+      const accepted: string[] = [];
+      const rejected: string[] = [];
+      for (const recipient of message.to) {
+        const reply = await send("RCPT TO:<" + recipient + ">");
+        if (reply.code === 250 || reply.code === 251) accepted.push(recipient);
+        else rejected.push(recipient);
+      }
+      if (accepted.length === 0) {
+        await send("QUIT");
+        return { ok: true, accepted, rejected };
+      }
+      await expect("DATA", [354]);
+      const mime = buildMimeMessage({
+        from: message.from,
+        to: accepted,
+        subject: message.subject,
+        html: message.html,
+        attachments: message.attachments,
+      });
+      const dotStuffed = mime
+        .split("\r\n")
+        .map((line) => (line.startsWith(".") ? "." + line : line))
+        .join("\r\n");
+      await writer!.write(encoder.encode(dotStuffed + "\r\n.\r\n"));
+      const afterData = await read();
+      if (afterData.code !== 250) {
+        throw new Error(
+          "SMTP DATA failed (" + afterData.code + "): " + afterData.text,
+        );
+      }
+      await send("QUIT");
+      return { ok: true, accepted, rejected };
+    })();
+    return await Promise.race([session, timeout]);
+  } catch (e: any) {
+    return { ok: false, accepted: [], rejected: [], error: e.message };
+  } finally {
+    if (timer) clearTimeout(timer);
+    try {
+      writer?.releaseLock();
+    } catch {}
+    try {
+      reader?.release();
+    } catch {}
+    try {
+      await socket?.close();
+    } catch {}
+  }
+}
+
+async function getHourlyEmailCount(db: any): Promise<number> {
+  const hour = new Date().toISOString().slice(0, 13);
+  const row: any = await db
+    .prepare("SELECT count FROM email_hour_count WHERE hour = ?")
+    .bind(hour)
+    .first();
+  return row ? row.count : 0;
+}
+
+async function incrementHourlyEmailCount(db: any, amount = 1) {
+  const hour = new Date().toISOString().slice(0, 13);
+  await db
+    .prepare(
+      "INSERT INTO email_hour_count (hour, count) VALUES (?, ?) ON CONFLICT(hour) DO UPDATE SET count = count + ?",
+    )
+    .bind(hour, amount, amount)
+    .run();
+}
+
+async function getResendDailyCount(db: any): Promise<number> {
+  const today = new Date().toISOString().slice(0, 10);
+  const row: any = await db
+    .prepare("SELECT count FROM resend_daily_count WHERE date = ?")
+    .bind(today)
+    .first();
+  return row ? row.count : 0;
+}
+
+async function incrementResendDailyCount(db: any, amount = 1) {
+  const today = new Date().toISOString().slice(0, 10);
+  await db
+    .prepare(
+      "INSERT INTO resend_daily_count (date, count) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET count = count + ?",
+    )
+    .bind(today, amount, amount)
+    .run();
+}
+
+function isEmailConfigured(c: any): boolean {
+  return Boolean(
+    (c.env.SPACEMAIL_SMTP_USER && c.env.SPACEMAIL_SMTP_PASS) ||
+      c.env.RESEND_API_KEY,
+  );
+}
+
+function newsletterSiteBase(c: any): string {
+  return (c.env.NEWSLETTER_SITE_URL || "").trim().replace(/\/+$/, "");
+}
+
+function newsletterCtaUrl(c: any, newsletterId: string): string {
+  const base = newsletterSiteBase(c);
+  return base
+    ? base + "/newsletter/" + newsletterId
+    : "https://180dcvitc.org/#newsletter";
+}
+
+async function sendViaResend(
+  apiKey: string,
+  message: {
+    from: string;
+    to: string;
+    subject: string;
+    html: string;
+    attachments?: EmailAttachment[];
+  },
+): Promise<boolean> {
+  try {
+    const payload: any = {
+      from: message.from,
+      to: message.to,
+      subject: message.subject,
+      html: message.html,
+    };
+    if (message.attachments && message.attachments.length > 0) {
+      payload.attachments = message.attachments.map((attachment) => ({
+        filename: attachment.filename,
+        content: attachment.content,
+      }));
+    }
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      console.error(
+        `[email] Resend FAILED (${res.status}) to=${message.to}: ${body}`,
+      );
+      return false;
+    }
+    console.log(`[email] Resend OK (${res.status}) to=${message.to}`);
+    return true;
+  } catch (e: any) {
+    console.error("[email] Resend error to=" + message.to + ": " + e.message);
+    return false;
+  }
+}
+
+async function sendEmail(
+  c: any,
+  options: SendEmailOptions,
+): Promise<SendEmailResult> {
+  const recipients = (Array.isArray(options.to) ? options.to : [options.to])
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => value.length > 0);
+  const result: SendEmailResult = {
+    sent: 0,
+    failed: 0,
+    skipped: 0,
+    viaResend: 0,
+  };
+  if (recipients.length === 0) return result;
+
+  const smtpUser = c.env.SPACEMAIL_SMTP_USER;
+  const smtpPass = c.env.SPACEMAIL_SMTP_PASS;
+  const resendKey = c.env.RESEND_API_KEY;
+  let smtpUsable = Boolean(smtpUser && smtpPass);
+  let resendDailyUsed = resendKey ? await getResendDailyCount(c.env.DB) : 0;
+  let resendSent = 0;
+  let smtpMessagesSent = 0;
+  let stopped = false;
+
+  const sendBatchViaResend = async (batchRecipients: string[]) => {
+    for (const recipient of batchRecipients) {
+      if (!resendKey) {
+        result.failed++;
+        continue;
+      }
+      if (resendDailyUsed + resendSent >= RESEND_MAX_PER_DAY) {
+        stopped = true;
+        break;
+      }
+      const ok = await sendViaResend(resendKey, {
+        from: options.from,
+        to: recipient,
+        subject: options.subject,
+        html: options.html,
+        attachments: options.attachments,
+      });
+      if (ok) {
+        resendSent++;
+        result.sent++;
+        result.viaResend++;
+      } else {
+        result.failed++;
+      }
+    }
+  };
+
+  for (let index = 0; index < recipients.length; index += SMTP_BATCH_SIZE) {
+    const batch = recipients.slice(index, index + SMTP_BATCH_SIZE);
+
+    if (smtpUsable) {
+      const hourly = await getHourlyEmailCount(c.env.DB);
+      if (hourly + smtpMessagesSent < SMTP_MAX_PER_HOUR) {
+        const smtp = await smtpSendMessage(smtpUser, smtpPass, {
+          from: options.from,
+          to: batch,
+          subject: options.subject,
+          html: options.html,
+          attachments: options.attachments,
+        });
+        if (smtp.ok) {
+          smtpMessagesSent++;
+          result.sent += smtp.accepted.length;
+          if (smtp.rejected.length > 0) {
+            console.warn(
+              "[email] Spacemail rejected " +
+                smtp.rejected.length +
+                " recipient(s), falling back to Resend",
+            );
+            await sendBatchViaResend(smtp.rejected);
+            if (stopped) break;
+          }
+          continue;
+        }
+        smtpUsable = false;
+        result.error = smtp.error;
+        console.warn(
+          "[email] Spacemail SMTP failed, falling back to Resend: " +
+            (smtp.error || "unknown error"),
+        );
+      } else {
+        stopped = true;
+      }
+    }
+
+    if (stopped) break;
+
+    await sendBatchViaResend(batch);
+    if (stopped) break;
+  }
+
+  if (smtpMessagesSent > 0) {
+    await incrementHourlyEmailCount(c.env.DB, smtpMessagesSent);
+  }
+  if (resendSent > 0) {
+    await incrementResendDailyCount(c.env.DB, resendSent);
+  }
+  if (result.sent > 0) {
+    await incrementEmailCount(c.env.DB, result.sent);
+  }
+  result.skipped = Math.max(
+    0,
+    recipients.length - result.sent - result.failed,
+  );
+  return result;
 }
 
 async function sendMeetEmail(
@@ -521,50 +1031,30 @@ async function sendMeetEmail(
   scheduledAt: string,
   meetType: string,
 ): Promise<boolean> {
-  const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) {
+  if (!isEmailConfigured(c)) {
     console.warn(
-      "[email] RESEND_API_KEY not configured @ skipping meet email to " + to,
+      "[email] Email not configured @ skipping meet email to " + to,
     );
     return false;
   }
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "180DC Admin <team@180dcvitc.org>",
-        to,
-        subject: "New Meet: " + title,
-        html: meetEmailHtml(
-          title,
-          description,
-          meetLink,
-          scheduledAt,
-          meetType,
-        ),
-      }),
-    });
-    const body = await res.text();
-    if (!res.ok) {
-      console.error(
-        "[email] Meet email FAILED (" + res.status + ") to=" + to + ": " + body,
-      );
-      return false;
-    }
-    console.log("[email] Meet email OK (" + res.status + ") to=" + to);
+  const result = await sendEmail(c, {
+    from: "180DC Admin <technical@180dcvitc.org>",
+    to,
+    subject: "New Meet: " + title,
+    html: meetEmailHtml(
+      title,
+      description,
+      meetLink,
+      scheduledAt,
+      meetType,
+    ),
+  });
+  if (result.sent > 0) {
+    console.log("[email] Meet email OK to=" + to);
     return true;
-  } catch (e: any) {
-    console.error("[email] Meet email error to=" + to + ": " + e.message);
-    return false;
   }
-}
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
+  console.error("[email] Meet email FAILED to=" + to);
+  return false;
 }
 
 async function queueOrSendMeetEmails(
@@ -577,62 +1067,47 @@ async function queueOrSendMeetEmails(
   meetLink: string | null,
   scheduledAt: string,
 ) {
-  const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.warn(
-      "[email] RESEND_API_KEY not configured @ skipping meet emails",
-    );
-    return { sent: 0, queued: 0 };
+  if (!isEmailConfigured(c)) {
+    console.warn("[email] Email not configured @ skipping meet emails");
+    return { sent: 0, queued: 0, failed: 0 };
   }
+  if (recipients.length === 0) return { sent: 0, queued: 0, failed: 0 };
 
-  let count = await getTodayEmailCount(c.env.DB);
-  const MAX_DAILY = 100;
-  let sent = 0;
-  let queued = 0;
-  let failed = 0;
+  const result = await sendEmail(c, {
+    from: "180DC Admin <technical@180dcvitc.org>",
+    to: recipients.map((r) => r.email),
+    subject: "New Meet: " + title,
+    html: meetEmailHtml(
+      title,
+      description,
+      meetLink,
+      scheduledAt,
+      meetType,
+    ),
+  });
 
-  for (const r of recipients) {
-    if (count < MAX_DAILY) {
-      const ok = await sendMeetEmail(
-        c,
+  const attempted = result.sent + result.failed;
+  const overflow = recipients.slice(attempted);
+  for (const r of overflow) {
+    await c.env.DB.prepare(
+      "INSERT INTO pending_emails (id, meet_id, meet_type, recipient_email, recipient_name, meet_title, meet_description, meet_link, scheduled_at) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+      .bind(
+        meetId,
+        meetType,
         r.email,
         r.name,
         title,
         description,
         meetLink,
         scheduledAt,
-        meetType,
-      );
-      if (ok) {
-        await incrementEmailCount(c.env.DB);
-        count++;
-        sent++;
-      } else {
-        failed++;
-      }
-      await sleep(550);
-    } else {
-      await c.env.DB.prepare(
-        "INSERT INTO pending_emails (id, meet_id, meet_type, recipient_email, recipient_name, meet_title, meet_description, meet_link, scheduled_at) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-        .bind(
-          meetId,
-          meetType,
-          r.email,
-          r.name,
-          title,
-          description,
-          meetLink,
-          scheduledAt,
-        )
-        .run();
-      queued++;
-    }
+      .run();
   }
   console.log(
-    `[email] Meet emails: sent=${sent}, queued=${queued}, failed=${failed}, total_recipients=${recipients.length}`,
+    `[email] Meet emails: sent=${result.sent}, queued=${overflow.length}, failed=${result.failed}, total_recipients=${recipients.length}`,
   );
-  return { sent, queued, failed };
+  return { sent: result.sent, queued: overflow.length, failed: result.failed };
 }
 
 async function getMeetRecipients(
@@ -678,8 +1153,7 @@ async function sendProjectAssignmentEmail(
   projectName: string,
   departmentIds: string[],
 ) {
-  const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) return;
+  if (!isEmailConfigured(c)) return;
   const safeProjectName = escapeHtml(projectName);
   const rows: any = await c.env.DB.prepare(
     `SELECT u.email, u.name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id IN (${departmentIds.map(() => "?").join(",")}) AND r.power_level >= 50 AND NOT (u.role_id = 'advisory' AND u.department_id IS NULL)`,
@@ -687,22 +1161,12 @@ async function sendProjectAssignmentEmail(
     .bind(...departmentIds)
     .all();
   const leads = rows.results || [];
-  let count = await getTodayEmailCount(c.env.DB);
-  const MAX_DAILY = 100;
-  for (const lead of leads) {
-    if (count >= MAX_DAILY) break;
-    try {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "180DC Admin <team@180dcvitc.org>",
-          to: lead.email,
-          subject: "New Project Assigned: " + projectName,
-          html: `<!DOCTYPE html>
+  if (leads.length === 0) return;
+  await sendEmail(c, {
+    from: "180DC Admin <technical@180dcvitc.org>",
+    to: leads.map((lead: any) => lead.email),
+    subject: "New Project Assigned: " + projectName,
+    html: `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -723,18 +1187,7 @@ async function sendProjectAssignmentEmail(
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.text();
-        console.error("Project email failed (" + res.status + "): " + body);
-      }
-    } catch (e: any) {
-      console.error("Project email error: " + e.message);
-    }
-    await incrementEmailCount(c.env.DB);
-    count++;
-  }
+  });
 }
 
 async function sendRoleAssignmentEmail(
@@ -744,25 +1197,15 @@ async function sendRoleAssignmentEmail(
   roleName: string,
   projectName: string,
 ) {
-  const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) return;
-  const count = await getTodayEmailCount(c.env.DB);
-  if (count >= 100) return;
+  if (!isEmailConfigured(c)) return;
   const safeName = escapeHtml(name);
   const safeRoleName = escapeHtml(roleName);
   const safeProjectName = escapeHtml(projectName);
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "180DC Admin <team@180dcvitc.org>",
-        to: email,
-        subject: "Role Assigned: " + roleName + " for " + projectName,
-        html: `<!DOCTYPE html>
+  await sendEmail(c, {
+    from: "180DC Admin <technical@180dcvitc.org>",
+    to: email,
+    subject: "Role Assigned: " + roleName + " for " + projectName,
+    html: `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -783,16 +1226,7 @@ async function sendRoleAssignmentEmail(
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      console.error("Role email failed (" + res.status + "): " + body);
-    }
-  } catch (e: any) {
-    console.error("Role email error: " + e.message);
-  }
-  await incrementEmailCount(c.env.DB);
+  });
 }
 
 async function sendRoleChangeEmail(
@@ -801,24 +1235,14 @@ async function sendRoleChangeEmail(
   name: string,
   roleName: string,
 ) {
-  const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) return;
-  const count = await getTodayEmailCount(c.env.DB);
-  if (count >= 100) return;
+  if (!isEmailConfigured(c)) return;
   const safeName = escapeHtml(name);
   const safeRoleName = escapeHtml(roleName);
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "180DC Admin <team@180dcvitc.org>",
-        to: email,
-        subject: "Your Role Has Been Updated",
-        html: `<!DOCTYPE html>
+  await sendEmail(c, {
+    from: "180DC Admin <technical@180dcvitc.org>",
+    to: email,
+    subject: "Your Role Has Been Updated",
+    html: `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -839,16 +1263,7 @@ async function sendRoleChangeEmail(
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      console.error("Role change email failed (" + res.status + "): " + body);
-    }
-  } catch (e: any) {
-    console.error("Role change email error: " + e.message);
-  }
-  await incrementEmailCount(c.env.DB);
+  });
 }
 
 async function hashPassword(
@@ -965,6 +1380,8 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS rate_limits (ip TEXT NOT NULL, endpoint TEXT NOT NULL, count INTEGER DEFAULT 1, window_start DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (ip, endpoint));
     CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, action TEXT NOT NULL, actor_email TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS daily_email_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS email_hour_count (hour TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS resend_daily_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS pending_emails (id TEXT PRIMARY KEY, meet_id TEXT NOT NULL, meet_type TEXT NOT NULL, recipient_email TEXT NOT NULL, recipient_name TEXT NOT NULL, meet_title TEXT NOT NULL, meet_description TEXT, meet_link TEXT, scheduled_at TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
@@ -1671,6 +2088,7 @@ const ALLOWED_ORIGINS = [
   "https://180dc-admin.pages.dev",
   "https://admin.180dc.org",
   "https://180dc-admin-frontend.pages.dev",
+  "https://newsletter.180dcvitc.org",
 ];
 
 const isDevOrigin = (o: string) => {
@@ -2158,7 +2576,7 @@ ${
 </table></td></tr></table>
 </body></html>`;
 }
-function sendWelcomeEmail(apiKey: string, email: string) {
+async function sendWelcomeEmail(c: any, email: string) {
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
@@ -2239,22 +2657,15 @@ function sendWelcomeEmail(apiKey: string, email: string) {
 
 </table></td></tr></table>
 </body></html>`;
-  fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: "180DC Newsletter <team@180dcvitc.org>",
-      to: email,
-      subject: "Welcome to the 180DC Newsletter!",
-      html,
-    }),
-  }).catch(() => {});
+  await sendEmail(c, {
+    from: "180DC Newsletter <technical@180dcvitc.org>",
+    to: email,
+    subject: "Welcome to the 180DC Newsletter!",
+    html,
+  });
 }
 
-function sendWelcomeBackEmail(apiKey: string, email: string) {
+async function sendWelcomeBackEmail(c: any, email: string) {
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
@@ -2299,19 +2710,12 @@ function sendWelcomeBackEmail(apiKey: string, email: string) {
 </td></tr>
 </table></td></tr></table>
 </body></html>`;
-  fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: "180DC Newsletter <team@180dcvitc.org>",
-      to: email,
-      subject: "Welcome back to the 180DC Newsletter!",
-      html,
-    }),
-  }).catch(() => {});
+  await sendEmail(c, {
+    from: "180DC Newsletter <technical@180dcvitc.org>",
+    to: email,
+    subject: "Welcome back to the 180DC Newsletter!",
+    html,
+  });
 }
 
 // Public: Subscribe to newsletter (called from /subscriber after the email is
@@ -2348,8 +2752,7 @@ app.post("/api/newsletter/subscribe", async (c) => {
       )
         .bind(existing.id)
         .run();
-      const apiKey = c.env.RESEND_API_KEY;
-      if (apiKey) sendWelcomeBackEmail(apiKey, email);
+      await sendWelcomeBackEmail(c, email);
       return c.json({
         success: true,
         message: "Welcome back! You have been re-subscribed.",
@@ -2362,8 +2765,7 @@ app.post("/api/newsletter/subscribe", async (c) => {
       .bind(crypto.randomUUID(), email)
       .run();
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (apiKey) sendWelcomeEmail(apiKey, email);
+    await sendWelcomeEmail(c, email);
 
     return c.json({
       success: true,
@@ -2431,6 +2833,41 @@ app.get("/api/newsletter", async (c) => {
       "SELECT id, title, description, image_url, source_file_url, created_at FROM newsletters ORDER BY created_at DESC LIMIT 10",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Public: Get a single newsletter with sanitized content (newsletter site fetches this)
+app.get("/api/newsletter/:id", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const rl = await checkRateLimit(c, "content_newsletter", 100, 60);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
+    const id = c.req.param("id");
+    const row = await c.env.DB.prepare(
+      "SELECT id, title, description, content, image_url, source_file_url, created_at, sent_at FROM newsletters WHERE id = ?",
+    )
+      .bind(id)
+      .first();
+    if (!row) return c.json({ error: "Newsletter not found" }, 404);
+    return c.json({
+      success: true,
+      data: {
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        content: sanitizeBlogHtml(row.content || ""),
+        image_url: row.image_url,
+        source_file_url: row.source_file_url,
+        created_at: row.created_at,
+        sent_at: row.sent_at,
+      },
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -2613,8 +3050,8 @@ app.post("/api/newsletter/send", async (c) => {
         429,
       );
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
+    if (!isEmailConfigured(c))
+      return c.json({ error: "Email not configured" }, 500);
 
     const body = await c.req.json();
     const newsletterId = body.newsletterId;
@@ -2627,14 +3064,6 @@ app.post("/api/newsletter/send", async (c) => {
       .first();
     if (!newsletter) return c.json({ error: "Newsletter not found" }, 404);
 
-    const currentCount = await getTodayEmailCount(c.env.DB);
-    if (currentCount >= 100) {
-      return c.json(
-        { error: "Daily email quota reached (100). Try again after 24 hours." },
-        429,
-      );
-    }
-
     const subscribers = await c.env.DB.prepare(
       "SELECT email FROM newsletter_subscribers WHERE active = 1",
     ).all();
@@ -2642,8 +3071,7 @@ app.post("/api/newsletter/send", async (c) => {
     if (recipients.length === 0)
       return c.json({ error: "No active subscribers" }, 400);
 
-    let sentCount = 0;
-    const siteUrl = "https://180dcvitc.org/#newsletter";
+    const siteUrl = newsletterCtaUrl(c, newsletterId);
 
     let pdfAttachment: any = null;
     if (newsletter.source_file_url) {
@@ -2658,6 +3086,7 @@ app.post("/api/newsletter/send", async (c) => {
         pdfAttachment = {
           filename: r2Key.split("/").pop() || "newsletter.pdf",
           content: b64,
+          contentType: "application/pdf",
         };
       }
     }
@@ -2670,42 +3099,27 @@ app.post("/api/newsletter/send", async (c) => {
       !!pdfAttachment,
     );
 
-    for (const email of recipients) {
-      if (currentCount + sentCount >= 100) break;
-      try {
-        const payload: any = {
-          from: "180DC Newsletter <team@180dcvitc.org>",
-          to: email,
-          subject: newsletter.title,
-          html,
-        };
-        if (pdfAttachment) payload.attachments = [pdfAttachment];
-        const res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + apiKey,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) sentCount++;
-        await new Promise((r) => setTimeout(r, 550));
-      } catch (err: any) {
-        console.error(
-          "[newsletter] Failed to send to " + email + ": " + err.message,
-        );
-      }
-    }
-
-    for (let i = 0; i < sentCount; i++) await incrementEmailCount(c.env.DB);
+    const result = await sendEmail(c, {
+      from: "180DC Newsletter <technical@180dcvitc.org>",
+      to: recipients,
+      subject: newsletter.title,
+      html,
+      attachments: pdfAttachment ? [pdfAttachment] : undefined,
+    });
 
     await c.env.DB.prepare(
       "UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?",
     )
-      .bind(sentCount, newsletterId)
+      .bind(result.sent, newsletterId)
       .run();
 
-    return c.json({ success: true, sentCount, total: recipients.length });
+    return c.json({
+      success: true,
+      sentCount: result.sent,
+      failed: result.failed,
+      queued: result.skipped,
+      total: recipients.length,
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -2814,32 +3228,15 @@ app.post("/api/newsletter-editor/otp/send", async (c) => {
       .bind(id, email, code, expiresAt)
       .run();
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (apiKey) {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "180DC Newsletter <team@180dcvitc.org>",
-          to: email,
-          subject: "Your Newsletter Editor OTP",
-          html: otpEmailHtml(code),
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        console.error(
-          "[newsletter-editor] OTP email failed:",
-          res.status,
-          errBody,
-        );
-        return c.json({ error: "Failed to send OTP email" }, 500);
-      }
-    } else {
-      console.warn("[newsletter-editor] RESEND_API_KEY not set, OTP:", code);
+    const result = await sendEmail(c, {
+      from: "180DC Newsletter <technical@180dcvitc.org>",
+      to: email,
+      subject: "Your Newsletter Editor OTP",
+      html: otpEmailHtml(code),
+    });
+    if (result.sent === 0) {
+      console.error("[newsletter-editor] OTP email failed");
+      return c.json({ error: "Failed to send OTP email" }, 500);
     }
 
     return c.json({ success: true, message: "OTP sent to " + email });
@@ -3061,8 +3458,8 @@ app.post("/api/newsletter-editor/send", async (c) => {
         429,
       );
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
+    if (!isEmailConfigured(c))
+      return c.json({ error: "Email not configured" }, 500);
 
     const body = await c.req.json();
     const newsletterId = body.newsletterId;
@@ -3075,10 +3472,6 @@ app.post("/api/newsletter-editor/send", async (c) => {
       .first();
     if (!newsletter) return c.json({ error: "Newsletter not found" }, 404);
 
-    const currentCount = await getTodayEmailCount(c.env.DB);
-    if (currentCount >= 100)
-      return c.json({ error: "Daily email quota reached (100)." }, 429);
-
     const subscribers = await c.env.DB.prepare(
       "SELECT email FROM newsletter_subscribers WHERE active = 1",
     ).all();
@@ -3086,8 +3479,7 @@ app.post("/api/newsletter-editor/send", async (c) => {
     if (recipients.length === 0)
       return c.json({ error: "No active subscribers" }, 400);
 
-    let sentCount = 0;
-    const siteUrl = "https://180dcvitc.org/#newsletter";
+    const siteUrl = newsletterCtaUrl(c, newsletterId);
 
     const subject = newsletter.email_subject || newsletter.title;
 
@@ -3104,53 +3496,40 @@ app.post("/api/newsletter-editor/send", async (c) => {
         pdfAttachment = {
           filename: r2Key.split("/").pop() || "newsletter.pdf",
           content: b64,
+          contentType: "application/pdf",
         };
       }
     }
 
-    for (const to of recipients) {
-      if (currentCount + sentCount >= 100) break;
-      try {
-        const html = newsletterEmailHtml(
-          newsletter.title,
-          newsletter.description || "",
-          siteUrl,
-          to,
-          !!pdfAttachment,
-        );
-        const payload: any = {
-          from: "180DC Newsletter <team@180dcvitc.org>",
-          to,
-          subject,
-          html,
-        };
-        if (pdfAttachment) payload.attachments = [pdfAttachment];
-        const res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + apiKey,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) sentCount++;
-        await new Promise((r) => setTimeout(r, 550));
-      } catch (err: any) {
-        console.error(
-          "[newsletter-editor] Failed to send to " + to + ": " + err.message,
-        );
-      }
-    }
+    const html = newsletterEmailHtml(
+      newsletter.title,
+      newsletter.description || "",
+      siteUrl,
+      undefined,
+      !!pdfAttachment,
+    );
 
-    for (let i = 0; i < sentCount; i++) await incrementEmailCount(c.env.DB);
+    const result = await sendEmail(c, {
+      from: "180DC Newsletter <technical@180dcvitc.org>",
+      to: recipients,
+      subject,
+      html,
+      attachments: pdfAttachment ? [pdfAttachment] : undefined,
+    });
 
     await c.env.DB.prepare(
       "UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?",
     )
-      .bind(sentCount, newsletterId)
+      .bind(result.sent, newsletterId)
       .run();
 
-    return c.json({ success: true, sentCount, total: recipients.length });
+    return c.json({
+      success: true,
+      sentCount: result.sent,
+      failed: result.failed,
+      queued: result.skipped,
+      total: recipients.length,
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -3172,8 +3551,8 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
         429,
       );
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
+    if (!isEmailConfigured(c))
+      return c.json({ error: "Email not configured" }, 500);
 
     const body = await c.req.json();
     const { subject, description } = body;
@@ -3182,10 +3561,6 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
     if (!subject || !subject.trim())
       return c.json({ error: "Subject is required" }, 400);
 
-    const currentCount = await getTodayEmailCount(c.env.DB);
-    if (currentCount >= 100)
-      return c.json({ error: "Daily email quota reached (100)." }, 429);
-
     const subscribers = await c.env.DB.prepare(
       "SELECT email FROM newsletter_subscribers WHERE active = 1",
     ).all();
@@ -3193,8 +3568,8 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
     if (recipients.length === 0)
       return c.json({ error: "No active subscribers" }, 400);
 
-    let sentCount = 0;
-    const siteUrl = "https://180dcvitc.org/#newsletter";
+    const siteUrl =
+      newsletterSiteBase(c) || "https://180dcvitc.org/#newsletter";
 
     let pdfAttachment: any = null;
     if (sourceFileUrl) {
@@ -3206,51 +3581,37 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
         pdfAttachment = {
           filename: r2Key.split("/").pop() || "event.pdf",
           content: b64,
+          contentType: attachmentContentType(
+            r2Key.split("/").pop() || "event.pdf",
+          ),
         };
       }
     }
 
-    for (const to of recipients) {
-      if (currentCount + sentCount >= 100) break;
-      try {
-        const html = eventMailEmailHtml(
-          subject,
-          description || "",
-          siteUrl,
-          to,
-          !!pdfAttachment,
-          imageUrl || undefined,
-        );
-        const payload: any = {
-          from: "180DC Events <team@180dcvitc.org>",
-          to,
-          subject: subject,
-          html,
-        };
-        if (pdfAttachment) payload.attachments = [pdfAttachment];
-        const res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + apiKey,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) sentCount++;
-        await new Promise((r) => setTimeout(r, 550));
-      } catch (err: any) {
-        console.error(
-          "[newsletter-editor] Failed to send event mail to " +
-            to +
-            ": " +
-            err.message,
-        );
-      }
-    }
+    const html = eventMailEmailHtml(
+      subject,
+      description || "",
+      siteUrl,
+      undefined,
+      !!pdfAttachment,
+      imageUrl || undefined,
+    );
 
-    for (let i = 0; i < sentCount; i++) await incrementEmailCount(c.env.DB);
+    const result = await sendEmail(c, {
+      from: "180DC Events <technical@180dcvitc.org>",
+      to: recipients,
+      subject,
+      html,
+      attachments: pdfAttachment ? [pdfAttachment] : undefined,
+    });
 
-    return c.json({ success: true, sentCount, total: recipients.length });
+    return c.json({
+      success: true,
+      sentCount: result.sent,
+      failed: result.failed,
+      queued: result.skipped,
+      total: recipients.length,
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -3407,32 +3768,15 @@ app.post("/api/letter-studio/otp/send", async (c) => {
       .bind(id, email, code, expiresAt)
       .run();
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (apiKey) {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "180DC Letter Studio <team@180dcvitc.org>",
-          to: email,
-          subject: "Your 180DC Letter Studio OTP",
-          html: letterOtpEmailHtml(code),
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        console.error(
-          "[letter-studio] OTP email failed:",
-          res.status,
-          errBody,
-        );
-        return c.json({ error: "Failed to send OTP email" }, 500);
-      }
-    } else {
-      console.warn("[letter-studio] RESEND_API_KEY not set, OTP:", code);
+    const result = await sendEmail(c, {
+      from: "180DC Letter Studio <technical@180dcvitc.org>",
+      to: email,
+      subject: "Your 180DC Letter Studio OTP",
+      html: letterOtpEmailHtml(code),
+    });
+    if (result.sent === 0) {
+      console.error("[letter-studio] OTP email failed");
+      return c.json({ error: "Failed to send OTP email" }, 500);
     }
 
     return c.json({ success: true, message: "OTP sent to " + email });
@@ -3813,8 +4157,8 @@ app.post("/api/letter-studio/send", async (c) => {
         429,
       );
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
+    if (!isEmailConfigured(c))
+      return c.json({ error: "Email not configured" }, 500);
 
     const body = await c.req.json();
     const fileKey = sanitizeStr(body.fileKey, 300);
@@ -3825,14 +4169,6 @@ app.post("/api/letter-studio/send", async (c) => {
     if (!fileKey.startsWith("letters/"))
       return c.json({ error: "Invalid file key" }, 400);
 
-    const currentCount = await getTodayEmailCount(c.env.DB);
-    if (currentCount >= 100) {
-      return c.json(
-        { error: "Daily email quota reached (100). Try again after 24 hours." },
-        429,
-      );
-    }
-
     const r2Obj = await c.env.CLUB_FILES.get(fileKey);
     if (!r2Obj) return c.json({ error: "Letter PDF not found" }, 404);
     const buf = await r2Obj.arrayBuffer();
@@ -3840,6 +4176,7 @@ app.post("/api/letter-studio/send", async (c) => {
     const attachment = {
       filename: (fileKey.split("/").pop() || "letter.pdf").replace(/[^a-zA-Z0-9._-]/g, "-"),
       content: b64,
+      contentType: attachmentContentType(fileKey),
     };
 
     const details = {
@@ -3850,29 +4187,17 @@ app.post("/api/letter-studio/send", async (c) => {
       dateStr: sanitizeStr(body.dateStr, 64) || "",
     };
 
-    const payload: any = {
-      from: "180DC Letter Studio <team@180dcvitc.org>",
+    const result = await sendEmail(c, {
+      from: "180DC Letter Studio <technical@180dcvitc.org>",
       to: recipientEmail,
       subject: letterEmailSubject(docType, details.name),
       html: letterEmailHtml(docType, details),
       attachments: [attachment],
-    };
-
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
     });
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.error("[letter-studio] send failed:", res.status, errBody);
+    if (result.sent === 0) {
+      console.error("[letter-studio] send failed");
       return c.json({ error: "Failed to send email" }, 500);
     }
-
-    await incrementEmailCount(c.env.DB);
 
     await c.env.DB.prepare(
       "INSERT INTO letters_sent (id, docnum, doc_type, member_name, recipient_email, file_key, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -4084,18 +4409,6 @@ app.post("/api/auth/forgot-token", async (c) => {
       return c.json({ error: "Valid email is required" }, 400);
     }
 
-    // Check quota before lookup to prevent email enumeration
-    const count = await getTodayEmailCount(c.env.DB);
-    if (count >= 100) {
-      return c.json(
-        {
-          error:
-            "Daily email quota reached. Please contact the administrator or try again after 24 hours.",
-        },
-        429,
-      );
-    }
-
     const row: any = await c.env.DB.prepare(
       "SELECT token, name, email, revoked_at, expires_at FROM admin_tokens WHERE email = ?",
     )
@@ -4116,7 +4429,6 @@ app.post("/api/auth/forgot-token", async (c) => {
       console.log(
         `[forgot-token] Token found for ${email}, email sent: ${emailResult.ok}${emailResult.error ? `, error: ${emailResult.error}` : ""}`,
       );
-      await incrementEmailCount(c.env.DB);
     } else {
       console.warn(
         `[forgot-token] No active token found for ${email}${row ? " (token exists but revoked or expired)" : " (no token record)"}`,
@@ -4517,6 +4829,8 @@ app.get("/api/dashboard", async (c) => {
         upcomingMeetsCount: totalUpcomingMeets,
         announcementsCount: (announcements.results || []).length,
         todayEmailCount: await getTodayEmailCount(c.env.DB),
+        hourEmailCount: await getHourlyEmailCount(c.env.DB),
+        hourEmailLimit: SMTP_MAX_PER_HOUR,
       },
       recentMeets,
       pendingRequests: pendingRequests.results || [],
@@ -6133,18 +6447,25 @@ app.post("/api/meets/process-queue", async (c) => {
     if (user.power_level < 100)
       return c.json({ error: "Forbidden: Board only" }, 403);
 
-    let count = await getTodayEmailCount(c.env.DB);
-    const MAX_DAILY = 100;
+    const hourly = await getHourlyEmailCount(c.env.DB);
+    const capacity = Math.max(0, SMTP_MAX_PER_HOUR - hourly);
+    if (capacity === 0) {
+      return c.json({
+        success: true,
+        emailsSent: 0,
+        message: "Hourly email limit reached. Try again later.",
+      });
+    }
+    const limit = Math.min(100, capacity);
     let sent = 0;
 
     const pending: any = await c.env.DB.prepare(
       "SELECT * FROM pending_emails ORDER BY created_at ASC LIMIT ?",
     )
-      .bind(MAX_DAILY - count)
+      .bind(limit)
       .all();
     for (const p of pending.results || []) {
-      if (count >= MAX_DAILY) break;
-      await sendMeetEmail(
+      const ok = await sendMeetEmail(
         c,
         p.recipient_email,
         p.recipient_name,
@@ -6154,11 +6475,10 @@ app.post("/api/meets/process-queue", async (c) => {
         p.scheduled_at,
         p.meet_type,
       );
-      await incrementEmailCount(c.env.DB);
+      if (!ok) break;
       await c.env.DB.prepare("DELETE FROM pending_emails WHERE id = ?")
         .bind(p.id)
         .run();
-      count++;
       sent++;
     }
 
@@ -9398,19 +9718,12 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
     }
 
     // Send the email
-    const apiKey = c.env.RESEND_API_KEY;
-    if (apiKey) {
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "180DC Consulting <team@180dcvitc.org>",
-          to: request.email,
-          subject: emailSubject,
-          html: `<!DOCTYPE html>
+    if (isEmailConfigured(c)) {
+      await sendEmail(c, {
+        from: "180DC Consulting <technical@180dcvitc.org>",
+        to: request.email,
+        subject: emailSubject,
+        html: `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -9429,7 +9742,6 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
-        }),
       });
     }
 
@@ -9487,19 +9799,12 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
     }
 
     // Send the email
-    const apiKey = c.env.RESEND_API_KEY;
-    if (apiKey) {
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "180DC Consulting <team@180dcvitc.org>",
-          to: request.email,
-          subject: emailSubject,
-          html: `<!DOCTYPE html>
+    if (isEmailConfigured(c)) {
+      await sendEmail(c, {
+        from: "180DC Consulting <technical@180dcvitc.org>",
+        to: request.email,
+        subject: emailSubject,
+        html: `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -9518,7 +9823,6 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
-        }),
       });
     }
 
@@ -9825,19 +10129,8 @@ app.post("/api/send-email", async (c) => {
       return c.json({ error: "Missing recipient, subject, or body" }, 400);
     }
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
-
-    const currentCount = await getTodayEmailCount(c.env.DB);
-    if (currentCount >= 100) {
-      return c.json(
-        {
-          error:
-            "Daily email quota reached (100 emails). Try again after 24 hours.",
-        },
-        429,
-      );
-    }
+    if (!isEmailConfigured(c))
+      return c.json({ error: "Email not configured" }, 500);
 
     // Support multiple recipients separated by comma/semicolon
     const recipients = to
@@ -9881,18 +10174,11 @@ app.post("/api/send-email", async (c) => {
       return c.json({ error: "No valid email addresses provided" }, 400);
     }
 
-    for (const recipient of validRecipients) {
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "180DC Admin <team@180dcvitc.org>",
-          to: recipient,
-          subject,
-          html: `<!DOCTYPE html>
+    const result = await sendEmail(c, {
+      from: "180DC Admin <technical@180dcvitc.org>",
+      to: validRecipients,
+      subject,
+      html: `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -9911,15 +10197,14 @@ app.post("/api/send-email", async (c) => {
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
-        }),
-      });
-    }
+    });
 
-    await incrementEmailCount(c.env.DB);
     return c.json(
       {
         success: true,
-        message: `Email sent to ${validRecipients.length} recipient(s)`,
+        message: `Email sent to ${result.sent} recipient(s)`,
+        failed: result.failed,
+        queued: result.skipped,
       },
       200,
     );

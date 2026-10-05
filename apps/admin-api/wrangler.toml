@@ -41,3 +41,9 @@ preview_bucket_name = "preview-cdn"
 binding = "QUEUE"
 queue = "jobs-queue"
 
+[vars]
+# Set to "https://newsletter.180dcvitc.org" once the ADR-004 newsletter site is deployed.
+# While empty, newsletter CTAs fall back to https://180dcvitc.org/#newsletter
+# and unsubscribe links stay on https://180dcvitc.org/unsubscribe.
+NEWSLETTER_SITE_URL = ""
+

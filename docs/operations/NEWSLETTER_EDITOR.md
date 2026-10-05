@@ -23,7 +23,7 @@ Newsletter panel (power >= 100):          OTP login → editor:
    - Is email in `newsletter_authorized_emails` table? → allowed
    - Is email a registered member with power_level != 30? → allowed
    - Otherwise → 403
-3. 6-digit OTP sent via Resend (expires 5 min)
+3. 6-digit OTP sent through `sendEmail()` (Spacemail SMTP, Resend fallback; expires 5 min)
 4. User enters OTP → verified → 24h session token created
 5. Session stored in `localStorage` as `nl_editor_session`
 
@@ -62,6 +62,7 @@ All under `apps/admin-api/index.ts`.
 
 ### Existing Public Newsletter Endpoints (were broken, now fixed)
 - `GET /api/newsletter` — list published newsletters (landing page)
+- `GET /api/newsletter/:id` — single newsletter with sanitized `content` (used by the separate newsletter site, ADR-004)
 - `POST /api/newsletter/subscribe` — subscribe to newsletter
 - `GET /api/newsletter/unsubscribe?email=...` — unsubscribe (returns styled HTML page)
 - `GET /api/newsletter/subscribers/count` — public count
@@ -107,33 +108,42 @@ All under `apps/admin-api/index.ts`.
 
 | Variable | Location | Purpose |
 |----------|----------|---------|
-| `RESEND_API_KEY` | Cloudflare Workers secret + `.dev.vars` | Sending OTP and newsletter emails |
+| `RESEND_API_KEY` | Cloudflare Workers secret + `.dev.vars` | Fallback email sender, used automatically when Spacemail SMTP fails |
 | `VITE_CLERK_PUBLISHABLE_KEY` | `apps/frontend/.env` | Clerk auth for subscriber page |
+| `NEWSLETTER_SITE_URL` | `wrangler.toml` `[vars]` + `.dev.vars` | Base URL of the separate newsletter site (ADR-004). Consumed by bulk templates when non-empty (CTA → `{url}/newsletter/{id}`); kept empty in production until the site is deployed, which falls back to `180dcvitc.org/#newsletter`. |
+| `SPACEMAIL_SMTP_USER` / `SPACEMAIL_SMTP_PASS` | Workers secrets + `.dev.vars` | Primary SMTP sender: authenticated mailbox `technical@180dcvitc.org` + password. All From addresses use this mailbox, so Spacemail's sender-ownership check passes. |
 
-## Resend Configuration
+## Email Delivery
 
-- Domain: `180dcvitc.org` (verified in Resend)
-- From addresses: `team@180dcvitc.org` (newsletters), `180DC Events <team@180dcvitc.org>` (event mails)
-- Used for: OTP emails, newsletter sends, event mails, admin token emails
+All sending goes through `sendEmail()` in `apps/admin-api/index.ts`:
+
+- **Primary:** Spacemail SMTP at `mail.spacemail.com:465` (implicit TLS) via `cloudflare:sockets`, AUTH with the mailbox address + password.
+- **Batching:** recipients are chunked into BCC groups of up to 50 per message.
+- **Quota:** 500 SMTP messages/hour tracked in `email_hour_count`; Resend fallback capped at 100 recipients/day in `resend_daily_count`.
+- **Fallback:** if SMTP fails (auth, connectivity, timeout), the same content is sent per-recipient through Resend (`RESEND_API_KEY`) so BCC privacy is preserved.
+- **From addresses:** all `technical@180dcvitc.org` — `180DC Newsletter <...>`, `180DC Events <...>`, `180DC Admin <...>`, `180DC Consulting <...>`, `180DC Letter Studio <...>`.
+- **PDF attachments:** built into a multipart MIME message; Resend fallback uses the Resend `attachments` payload.
 
 ## Email Templates
 
-All outgoing emails include an unsubscribe footer:
+All outgoing emails include an unsubscribe footer. Bulk sends share one body across BCC batches, so the footer links to the public page without a per-recipient parameter:
 ```
 To stop receiving emails from 180DC, click here to unsubscribe.
-→ https://180dcvitc.org/unsubscribe?email={subscriber_email}
+→ https://180dcvitc.org/unsubscribe
 ```
+Single-recipient emails (welcome / welcome-back) may keep `?email={subscriber_email}`.
 
 ### Newsletter Email (`newsletterEmailHtml`)
 - Green header with 180DC branding
 - "New Newsletter" label, title, description
 - "Read on Website" CTA button
 - Unsubscribe footer
+- CTA target: `{NEWSLETTER_SITE_URL}/newsletter/{id}` when the var is set, otherwise `https://180dcvitc.org/#newsletter`
 
 ### Event Mail (`eventMailEmailHtml`)
 - Dark header with green accent text
 - "Upcoming Event" label (orange accent), title, description
-- "Learn More" CTA button (orange)
+- "Learn More" CTA button (orange) → `{NEWSLETTER_SITE_URL}` when set, otherwise the landing page
 - Unsubscribe footer
 
 ### Welcome/Re-subscribe Emails

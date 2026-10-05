@@ -354,7 +354,21 @@ This table is for the public leadership page, not the `users` table.
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | date | TEXT | PRIMARY KEY | ISO date |
-| count | INTEGER | DEFAULT 0 | |
+| count | INTEGER | DEFAULT 0 | Total delivered recipients that day (all providers); display only, not a hard cap |
+
+### `email_hour_count`
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| hour | TEXT | PRIMARY KEY | ISO hour `YYYY-MM-DDTHH` (UTC) |
+| count | INTEGER | DEFAULT 0 | Spacemail SMTP messages (50-recipient BCC batches) sent in that hour; capped at 500 |
+
+### `resend_daily_count`
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| date | TEXT | PRIMARY KEY | ISO date |
+| count | INTEGER | DEFAULT 0 | Resend fallback emails delivered that day; capped at 100 |
 
 ### `pending_emails`
 

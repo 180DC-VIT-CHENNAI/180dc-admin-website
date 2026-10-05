@@ -111,7 +111,7 @@ interface AdminConsoleProps {
   // System Configuration
   maintenanceMode: { enabled: boolean; message: string } | null;
   setMaintenanceMode: React.Dispatch<React.SetStateAction<{ enabled: boolean; message: string } | null>>;
-  stats: { membersCount: number; projectsCount: number; upcomingMeetsCount: number; announcementsCount: number; todayEmailCount: number };
+  stats: { membersCount: number; projectsCount: number; upcomingMeetsCount: number; announcementsCount: number; todayEmailCount: number; hourEmailCount: number; hourEmailLimit: number };
 }
 
 export default function AdminConsole({
@@ -247,12 +247,12 @@ export default function AdminConsole({
              </div>
           </div>
           <div className="admin-sub-card">
-             <div className="admin-sub-label">Daily Email Quota</div>
+             <div className="admin-sub-label">Hourly Email Quota</div>
              <div style={{ flex: 1 }}>
                 <div className="admin-progress-bar">
-                   <div className="admin-progress-fill" style={{ width: `${Math.min(stats.todayEmailCount, 100)}%`, background: stats.todayEmailCount > 90 ? "var(--status-error)" : "var(--primary-green)" }} />
+                   <div className="admin-progress-fill" style={{ width: `${Math.min((stats.hourEmailCount / (stats.hourEmailLimit || 500)) * 100, 100)}%`, background: stats.hourEmailCount / (stats.hourEmailLimit || 500) > 0.9 ? "var(--status-error)" : "var(--primary-green)" }} />
                 </div>
-                <div className="admin-progress-text">{stats.todayEmailCount} / 100 Sent Today</div>
+                <div className="admin-progress-text">{stats.hourEmailCount} / {stats.hourEmailLimit || 500} Sent This Hour · {stats.todayEmailCount} today</div>
              </div>
           </div>
           <div className="admin-sub-card">

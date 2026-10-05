@@ -20,10 +20,11 @@ Cloudflare Worker (apps/admin-api)
   ├─ R2 object storage
   ├─ KV namespace (bound, unused)
   ├─ Queue binding (bound, unused)
-  └─ Resend email API
+  ├─ Spacemail SMTP (primary email via cloudflare:sockets)
+  └─ Resend email API (fallback)
         |
         v
-External: Resend, Clerk, Google Fonts/CDN
+External: Spacemail SMTP, Resend, Clerk, Google Fonts/CDN
 ```
 
 ## Components
@@ -46,7 +47,7 @@ External: Resend, Clerk, Google Fonts/CDN
 - **Storage:** R2 buckets `CLUB_FILES`, `BLOG_IMAGES`, `CASE_STUDIES`.
 - **Cache/session:** KV `AUTH_SESSIONS` (bound but not used in `main`).
 - **Queue:** `QUEUE` producer binding (bound but not used in `main`).
-- **Email:** Resend (`RESEND_API_KEY` secret).
+- **Email:** Unified `sendEmail()` choke-point — Spacemail SMTP (`mail.spacemail.com:465`, `SPACEMAIL_SMTP_USER`/`SPACEMAIL_SMTP_PASS`) primary, Resend (`RESEND_API_KEY`) automatic fallback. BCC batches of up to 50; quotas tracked in `email_hour_count` (500/hour) and `resend_daily_count` (100/day).
 - **Clerk:** `@clerk/backend` `verifyToken` used only for Google login linking.
 - **Schema and migrations:** `ensureTables` and `runMigrations` in `index.ts`.
 
@@ -128,16 +129,15 @@ External: Resend, Clerk, Google Fonts/CDN
 
 ### Meet emails
 
-- When a meet is created with notifications, `queueOrSendMeetEmails` fetches recipients and sends up to the daily 100-email quota.
+- When a meet is created with notifications, `queueOrSendMeetEmails` fetches recipients and sends through `sendEmail()` up to the hourly Spacemail cap.
 - Emails above the quota are inserted into `pending_emails`.
 - `POST /api/meets/process-queue` sends pending meet emails manually.
 
 ### Newsletter sends
 
 - Admin or newsletter editor calls `POST /api/newsletter/send` or `POST /api/newsletter-editor/send`.
-- System checks `daily_email_count`.
-- It sends with Resend, 550ms apart, up to 100 emails.
-- It updates `newsletters.sent_at` and `recipient_count`.
+- Subscribers are chunked into BCC batches of up to 50 and sent through the `sendEmail()` path (Spacemail SMTP primary, Resend fallback), respecting the 500-messages/hour cap.
+- It updates `newsletters.sent_at` and `recipient_count` with the delivered count and reports `failed`/`queued`.
 
 ### File uploads
 
@@ -154,7 +154,7 @@ External: Resend, Clerk, Google Fonts/CDN
 | Department isolation | Directors can only see/manage their own department unless `power_level >= 100`. |
 | Newsletter editor access | Authorized emails or members with `power_level != 30`. |
 | Rate limiting | D1 `rate_limits` table per IP and endpoint. |
-| Email quota | D1 `daily_email_count` table. |
+| Email quota | D1 `email_hour_count` (500 SMTP messages/hour) and `resend_daily_count` (100 fallback recipients/day). |
 
 ## Concurrency and consistency
 
@@ -173,4 +173,4 @@ External: Resend, Clerk, Google Fonts/CDN
 - Cloudflare Workers free plan: 10ms CPU per request. The current heavy `index.ts` file and multiple D1 round trips may approach this under load.
 - D1 does not support stored procedures or triggers. Schema migrations must be handled in application code.
 - Workers do not have a filesystem. All uploads use R2.
-- `setTimeout` is used for 550ms email pacing. This blocks the Worker request; long sends can hit Worker limits.
+- Bulk email is sent over SMTP from the Worker using `cloudflare:sockets` (`mail.spacemail.com:465`). Long sends block the Worker request; the hourly quota and Resend fallback bound the work.

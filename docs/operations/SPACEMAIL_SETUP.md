@@ -1,12 +1,24 @@
 # Spacemail Setup for 180DC
 
+> **Status:** Backend implemented; DNS configured; credentials pending. The `sendEmail()`
+> choke-point and all Resend call-site replacements are in `apps/admin-api/index.ts`
+> (Spacemail SMTP primary via `cloudflare:sockets`, automatic Resend fallback, BCC batches
+> of 50, `email_hour_count` / `resend_daily_count` accounting). The root Cloudflare DNS
+> records are in place (MX, SPF, `spacemail._domainkey` DKIM — verified live). The
+> `spacemail._domainkey` / `_autodiscover._tcp` / `spf.spacemail.com` checks all pass.
+> `SPACEMAIL_SMTP_USER` / `SPACEMAIL_SMTP_PASS` are not set in production yet, so until
+> then the code continues to send through Resend. Local `.dev.vars` has them configured
+> (mailbox `technical@180dcvitc.org`). `NEWSLETTER_SITE_URL` is intentionally empty until
+> the separate newsletter site (ADR-004) is deployed. Ordered checklist:
+> `docs/execution/current-state.md` → "Next steps — newsletter system".
+
 ## Why this document exists
 
 180DC is migrating email sending from Resend to Spacemail (Spaceship/Namecheap business
 email) to finish the newsletter system. During Spacemail onboarding, only `@180dcvitc.org`
 mailbox addresses could be created — `@mail.180dcvitc.org` addresses were not available.
 This document explains why that happened, what the current DNS state means, and exactly
-how to fix it so `From: team@180dcvitc.org` sends authenticate correctly.
+how to fix it so `From: technical@180dcvitc.org` sends authenticate correctly.
 
 ## TL;DR
 
@@ -15,19 +27,30 @@ how to fix it so `From: team@180dcvitc.org` sends authenticate correctly.
 - The Spacemail DNS verification records (MX + SPF) were created on the **subdomain**
   `mail.180dcvitc.org`, but the mailbox addresses are at the **root** domain
   `@180dcvitc.org`. Sending from `@180dcvitc.org` therefore fails SPF/DKIM.
-- The root domain `180dcvitc.org` currently has **no MX records and no SPF record** at
-  all, so moving Spacemail onto the root domain breaks nothing and is the correct fix.
+- The root domain `180dcvitc.org` had **no MX records and no SPF record** at all, so
+  moving Spacemail onto the root domain broke nothing and was the correct fix. This is now
+  done (see Current DNS state above).
 
-## Current DNS state (verified live)
+## Current DNS state (verified live 2026-10-06)
 
 | Domain | Record type | Value | Status |
 |--------|-------------|-------|--------|
-| `180dcvitc.org` | TXT | `fbf0abfa-cc4f-4339-833f-357bd3b40167` (Cloudflare verification) | Present |
-| `180dcvitc.org` | MX | *(none)* | **Missing** |
-| `180dcvitc.org` | TXT (SPF) | *(none)* | **Missing** |
-| `mail.180dcvitc.org` | MX | `mx1.spacemail.com` (pref 0), `mx2.spacemail.com` (pref 0) | Present |
-| `mail.180dcvitc.org` | TXT (SPF) | `v=spf1 include:spf.spacemail.com ~all` | Present |
+| `180dcvitc.org` | TXT | `fbf0abfa-cc4f-4339-833f-357bd3b40167` (Spaceship domain verification) | Present |
+| `180dcvitc.org` | MX | `mx1.spacemail.com`, `mx2.spacemail.com` (priority 0) | Present |
+| `180dcvitc.org` | TXT (SPF) | `v=spf1 include:spf.spacemail.com ~all` | Present |
+| `spacemail._domainkey.180dcvitc.org` | TXT (DKIM) | `v=DKIM1;k=rsa;p=...` (account-specific) | Present and resolving |
+| `_autodiscover._tcp.180dcvitc.org` | SRV | `0 0 443 autoconfig.spacemail.com` | Present (mail clients only) |
+| `resend._domainkey.180dcvitc.org` | TXT (DKIM) | two `p=...` keys (rotation pair) | Present — keeps Resend fallback authenticating |
 | `_dmarc.180dcvitc.org` | TXT | `v=DMARC1; p=none;` | Present |
+| `mail.180dcvitc.org` | MX/TXT | previous subdomain records | Removed |
+
+Notes:
+- The SPF record authorizes Spacemail only. Resend does not need a root SPF include: it has
+  no SPF record of its own and its fallback sends are authenticated by DKIM
+  (`resend._domainkey`), which aligns with `From: @180dcvitc.org`.
+- The `send.180dcvitc.org` return-path subdomain records are absent, so if SPF alignment
+  for the Resend fallback is ever required, add Resend's custom return-path MX + SPF there
+  (not at the root).
 
 ## Root cause: why `mail.180dcvitc.org` "doesn't work" as a From domain
 
@@ -68,8 +91,19 @@ of its own — so this change is safe and does not disrupt any existing mail flo
 
 ### 3. Add DKIM at the root
 
-Get the exact DKIM CNAME record(s) from **Spacemail Manager → Mailbox → domain settings**
-(selector, e.g. `smd._domainkey.180dcvitc.org`) and add them at the root domain.
+Spacemail publishes DKIM as a **TXT record** (not a CNAME) with host `spacemail._domainkey`.
+Get the unique value from **Spaceship → Launchpad → Advanced DNS → your domain →
+Inactive records → Spacemail DNS records**: copy the TXT that starts with
+`v=DKIM1; k=rsa; p=MIIBIjANB...`.
+
+| Type | Name | Value |
+|------|------|-------|
+| `TXT` | `spacemail._domainkey` | the unique `v=DKIM1; k=rsa; p=...` value from your Spaceship account |
+
+> The value is account-specific and cannot be guessed. Spaceship nameservers set it
+> automatically, but this domain uses Cloudflare DNS, so it must be added manually.
+> Optional: an SRV `_autodiscover._tcp` → `autoconfig.spacemail.com` (port 443) record
+> is only for mail-client autoconfiguration, not for sending.
 
 ### 4. Clean up the subdomain records (optional)
 
@@ -80,7 +114,7 @@ configured. They are harmless if left in place, but removing them avoids confusi
 
 - Wait 5–30 minutes for Cloudflare DNS propagation.
 - Spacemail Manager should show the domain as verified at `180dcvitc.org`.
-- Send a test email `From: team@180dcvitc.org` and check SPF/DKIM pass (e.g. via the
+- Send a test email `From: technical@180dcvitc.org` and check SPF/DKIM pass (e.g. via the
   test mailbox's headers or an SPF/DKIM checker).
 - Keep DMARC at `p=none` for at least a week after switching, then consider
   `p=quarantine`.
@@ -89,12 +123,12 @@ configured. They are harmless if left in place, but removing them avoids confusi
 
 Once the root domain is verified in Spacemail:
 
-- `From: 180DC Newsletter <team@180dcvitc.org>` sends authenticate correctly through
+- `From: 180DC Newsletter <technical@180dcvitc.org>` sends authenticate correctly through
   Spacemail SMTP (`mail.spacemail.com:465` SSL, or `:587` STARTTLS; auth = full mailbox
   address + mailbox password).
 - No `@mail.180dcvitc.org`-style From addresses are needed.
-- The existing codebase can keep all its current `From` addresses
-  (`team@180dcvitc.org`) unchanged.
+- All From addresses use the authenticated mailbox `technical@180dcvitc.org`, so
+  Spacemail's sender-ownership check passes without aliases.
 
 ## Spacemail sending limits (for planning the newsletter send)
 
@@ -116,7 +150,7 @@ Spacemail has **no REST API for sending email** — it is SMTP-only:
 
 - SMTP host: `mail.spacemail.com`
 - Port `465` (implicit SSL/TLS) or `587` (STARTTLS)
-- Auth: full mailbox address (`team@180dcvitc.org`) + mailbox password
+- Auth: full mailbox address (`technical@180dcvitc.org`) + mailbox password
 - From Cloudflare Workers: use the outbound TLS TCP support (`connect()` from
   `cloudflare:sockets`) and speak SMTP directly (EHLO → AUTH LOGIN → MAIL FROM →
   RCPT TO → DATA). A minimal SMTP client is ~150 lines with no npm dependencies.
@@ -161,12 +195,21 @@ All sending currently goes through `fetch("https://api.resend.com/emails", ...)`
 
 ### Step 3 — Secrets
 
-Replace the `RESEND_API_KEY` binding with:
+`RESEND_API_KEY` is **kept** as the automatic fallback sender. Add the Spacemail pair:
 
 | Secret | Value |
 |--------|-------|
-| `SPACEMAIL_SMTP_USER` | Full mailbox address, e.g. `team@180dcvitc.org` |
-| `SPACEMAIL_SMTP_PASS` | Mailbox password |
+| `SPACEMAIL_SMTP_USER` | `technical@180dcvitc.org` (the authenticated mailbox) |
+| `SPACEMAIL_SMTP_PASS` | that mailbox's password |
+
+> **Sender ownership:** Spacemail rejects recipients with
+> `553 5.7.1 Sender address rejected: not owned by user <mailbox>` if the envelope
+> From is not owned by the authenticated mailbox. All templates send
+> `From: ... <technical@180dcvitc.org>`, the authenticated mailbox itself, so no alias is
+> required (verified live: MAIL FROM + RCPT accepted). If a friendlier sender address is
+> wanted later, add it as an alias on this mailbox — otherwise `sendEmail()` rejects the
+> recipients and automatically falls back to Resend, logging
+> `Spacemail rejected N recipient(s), falling back to Resend`.
 
 Set via `npx wrangler secret put` and mirrored in `.dev.vars`.
 
