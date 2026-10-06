@@ -2845,132 +2845,72 @@ function newsletterEmailHtml(
   const safeTitle = escapeHtml(title);
   const safeDesc = escapeHtml(description);
   const unsubUrl = subscriberEmail
-    ? `https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(subscriberEmail)}`
+    ? "https://180dcvitc.org/unsubscribe?email=" + encodeURIComponent(subscriberEmail)
     : "https://180dcvitc.org/unsubscribe";
+  const showLink = siteUrl.startsWith("http");
+  const issueLabel = showLink
+    ? siteUrl.slice(siteUrl.lastIndexOf("/") + 1).toUpperCase()
+    : "";
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
-</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background-color:#f3ede8;font-family:'Inter',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3ede8;padding:28px 12px">
 <tr><td align="center">
-<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:18px;border:2px solid #2b2b2b;box-shadow:3px 3px 0 #2b2b2b">
 
-<!-- HEADER -->
-<tr><td style="background:#8dc63f;padding:28px 24px 20px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dcvitc.org/images/180DC.png" alt="180DC" width="52" style="margin-bottom:6px">
-<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:26px;margin:0;font-weight:600;text-shadow:2px 2px 0 rgba(0,0,0,0.12)">180 Degrees Consulting</h1>
-<p style="color:#1a1a1a;font-size:12px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
+<!-- MASTHEAD -->
+<tr><td style="padding:36px 30px 0;text-align:center">
+<p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.28em;color:#2b2b2b;margin:0 0 16px;opacity:0.65">180° Consulting · VIT Chennai presents</p>
+<div style="font-family:'Anton','Impact',sans-serif;font-weight:400;font-size:58px;line-height:0.9;color:#2b2b2b;letter-spacing:-0.01em;margin:0 0 8px">The Scope</div>
+<p style="font-family:'Inter',sans-serif;font-size:12px;line-height:1.6;color:#2b2b2b;margin:0;opacity:0.65">One story with the numbers left in, one playbook you can copy, and three things worth reading.</p>
+<div style="height:2px;background:#2b2b2b;margin:22px 0 0"></div>
 </td></tr>
 
-<!-- GREETING -->
-<tr><td style="padding:28px 32px 0">
-<p style="font-size:15px;color:#1a1a1a;margin:0 0 4px;font-weight:700">Hey there! &#x1F44B;</p>
-<p style="font-size:13px;color:#777777;margin:0 0 20px;line-height:1.5">Happy to have you here. Here's what's new from 180DC.</p>
+<!-- ISSUE BAR -->
+<tr><td style="padding:14px 30px 0;text-align:center">
+<p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.18em;color:#00854a;margin:0">${issueLabel || "The Scope Newsletter"}</p>
 </td></tr>
 
-<!-- NEWSLETTER LABEL -->
-<tr><td style="padding:0 32px">
-<table cellpadding="0" cellspacing="0" style="margin:0 0 6px">
-<tr><td style="background:#8dc63f;border-radius:4px;padding:3px 10px">
-<span style="font-size:10px;color:#ffffff;font-weight:800;text-transform:uppercase;letter-spacing:1.5px">Newsletter</span>
+<!-- TITLE + DEK -->
+<tr><td style="padding:28px 30px 0">
+<p style="font-family:'Anton','Impact',sans-serif;font-size:38px;line-height:1.02;color:#2b2b2b;margin:0 0 14px;letter-spacing:-0.01em">${safeTitle}</p>
+${safeDesc ? "<p style=\"font-family:'Inter',sans-serif;font-size:15px;line-height:1.6;color:#2b2b2b;margin:0;opacity:0.8\">" + safeDesc + "</p>" : ""}
 </td></tr>
-</table>
-</td></tr>
-
-<!-- TITLE -->
-<tr><td style="padding:0 32px">
-<h2 style="font-size:22px;color:#1a1a1a;margin:0 0 14px;line-height:1.4;font-weight:800">${safeTitle}</h2>
-</td></tr>
-
-<!-- DESCRIPTION -->
-${
-  safeDesc
-    ? `<tr><td style="padding:0 32px">
-<p style="font-size:14px;color:#555555;margin:0 0 24px;line-height:1.7">${safeDesc}</p>
-</td></tr>`
-    : ""
-}
 
 <!-- FULL CONTENT -->
-${
-  contentHtml
-    ? `<tr><td style="padding:0 32px">
-<div style="font-size:15px;line-height:1.75;color:#333333;font-family:'Nunito',-apple-system,sans-serif">${contentHtml}</div>
-</td></tr>
-<tr><td style="padding:0 32px"><table width="100%" cellpadding="0" cellspacing="0"><tr>
-<td style="border-bottom:2px solid #e8e6e1;padding-top:24px"></td>
-</tr></table></td></tr>`
-    : ""
-}
+${contentHtml
+  ? "<tr><td style=\"padding:20px 30px 0\"><div style=\"font-family:'Inter',sans-serif;font-size:15px;line-height:1.75;color:#2b2b2b\">" + contentHtml + "</div></td></tr>\n<tr><td style=\"padding:20px 30px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td style=\"border-bottom:2px solid #e5ddd4\"></td></tr></table></td></tr>"
+  : ""}
 
-<!-- PDF ATTACHMENT NOTICE -->
-${
-  hasPdf
-    ? `<tr><td style="padding:0 32px">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f5;border:2px dashed #d0cec8;border-radius:12px;margin:0 0 24px">
-<tr><td style="padding:16px 20px;text-align:center">
-<p style="font-size:13px;color:#1a1a1a;margin:0 0 4px;font-weight:700">&#x1F4CE; PDF Attached</p>
-<p style="font-size:12px;color:#777777;margin:0;line-height:1.5">The full newsletter is attached as a PDF for your convenience. Download it for offline reading!</p>
-</td></tr>
-</table>
-</td></tr>`
-    : ""
-}
+<!-- PDF NOTICE -->
+${hasPdf
+  ? "<tr><td style=\"padding:20px 30px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border:2px dashed #c9beb2;border-radius:12px;background:#f9f5f1\"><tr><td style=\"padding:14px 18px;text-align:center\"><p style=\"font-family:'Inter',sans-serif;font-size:12px;color:#2b2b2b;margin:0;font-weight:600\">&#x1F4CE; PDF attached \u2014 download for offline reading</p></td></tr></table></td></tr>"
+  : ""}
 
-<!-- CTA BUTTON -->
-<tr><td style="padding:0 32px 28px;text-align:center">
-<table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto">
-<tr><td style="padding:12px 32px;text-align:center">
-<a href="${escapeHtml(siteUrl)}" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Read on Website</a>
-</td></tr>
-</table>
-</td></tr>
-
-<!-- DIVIDER -->
-<tr><td style="padding:0 32px">
-<table width="100%" cellpadding="0" cellspacing="0"><tr>
-<td style="border-bottom:2px solid #e8e6e1"></td>
-</tr></table>
-</td></tr>
-
-<!-- SOCIAL LINKS -->
-<tr><td style="padding:24px 32px 0;text-align:center">
-<p style="font-size:11px;color:#777777;margin:0 0 12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">Follow Us</p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto">
-<tr>
-<td style="padding:0 8px">
-<a href="https://www.instagram.com/180dc.vitc/" style="text-decoration:none;display:inline-block">
-<table cellpadding="0" cellspacing="0"><tr>
-<td style="background:#1a1a1a;border-radius:8px;padding:8px 14px;text-align:center">
-<span style="font-size:11px;color:#ffffff;font-weight:700;text-decoration:none">Instagram</span>
-</td></tr></table>
-</a>
-</td>
-<td style="padding:0 8px">
-<a href="https://www.linkedin.com/company/180-degrees-consulting-vit-chennai/" style="text-decoration:none;display:inline-block">
-<table cellpadding="0" cellspacing="0"><tr>
-<td style="background:#1a1a1a;border-radius:8px;padding:8px 14px;text-align:center">
-<span style="font-size:11px;color:#ffffff;font-weight:700;text-decoration:none">LinkedIn</span>
-</td></tr></table>
-</a>
-</td>
-</tr>
-</table>
+<!-- CTA -->
+<tr><td style="padding:28px 30px;text-align:center">
+<a href="${siteUrl}" style="display:inline-block;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#ffffff;background:#00854a;border:2px solid #2b2b2b;border-radius:999px;padding:13px 30px;text-decoration:none;box-shadow:3px 3px 0 #2b2b2b">Read on the web &#x2192;</a>
+${showLink ? "<p style=\"font-family:'Inter',sans-serif;font-size:11px;color:#2b2b2b;margin:16px 0 0;opacity:0.5;word-break:break-all\">" + siteUrl + "</p>" : ""}
 </td></tr>
 
 <!-- FOOTER -->
-<tr><td style="background:#f9f8f5;border-top:3px solid #1a1a1a;border-radius:0 0 13px 13px;padding:20px 32px;text-align:center">
-<p style="font-size:12px;color:#1a1a1a;margin:0 0 4px;font-weight:700">180 Degrees Consulting &#x2014; VIT Chennai</p>
-<p style="font-size:11px;color:#777777;margin:0 0 12px;line-height:1.5">You received this because you subscribed to our newsletter.</p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto">
-<tr><td style="border:1.5px solid #d0cec8;border-radius:50px;padding:6px 16px">
-<a href="${escapeHtml(unsubUrl)}" style="color:#888888;text-decoration:none;font-size:11px;font-weight:600">Unsubscribe</a>
-</td></tr>
-</table>
+<tr><td style="background:#ffffff;border-top:2px solid #2b2b2b;border-radius:0 0 16px 16px;padding:20px 30px;text-align:center">
+<p style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:#2b2b2b;margin:0 0 4px">180 Degrees Consulting \u2014 VIT Chennai</p>
+<p style="font-family:'Inter',sans-serif;font-size:11px;color:#2b2b2b;margin:0 0 12px;opacity:0.6">You received this because you subscribed to our newsletter.</p>
+<p style="font-family:'Inter',sans-serif;font-size:11px;margin:0">
+<a href="https://www.instagram.com/180dc.vitc/" style="color:#00854a;text-decoration:none;font-weight:700">Instagram</a>
+&nbsp;&middot;&nbsp;
+<a href="https://www.linkedin.com/company/180-degrees-consulting-vit-chennai/" style="color:#00854a;text-decoration:none;font-weight:700">LinkedIn</a>
+&nbsp;&middot;&nbsp;
+<a href="${unsubUrl}" style="color:#2b2b2b;text-decoration:underline">Unsubscribe</a>
+</p>
 </td></tr>
 
 </table></td></tr></table>
-</body></html>`;
+</body>
+</html>`;
 }
 
 function eventMailEmailHtml(

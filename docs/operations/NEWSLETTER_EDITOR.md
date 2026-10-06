@@ -145,9 +145,9 @@ To stop receiving emails from 180DC, click here to unsubscribe.
 Single-recipient emails (welcome / welcome-back) may keep `?email={subscriber_email}`.
 
 ### Newsletter Email (`newsletterEmailHtml`)
-- Green header with 180DC branding
+- Ken-style design matching the newsletter site: cream background, ink border + hard shadow card, Anton display type, "The Scope" masthead, issue bar
 - "New Newsletter" label, title, description
-- **Embeds the full article content** (sanitized) after the teaser, then the "Read on the web" CTA button
+- **Embeds the full article content** (sanitized) after the teaser, then the "Read on the web" CTA button plus the visible issue URL
 - Unsubscribe footer
 - CTA target: `{NEWSLETTER_SITE_URL}/newsletter/{id}` when the var is set, otherwise `https://180dcvitc.org/#newsletter`
 - **Planned enhancement (skip while only one issue exists):** a "Check out our other issues"
