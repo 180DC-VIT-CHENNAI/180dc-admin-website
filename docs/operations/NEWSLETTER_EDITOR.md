@@ -148,7 +148,9 @@ To stop receiving emails from 180DC, click here to unsubscribe.
 Single-recipient emails (welcome / welcome-back) may keep `?email={subscriber_email}`.
 
 ### Newsletter Email (`newsletterEmailHtml`)
-- Ken-style design matching the newsletter site: cream background, ink border + hard shadow card, Anton display type, "The Scope" masthead, issue bar
+- 180DC VIT Chennai's newsletter is branded **"The Catalyst"**. Ken-style design matching the
+  newsletter site: cream background, ink border + hard shadow card, Anton display type,
+  "THE CATALYST" wordmark masthead, issue bar
 - **Structured render:** when the site exposes `{site}/data/{slug}.json` for an issue, the mail embeds the **full site article layout** (`issueToEmailHtml`): masthead, issue bar, cover image, section kickers/titles, paragraphs, green quote boxes, stat cards, numbered lists, notes, plus the "Read it on the web" button and URL. Otherwise it falls back to the teaser + embedded `content` template.
 - **Embeds the full article content** (sanitized) after the teaser, then the "Read on the web" CTA button plus the visible issue URL
 - Unsubscribe footer

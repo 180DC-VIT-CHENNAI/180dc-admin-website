@@ -2899,14 +2899,14 @@ function newsletterEmailHtml(
 <!-- MASTHEAD -->
 <tr><td style="padding:36px 30px 0;text-align:center">
 <p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.28em;color:#2b2b2b;margin:0 0 16px;opacity:0.65">180° Consulting · VIT Chennai presents</p>
-<div style="font-family:'Anton','Impact',sans-serif;font-weight:400;font-size:58px;line-height:0.9;color:#2b2b2b;letter-spacing:-0.01em;margin:0 0 8px">The Scope</div>
+<div style="font-family:'Anton','Impact',sans-serif;font-weight:400;font-size:58px;line-height:0.9;color:#2b2b2b;letter-spacing:-0.01em;margin:0 0 8px">The Catalyst</div>
 <p style="font-family:'Inter',sans-serif;font-size:12px;line-height:1.6;color:#2b2b2b;margin:0;opacity:0.65">One story with the numbers left in, one playbook you can copy, and three things worth reading.</p>
 <div style="height:2px;background:#2b2b2b;margin:22px 0 0"></div>
 </td></tr>
 
 <!-- ISSUE BAR -->
 <tr><td style="padding:14px 30px 0;text-align:center">
-<p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.18em;color:#00854a;margin:0">${issueLabel || "The Scope Newsletter"}</p>
+<p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.18em;color:#00854a;margin:0">${issueLabel || "The Catalyst Newsletter"}</p>
 </td></tr>
 
 <!-- TITLE + DEK -->
@@ -3171,69 +3171,145 @@ function issueToEmailHtml(
   articleUrl: string,
   subscriberEmail?: string,
 ): string {
-  const issueLabel = "ISSUE " + String(issue.issue || 1).padStart(2, "0");
+  const issueLabel =
+    "ISSUE " + String(issue.issue || 1).padStart(2, "0");
   const dateText = formatEmailIssueDate(issue.date);
   const unsubUrl = subscriberEmail
     ? "https://180dcvitc.org/unsubscribe?email=" + encodeURIComponent(subscriberEmail)
     : "https://180dcvitc.org/unsubscribe";
+  const blk = (b: EmailIssueBlock): string => {
+    switch (b.type) {
+      case "lead":
+        return "<tr><td style=\"padding:10px 0 6px\"><p style=\"font-family:'Inter',sans-serif;font-size:17px;line-height:1.65;color:#2b2b2b;margin:0;font-weight:600\">" +
+          escapeHtml(b.text) + "</p></td></tr>";
+      case "paragraph":
+        return "<tr><td style=\"padding:7px 0\"><p style=\"font-family:'Inter',sans-serif;font-size:15.5px;line-height:1.8;color:#2b2b2b;margin:0\">" +
+          escapeHtml(b.text) + "</p></td></tr>";
+      case "heading":
+        return "<tr><td style=\"padding:26px 0 6px\"><p style=\"font-family:'Anton','Impact',sans-serif;font-size:24px;line-height:1.15;color:#2b2b2b;margin:0;letter-spacing:0\">" +
+          escapeHtml(b.text) + "</p></td></tr>";
+      case "quote":
+        return "<tr><td style=\"padding:18px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-left:4px solid #00854a;background:#f9f5f1;border-radius:0 12px 12px 0\"><tr><td style=\"padding:20px 24px\"><p style=\"font-family:Georgia,serif;font-size:19px;font-style:italic;line-height:1.55;color:#2b2b2b;margin:0\">" +
+          escapeHtml(b.text) +
+          (b.by ? "</p><p style=\"font-family:'Inter',sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:0.14em;color:#00854a;margin:12px 0 0\">&mdash; " + escapeHtml(b.by) + "</p>" : "</p>") +
+          "</td></tr></table></td></tr>";
+      case "stats": {
+        const items = b.items
+          .map(
+            (st) => "<td width=\"50%\" style=\"padding:6px;vertical-align:top\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border:1.5px solid #2b2b2b;border-radius:12px;background:#ffffff\"><tr><td style=\"padding:18px 20px\"><div style=\"font-family:'Anton','Impact',sans-serif;font-size:26px;line-height:1;color:#00854a\">" +
+              escapeHtml(st.value) +
+              "</div><p style=\"font-family:'Inter',sans-serif;font-size:12px;line-height:1.5;color:#2b2b2b;margin:8px 0 0;opacity:0.7\">" +
+              escapeHtml(st.label) + "</p></td></tr></table></td>",
+          )
+          .join("")
+          .split("</td>");
+        items.pop();
+        const pairs: string[] = [];
+        for (let i = 0; i < items.length; i += 2) {
+          pairs.push(
+            "<tr>" + items[i] + "</td>" + (items[i + 1] ? items[i + 1] + "</td>" : "<td width=\"50%\"></td>") + "</tr>",
+          );
+        }
+        return "<tr><td style=\"padding:18px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">" + pairs.join("") + "</table></td></tr>";
+      }
+      case "image":
+        return "<tr><td style=\"padding:18px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td><img src=\"" +
+          b.src +
+          "\" alt=\"" +
+          escapeHtml(b.alt || "") +
+          "\" width=\"100%\" style=\"width:100%;height:auto;display:block;border:1.5px solid #2b2b2b;border-radius:14px;background:#ffffff\" />" +
+          (b.caption
+            ? "<p style=\"font-family:'Inter',sans-serif;font-size:12px;line-height:1.5;color:#2b2b2b;margin:10px 0 0;text-align:center;opacity:0.6\">" +
+              escapeHtml(b.caption) +
+              "</p>"
+            : "") +
+          "</td></tr></table></td></tr>";
+      case "list": {
+        const rows = b.items
+          .map(
+            (it, i) => "<tr><td style=\"padding:7px 0;vertical-align:top\"><table cellpadding=\"0\" cellspacing=\"0\"><tr><td width=\"32\" style=\"vertical-align:top\"><table width=\"28\" cellpadding=\"0\" cellspacing=\"0\" style=\"border:1.5px solid #00854a;border-radius:50%\"><tr><td height=\"24\" align=\"center\" style=\"font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:#00854a\">" +
+              String(i + 1) +
+              "</td></tr></table></td><td style=\"padding-left:12px\"><p style=\"font-family:'Inter',sans-serif;font-size:14.5px;line-height:1.65;color:#2b2b2b;margin:0\">" +
+              escapeHtml(it) + "</p></td></tr></table></td></tr>",
+          )
+          .join("");
+        return "<tr><td style=\"padding:8px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">" + rows + "</table></td></tr>";
+      }
+      case "note":
+        return "<tr><td style=\"padding:16px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border:1.5px dashed #00854a;border-radius:12px;background:#f9f5f1\"><tr><td style=\"padding:20px 24px\"><p style=\"font-family:'Anton','Impact',sans-serif;font-size:15px;text-transform:uppercase;letter-spacing:0.06em;color:#00854a;margin:0 0 8px\">" +
+          escapeHtml(b.title) +
+          "</p><p style=\"font-family:'Inter',sans-serif;font-size:14.5px;line-height:1.65;color:#2b2b2b;margin:0\">" +
+          escapeHtml(b.text) + "</p></td></tr></table></td></tr>";
+    }
+  };
   const sectionRows = issue.sections
-    .map((s) => {
-      const blockRows = s.blocks.map((b) => issueBlockRows(b)).join("");
-      return `<tr><td style="padding:26px 0 0"><p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.28em;color:#00854a;margin:0 0 8px">${escapeHtml(s.kicker)}</p><p style="font-family:'Anton','Impact',sans-serif;font-size:30px;line-height:1;color:#2b2b2b;margin:0 0 14px;letter-spacing:-0.01em">${escapeHtml(s.title)}</p><table width="100%" cellpadding="0" cellspacing="0">${blockRows}</table></td></tr>`;
+    .map((sec) => {
+      const rows = sec.blocks.map((b) => blk(b)).join("");
+      return "<tr><td style=\"padding:30px 0 0\"><p style=\"font-family:'Inter',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.3em;color:#00854a;margin:0 0 10px\">" +
+        escapeHtml(sec.kicker) +
+        "</p><p style=\"font-family:'Anton','Impact',sans-serif;font-size:32px;line-height:1.05;color:#2b2b2b;margin:0 0 12px\">" +
+        escapeHtml(sec.title) +
+        "</p><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">" + rows + "</table></td></tr>";
     })
     .join("");
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body style="margin:0;padding:0;background-color:#f3ede8;font-family:'Inter',-apple-system,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3ede8;padding:24px 12px">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3ede8;padding:28px 12px">
 <tr><td align="center">
-<table width="620" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:18px;border:2px solid #2b2b2b;box-shadow:3px 3px 0 #2b2b2b">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1.5px solid #2b2b2b;border-radius:16px">
 
-<!-- MASTHEAD -->
-<tr><td style="padding:36px 32px 0;text-align:center">
-<p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.28em;color:#2b2b2b;margin:0 0 16px;opacity:0.65">180° Consulting · VIT Chennai presents</p>
-<div style="font-family:'Anton','Impact',sans-serif;font-weight:400;font-size:60px;line-height:0.9;color:#2b2b2b;letter-spacing:-0.01em;margin:0 0 8px">The Scope</div>
-<p style="font-family:'Inter',sans-serif;font-size:12px;line-height:1.6;color:#2b2b2b;margin:0;opacity:0.65">One story with the numbers left in, one playbook you can copy, and three things worth reading.</p>
-<div style="height:2px;background:#2b2b2b;margin:22px 0 0"></div>
+<!-- WORDMARK -->
+<tr><td style="padding:30px 34px 0">
+<table width="100%" cellpadding="0" cellspacing="0"><tr>
+<td style="font-family:'Anton','Impact',sans-serif;font-size:22px;letter-spacing:0.06em;color:#2b2b2b">THE CATALYST</td>
+<td align="right" style="font-family:'Inter',sans-serif;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.2em;color:#2b2b2b;opacity:0.55">180° Consulting · VIT Chennai</td>
+</tr></table>
 </td></tr>
 
 <!-- ISSUE BAR -->
-<tr><td style="padding:14px 32px 0;text-align:center">
-<p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.18em;color:#00854a;margin:0">${issueLabel}${dateText ? " · " + dateText : ""}${issue.readTime ? " · " + escapeHtml(issue.readTime.toUpperCase()) : ""}</p>
+<tr><td style="padding:16px 34px 0">
+<table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #2b2b2b;border-bottom:1px solid #2b2b2b"><tr>
+<td style="padding:9px 0;font-family:'Inter',sans-serif;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.16em;color:#00854a">${issueLabel}</td>
+<td align="center" style="padding:9px 0;font-family:'Inter',sans-serif;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.16em;color:#2b2b2b;opacity:0.7">${dateText}</td>
+<td align="right" style="padding:9px 0;font-family:'Inter',sans-serif;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.16em;color:#2b2b2b;opacity:0.7">${issue.readTime ? escapeHtml(issue.readTime.replace(" min read", "").toUpperCase() + " MIN") : ""}</td>
+</tr></table>
 </td></tr>
 
 <!-- HEAD -->
-<tr><td style="padding:26px 32px 0">
-${issue.cover ? `<img src="${issue.cover}" alt="" width="100%" style="width:100%;height:auto;display:block;border:2px solid #2b2b2b;border-radius:14px;background:#ffffff;margin-bottom:22px" />` : ""}
-<p style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#00854a;margin:0 0 12px">${escapeHtml(issue.category || "The Scope")}</p>
-<p style="font-family:'Anton','Impact',sans-serif;font-size:42px;line-height:1;color:#2b2b2b;margin:0 0 16px;letter-spacing:-0.01em">${escapeHtml(issue.title)}</p>
-${issue.dek ? `<p style="font-family:'Inter',sans-serif;font-size:16px;line-height:1.6;color:#2b2b2b;margin:0 0 16px;opacity:0.8">${escapeHtml(issue.dek)}</p>` : ""}
-${issue.editors ? `<p style="font-family:'Inter',sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:0.14em;color:#2b2b2b;margin:0;opacity:0.6">BY ${escapeHtml(issue.editors.toUpperCase())}</p>` : ""}
-<div style="height:2px;background:#2b2b2b;margin:22px 0 0"></div>
+<tr><td style="padding:32px 34px 0">
+${issue.cover ? "<img src=\"" + issue.cover + "\" alt=\"\" width=\"100%\" style=\"width:100%;height:auto;display:block;border:1.5px solid #2b2b2b;border-radius:14px;background:#ffffff;margin-bottom:26px\" />" : ""}
+<p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.18em;color:#00854a;margin:0 0 14px">${escapeHtml(issue.category || "The Catalyst")}</p>
+<p style="font-family:'Anton','Impact',sans-serif;font-size:44px;line-height:1.02;color:#2b2b2b;margin:0 0 18px">${escapeHtml(issue.title)}</p>
+${issue.dek ? "<p style=\"font-family:'Inter',sans-serif;font-size:17px;line-height:1.6;color:#2b2b2b;margin:0 0 18px;opacity:0.85\">" + escapeHtml(issue.dek) + "</p>" : ""}
+${issue.editors ? "<p style=\"font-family:'Inter',sans-serif;font-size:10.5px;text-transform:uppercase;letter-spacing:0.16em;color:#2b2b2b;margin:0;opacity:0.6\">BY " + escapeHtml(issue.editors.toUpperCase()) + "</p>" : ""}
 </td></tr>
 
-<!-- SECTIONS -->
-<tr><td style="padding:0 32px 0"><table width="100%" cellpadding="0" cellspacing="0">${sectionRows}</table></td></tr>
+<!-- ARTICLE -->
+<tr><td style="padding:0 34px"><table width="100%" cellpadding="0" cellspacing="0">${sectionRows}</table></td></tr>
 
 <!-- CTA -->
-<tr><td style="padding:30px 32px;text-align:center">
-<a href="${escapeHtml(articleUrl)}" style="display:inline-block;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#ffffff;background:#00854a;border:2px solid #2b2b2b;border-radius:999px;padding:13px 30px;text-decoration:none;box-shadow:3px 3px 0 #2b2b2b">Read it on the web →</a>
+<tr><td style="padding:34px 34px 0;text-align:center">
+<a href="${escapeHtml(articleUrl)}" style="display:inline-block;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#ffffff;background:#00854a;border:1.5px solid #2b2b2b;border-radius:999px;padding:14px 32px;text-decoration:none">Read the full issue →</a>
 <p style="font-family:'Inter',sans-serif;font-size:11px;color:#2b2b2b;margin:16px 0 0;opacity:0.5;word-break:break-all">${escapeHtml(articleUrl)}</p>
 </td></tr>
 
 <!-- FOOTER -->
-<tr><td style="background:#ffffff;border-top:2px solid #2b2b2b;border-radius:0 0 16px 16px;padding:20px 32px;text-align:center">
+<tr><td style="padding:26px 34px 30px;text-align:center">
+<table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e5ddd4"><tr><td style="padding:20px 0 0">
 <p style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:#2b2b2b;margin:0 0 4px">180 Degrees Consulting — VIT Chennai</p>
-<p style="font-family:'Inter',sans-serif;font-size:11px;color:#2b2b2b;margin:0 0 12px;opacity:0.6">You received this because you subscribed to our newsletter.</p>
+<p style="font-family:'Inter',sans-serif;font-size:11px;color:#2b2b2b;margin:0 0 14px;opacity:0.6">You received this because you subscribed to our newsletter.</p>
 <p style="font-family:'Inter',sans-serif;font-size:11px;margin:0">
 <a href="https://www.instagram.com/180dc.vitc/" style="color:#00854a;text-decoration:none;font-weight:700">Instagram</a>
-&nbsp;·&nbsp;
+&nbsp;&middot;&nbsp;
 <a href="https://www.linkedin.com/company/180-degrees-consulting-vit-chennai/" style="color:#00854a;text-decoration:none;font-weight:700">LinkedIn</a>
-&nbsp;·&nbsp;
+&nbsp;&middot;&nbsp;
 <a href="${unsubUrl}" style="color:#2b2b2b;text-decoration:underline">Unsubscribe</a>
 </p>
+</td></tr></table>
 </td></tr>
 
 </table></td></tr></table>

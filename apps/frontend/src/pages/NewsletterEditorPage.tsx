@@ -558,9 +558,7 @@ export default function NewsletterEditorPage() {
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                        {!nl.sent_at && (
-                          <button onClick={() => handleSend(nl.id)} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "var(--status-success)", color: "#fff" }}>Send</button>
-                        )}
+                        <button onClick={() => handleSend(nl.id)} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "var(--status-success)", color: "#fff" }}>Send</button>
                         {nl.sent_at && (
                           <a
                             href={`${SITE_URL}/newsletter/${nl.slug || nl.id}`}
