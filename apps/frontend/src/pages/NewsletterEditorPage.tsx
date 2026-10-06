@@ -3,6 +3,7 @@ import { apiUrl } from "../lib/api";
 import { useTheme } from "../context/ThemeContext";
 
 const SITE_URL = "https://180dc-newsletters.technical-vitc.workers.dev";
+const TEST_EMAIL = "lrkevindaniel@gmail.com";
 
 interface Newsletter {
   id: string;
@@ -260,7 +261,7 @@ export default function NewsletterEditorPage() {
     if (file) handleEventImageUpload(file);
   }, [handleEventImageUpload]);
 
-  const handleEventSend = async () => {
+  const handleEventSend = async (testEmail?: string) => {
     if (!eventSubject.trim()) { setError("Subject is required"); return; }
     setEventSending(true);
     setError("");
@@ -269,11 +270,21 @@ export default function NewsletterEditorPage() {
       const res = await fetch(apiUrl("/api/newsletter-editor/send-event"), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
-        body: JSON.stringify({ subject: eventSubject, description: eventDescription, sourceFileUrl: eventSourceFileUrl || undefined, imageUrl: eventImageUrl || undefined }),
+        body: JSON.stringify({
+          subject: eventSubject,
+          description: eventDescription,
+          sourceFileUrl: eventSourceFileUrl || undefined,
+          imageUrl: eventImageUrl || undefined,
+          testEmail: testEmail || undefined,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        setSuccess(`Event mail queued for ${data.queued ?? data.total} of ${data.total} subscribers — sending in the background.`);
+        setSuccess(
+          testEmail
+            ? `Test event mail queued to ${testEmail}.`
+            : `Event mail queued for ${data.queued ?? data.total} of ${data.total} subscribers — sending in the background.`,
+        );
         resetEventForm();
       } else {
         setError(data.error || "Failed to send");
@@ -346,6 +357,28 @@ export default function NewsletterEditorPage() {
         loadDrafts();
       } else {
         setError(data.error || "Failed to send");
+      }
+    } catch {
+      setError("Network error");
+    }
+    setLoading(false);
+  };
+
+  const handleSendTest = async (id: string) => {
+    if (!confirm(`Send a test of this newsletter to ${TEST_EMAIL}?`)) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(apiUrl("/api/newsletter-editor/send"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ newsletterId: id, testEmail: TEST_EMAIL }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSuccess(`Test newsletter queued to ${TEST_EMAIL} (1 recipient) — check your inbox.`);
+      } else {
+        setError(data.error || "Failed to send test");
       }
     } catch {
       setError("Network error");
@@ -559,6 +592,7 @@ export default function NewsletterEditorPage() {
                       </div>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                         <button onClick={() => handleSend(nl.id)} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "var(--status-success)", color: "#fff" }}>Send</button>
+                        <button onClick={() => handleSendTest(nl.id)} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "var(--accent)", color: "#fff" }}>Test</button>
                         {nl.sent_at && (
                           <a
                             href={`${SITE_URL}/newsletter/${nl.slug || nl.id}`}
@@ -684,7 +718,14 @@ export default function NewsletterEditorPage() {
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={resetEventForm} style={{ ...btnBase, padding: "8px 20px", background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-light)" }}>Clear</button>
               <button
-                onClick={handleEventSend}
+                onClick={() => handleEventSend(TEST_EMAIL)}
+                disabled={eventSending || !eventSubject.trim()}
+                style={{ ...btnBase, padding: "8px 20px", background: eventSending || !eventSubject.trim() ? "var(--text-tertiary)" : "var(--accent)", color: "#fff" }}
+              >
+                {eventSending ? "Sending..." : `Send test to ${TEST_EMAIL.split("@")[0]}`}
+              </button>
+              <button
+                onClick={() => handleEventSend()}
                 disabled={eventSending || !eventSubject.trim()}
                 style={{ ...btnBase, padding: "8px 20px", background: eventSending || !eventSubject.trim() ? "var(--text-tertiary)" : "var(--accent-hover)", color: "#fff" }}
               >

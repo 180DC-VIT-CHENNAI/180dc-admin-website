@@ -1370,6 +1370,7 @@ async function finalizeQueuedCampaign(
   try {
     const meta = campaign.meta ? JSON.parse(campaign.meta) : null;
     if (!meta) return;
+    if (meta.test) return;
     if (meta.newsletter_id) {
       const db = env.NEWSLETTER_DB || env.DB;
       await db
@@ -4252,10 +4253,13 @@ app.post("/api/newsletter-editor/send", async (c) => {
       .first();
     if (!newsletter) return c.json({ error: "Newsletter not found" }, 404);
 
-    const subscribers = await newsletterDb(c).prepare(
+const subscribers = await newsletterDb(c).prepare(
       "SELECT email FROM newsletter_subscribers WHERE active = 1",
     ).all();
-    const recipients = (subscribers.results || []).map((s: any) => s.email);
+    const testEmail = validateEmail(body.testEmail);
+    const recipients = testEmail
+      ? [testEmail]
+      : (subscribers.results || []).map((s: any) => s.email);
     if (recipients.length === 0)
       return c.json({ error: "No active subscribers" }, 400);
 
@@ -4281,7 +4285,11 @@ app.post("/api/newsletter-editor/send", async (c) => {
       html,
       recipients,
       attachments: attachmentRefs,
-      meta: { newsletter_id: newsletterId, slug: newsletter.slug },
+      meta: {
+        newsletter_id: newsletterId,
+        slug: newsletter.slug,
+        test: !!testEmail,
+      },
       createdBy: email,
     });
 
@@ -4324,10 +4332,13 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
     if (!subject || !subject.trim())
       return c.json({ error: "Subject is required" }, 400);
 
-    const subscribers = await newsletterDb(c).prepare(
+const subscribers = await newsletterDb(c).prepare(
       "SELECT email FROM newsletter_subscribers WHERE active = 1",
     ).all();
-    const recipients = (subscribers.results || []).map((s: any) => s.email);
+    const testEmail = validateEmail(body.testEmail);
+    const recipients = testEmail
+      ? [testEmail]
+      : (subscribers.results || []).map((s: any) => s.email);
     if (recipients.length === 0)
       return c.json({ error: "No active subscribers" }, 400);
 
@@ -4351,6 +4362,7 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
       html,
       recipients,
       attachments: attachmentRefs,
+      meta: { test: !!testEmail },
       createdBy: email,
     });
 
