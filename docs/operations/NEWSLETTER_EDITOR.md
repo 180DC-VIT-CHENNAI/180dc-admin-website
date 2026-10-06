@@ -133,6 +133,10 @@ All sending goes through `sendEmail()` in `apps/admin-api/index.ts`:
 
 ## Email Templates
 
+> **Authoring:** newsletter drafts store `content` as plain text or basic HTML
+> (paragraphs are auto-wrapped and sanitized on save). The PDF/DOCX upload was removed for
+> newsletters; the Event Mail tab keeps its poster/source uploads.
+
 All outgoing emails include an unsubscribe footer. Bulk sends share one body across BCC batches, so the footer links to the public page without a per-recipient parameter:
 ```
 To stop receiving emails from 180DC, click here to unsubscribe.

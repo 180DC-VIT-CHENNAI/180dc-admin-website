@@ -185,6 +185,15 @@ function decodeEntities(str: string): string {
     .replace(/&#39;/g, "'");
 }
 
+function textToParagraphHtml(text: string): string {
+  return text
+    .split(/\n{2,}/)
+    .map((p) => p.replace(/\n/g, "<br>").trim())
+    .filter(Boolean)
+    .map((p) => "<p>" + p + "</p>")
+    .join("");
+}
+
 function sanitizeBlogHtml(input: string): string {
   let s = input
     .replace(/<script[\s\S]*?<\/script>/gi, "")
@@ -3840,10 +3849,17 @@ app.post("/api/newsletter-editor/drafts", async (c) => {
     const title = sanitizeStr(body.title);
     if (!title) return c.json({ error: "Title is required" }, 400);
 
-    const id = body.id || crypto.randomUUID();
+const id = body.id || crypto.randomUUID();
     const description = sanitizeStr(body.description, 1000);
     const emailSubject = sanitizeStr(body.emailSubject, 200) || title;
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
+    const articleContent = sanitizeStr(body.content, 50000);
+    const isPlainText = !articleContent || !/<[a-z][^>]*>/i.test(articleContent);
+    const contentHtml = articleContent
+      ? sanitizeBlogHtml(
+          isPlainText ? textToParagraphHtml(articleContent) : articleContent,
+        )
+      : "";
 
     const existing = await newsletterDb(c).prepare(
       "SELECT id FROM newsletters WHERE id = ?",
@@ -3852,20 +3868,28 @@ app.post("/api/newsletter-editor/drafts", async (c) => {
       .first();
     if (existing) {
       await newsletterDb(c).prepare(
-        "UPDATE newsletters SET title = ?, description = ?, email_subject = ?, source_file_url = COALESCE(?, source_file_url) WHERE id = ?",
+        "UPDATE newsletters SET title = ?, description = ?, email_subject = ?, content = ?, source_file_url = COALESCE(?, source_file_url) WHERE id = ?",
       )
-        .bind(title, description, emailSubject, sourceFileUrl || null, id)
+        .bind(
+          title,
+          description,
+          emailSubject,
+          contentHtml,
+          sourceFileUrl || null,
+          id,
+        )
         .run();
-} else {
+    } else {
       const slug = await nextNewsletterSlug(newsletterDb(c));
       await newsletterDb(c).prepare(
-        "INSERT INTO newsletters (id, title, description, email_subject, source_file_url, created_by, slug) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO newsletters (id, title, description, email_subject, content, source_file_url, created_by, slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       )
         .bind(
           id,
           title,
           description,
           emailSubject,
+          contentHtml,
           sourceFileUrl || null,
           email,
           slug,
