@@ -953,6 +953,43 @@ async function smtpSendMessage(
   }
 }
 
+async function updateEmailCounters(
+  db: any,
+  counts: { smtpMessages?: number; resendSends?: number; dailySends?: number },
+) {
+  const statements: any[] = [];
+  const hour = new Date().toISOString().slice(0, 13);
+  const today = new Date().toISOString().slice(0, 10);
+  if (counts.smtpMessages) {
+    statements.push(
+      db
+        .prepare(
+          "INSERT INTO email_hour_count (hour, count) VALUES (?, ?) ON CONFLICT(hour) DO UPDATE SET count = count + ?",
+        )
+        .bind(hour, counts.smtpMessages, counts.smtpMessages),
+    );
+  }
+  if (counts.resendSends) {
+    statements.push(
+      db
+        .prepare(
+          "INSERT INTO resend_daily_count (date, count) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET count = count + ?",
+        )
+        .bind(today, counts.resendSends, counts.resendSends),
+    );
+  }
+  if (counts.dailySends) {
+    statements.push(
+      db
+        .prepare(
+          "INSERT INTO daily_email_count (date, count) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET count = count + ?",
+        )
+        .bind(today, counts.dailySends, counts.dailySends),
+    );
+  }
+  if (statements.length > 0) await db.batch(statements);
+}
+
 async function getHourlyEmailCount(db: any): Promise<number> {
   const hour = new Date().toISOString().slice(0, 13);
   const row: any = await db
@@ -1092,6 +1129,7 @@ async function sendEmail(
   const preferResend =
     String(c.env.EMAIL_PRIMARY || "").trim().toLowerCase() === "resend";
   const chunkSize = options.batchRecipients ? SMTP_BATCH_SIZE : 1;
+  let hourlyCount = await getHourlyEmailCount(c.env.DB);
 
   const sendBatchViaResend = async (batchRecipients: string[]) => {
     for (const recipient of batchRecipients) {
@@ -1131,8 +1169,7 @@ async function sendEmail(
     }
 
     if (smtpUsable) {
-      const hourly = await getHourlyEmailCount(c.env.DB);
-      if (hourly + smtpMessagesSent < smtpHourlyLimit(c.env)) {
+      if (hourlyCount + smtpMessagesSent < smtpHourlyLimit(c.env)) {
         const smtp = await smtpSendMessage(smtpUser, smtpPass, {
           from: options.from,
           to: batch,
@@ -1172,15 +1209,11 @@ async function sendEmail(
     if (stopped) break;
   }
 
-  if (smtpMessagesSent > 0) {
-    await incrementHourlyEmailCount(c.env.DB, smtpMessagesSent);
-  }
-  if (resendSent > 0) {
-    await incrementResendDailyCount(c.env.DB, resendSent);
-  }
-  if (result.sent > 0) {
-    await incrementEmailCount(c.env.DB, result.sent);
-  }
+  await updateEmailCounters(c.env.DB, {
+    smtpMessages: smtpMessagesSent,
+    resendSends: resendSent,
+    dailySends: result.sent,
+  });
   result.skipped = Math.max(
     0,
     recipients.length - result.sent - result.failed,
