@@ -2832,6 +2832,7 @@ function newsletterEmailHtml(
   siteUrl: string,
   subscriberEmail?: string,
   hasPdf?: boolean,
+  contentHtml?: string,
 ): string {
   const safeTitle = escapeHtml(title);
   const safeDesc = escapeHtml(description);
@@ -2879,6 +2880,18 @@ ${
     ? `<tr><td style="padding:0 32px">
 <p style="font-size:14px;color:#555555;margin:0 0 24px;line-height:1.7">${safeDesc}</p>
 </td></tr>`
+    : ""
+}
+
+<!-- FULL CONTENT -->
+${
+  contentHtml
+    ? `<tr><td style="padding:0 32px">
+<div style="font-size:15px;line-height:1.75;color:#333333;font-family:'Nunito',-apple-system,sans-serif">${contentHtml}</div>
+</td></tr>
+<tr><td style="padding:0 32px"><table width="100%" cellpadding="0" cellspacing="0"><tr>
+<td style="border-bottom:2px solid #e8e6e1;padding-top:24px"></td>
+</tr></table></td></tr>`
     : ""
 }
 
@@ -3598,6 +3611,7 @@ app.post("/api/newsletter/send", async (c) => {
       siteUrl,
       undefined,
       attachmentRefs.length > 0,
+      sanitizeBlogHtml(newsletter.content || ""),
     );
 
     const campaign = await enqueueEmailCampaign(c, {
@@ -4009,6 +4023,7 @@ app.post("/api/newsletter-editor/send", async (c) => {
       siteUrl,
       undefined,
       attachmentRefs.length > 0,
+      sanitizeBlogHtml(newsletter.content || ""),
     );
 
     const campaign = await enqueueEmailCampaign(c, {

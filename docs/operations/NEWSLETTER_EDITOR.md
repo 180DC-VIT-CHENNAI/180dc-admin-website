@@ -147,7 +147,7 @@ Single-recipient emails (welcome / welcome-back) may keep `?email={subscriber_em
 ### Newsletter Email (`newsletterEmailHtml`)
 - Green header with 180DC branding
 - "New Newsletter" label, title, description
-- "Read on Website" CTA button
+- **Embeds the full article content** (sanitized) after the teaser, then the "Read on the web" CTA button
 - Unsubscribe footer
 - CTA target: `{NEWSLETTER_SITE_URL}/newsletter/{id}` when the var is set, otherwise `https://180dcvitc.org/#newsletter`
 
