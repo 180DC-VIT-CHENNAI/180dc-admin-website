@@ -110,6 +110,15 @@ Inactive records → Spacemail DNS records**: copy the TXT that starts with
 > this record first. Verify by sending a test and reading `Authentication-Results:
 > dkim=pass` in the delivered headers.
 
+> **Outbound rate-limit hazard (hit 2026-10-06, resolved):** a Spacemail **trial
+> (including the Pro 30-day free trial) allows only ~20 messages/hour**; sending more
+> returns `554 5.7.1 ... Reject: too many messages from sender in last 60 minutes`, after
+> which `sendEmail()` falls back to Resend. The account was upgraded to paid (500/hour)
+> and the temporary `SPACEMAIL_HOURLY_LIMIT=20` secret was removed. If a future mailbox is
+> on trial, set `SPACEMAIL_HOURLY_LIMIT=20` (or `15` to be safe) so pacing matches the
+> plan. Single-recipient sends consume this quota one message per recipient — prefer BCC
+> batching for large lists while on a trial.
+
 > **Outbound spam-filter format hazard (hit once, 2026-10-05):** Spacemail's Jellyfish
 > filter (error `JFE040000`, codes documented by Namecheap KB 10664) rejects messages that
 > are HTML-only with base64 bodies and no plain-text part (`JFE040031`, `JFE040012`,

@@ -157,6 +157,12 @@ Single-recipient emails (welcome / welcome-back) may keep `?email={subscriber_em
 - Sent on first subscribe or re-subscribe
 - Include unsubscribe link in footer
 
+### Send Mail (members portal, `/api/send-email`)
+- Uses a **plain personal template** (system fonts, no images/social footer) instead of the
+  branded marketing shell. This keeps member/admin messages out of Gmail's Promotions tab
+  and in Primary/Updates. Newsletter/event mail intentionally keeps the branded template
+  (Promotions classification is expected for bulk marketing).
+
 ## Subscriber Terms & Conditions
 
 The `/subscriber` page displays Terms and Conditions that include:

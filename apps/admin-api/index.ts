@@ -19,6 +19,7 @@ type Bindings = {
   GROQ_API_KEY?: string;
   SPACEMAIL_SMTP_USER?: string;
   SPACEMAIL_SMTP_PASS?: string;
+  SPACEMAIL_HOURLY_LIMIT?: string;
   EMAIL_PRIMARY?: string;
   NEWSLETTER_SITE_URL?: string;
 };
@@ -508,6 +509,13 @@ const SMTP_HOST = "mail.spacemail.com";
 const SMTP_PORT = 465;
 const SMTP_BATCH_SIZE = 50;
 const SMTP_MAX_PER_HOUR = 500;
+
+function smtpHourlyLimit(env: any): number {
+  const value = Number(env?.SPACEMAIL_HOURLY_LIMIT);
+  return Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : SMTP_MAX_PER_HOUR;
+}
 const RESEND_MAX_PER_DAY = 100;
 const SMTP_TIMEOUT_MS = 20000;
 
@@ -1103,7 +1111,7 @@ async function sendEmail(
 
     if (smtpUsable) {
       const hourly = await getHourlyEmailCount(c.env.DB);
-      if (hourly + smtpMessagesSent < SMTP_MAX_PER_HOUR) {
+      if (hourly + smtpMessagesSent < smtpHourlyLimit(c.env)) {
         const smtp = await smtpSendMessage(smtpUser, smtpPass, {
           from: options.from,
           to: batch,
@@ -1349,7 +1357,7 @@ async function drainEmailQueue(env: any): Promise<{
     .run();
 
   const hourly = await getHourlyEmailCount(env.DB);
-  const remaining = Math.max(0, SMTP_MAX_PER_HOUR - hourly);
+  const remaining = Math.max(0, smtpHourlyLimit(env) - hourly);
   if (remaining <= 0) return { sent: 0, failed: 0, skippedByQuota: true };
   const minutesLeft = Math.max(1, 60 - new Date().getUTCMinutes());
   let budget = Math.min(
@@ -1397,8 +1405,14 @@ async function drainEmailQueue(env: any): Promise<{
   let lastError = campaign.last_error || null;
   let stoppedByQuota = false;
 
+  const batchMode =
+    campaign.kind === "newsletter" ||
+    campaign.kind === "event" ||
+    campaign.kind === "meet";
+  const campaignBatchSize = batchMode ? SMTP_BATCH_SIZE : 1;
+
   while (budget > 0 && cursor < recipients.length) {
-    const batch = recipients.slice(cursor, cursor + SMTP_BATCH_SIZE);
+    const batch = recipients.slice(cursor, cursor + campaignBatchSize);
     const result = await sendEmail(
       { env },
       {
@@ -1407,10 +1421,7 @@ async function drainEmailQueue(env: any): Promise<{
         subject: campaign.subject,
         html: campaign.html,
         attachments,
-        batchRecipients:
-          campaign.kind === "newsletter" ||
-          campaign.kind === "event" ||
-          campaign.kind === "meet",
+        batchRecipients: batchMode,
         extraHeaders:
           campaign.kind === "newsletter" || campaign.kind === "event"
             ? {
@@ -1421,6 +1432,12 @@ async function drainEmailQueue(env: any): Promise<{
       },
     );
     sent += result.sent;
+    if (result.error && /subrequest/i.test(result.error)) {
+      lastError = result.error;
+      cursor += result.sent;
+      stoppedByQuota = true;
+      break;
+    }
     failed += result.failed;
     if (result.error) lastError = result.error;
     const processed = result.sent + result.failed;
@@ -5248,7 +5265,7 @@ app.get("/api/dashboard", async (c) => {
         announcementsCount: (announcements.results || []).length,
         todayEmailCount: await getTodayEmailCount(c.env.DB),
         hourEmailCount: await getHourlyEmailCount(c.env.DB),
-        hourEmailLimit: SMTP_MAX_PER_HOUR,
+        hourEmailLimit: smtpHourlyLimit(c.env),
       },
       recentMeets,
       pendingRequests: pendingRequests.results || [],
@@ -6866,7 +6883,7 @@ app.post("/api/meets/process-queue", async (c) => {
       return c.json({ error: "Forbidden: Board only" }, 403);
 
     const hourly = await getHourlyEmailCount(c.env.DB);
-    const capacity = Math.max(0, SMTP_MAX_PER_HOUR - hourly);
+    const capacity = Math.max(0, smtpHourlyLimit(c.env) - hourly);
     if (capacity === 0) {
       return c.json({
         success: true,
@@ -10593,23 +10610,12 @@ app.post("/api/send-email", async (c) => {
     }
 
     const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
-</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
-<tr><td align="center">
-<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
-<tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dcvitc.org/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
-<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">180DC Admin Message</h1>
-</td></tr>
-<tr><td style="padding:28px">
-<div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${escapeHtml(htmlBody).replace(/\n/g, "<br>")}</div>
-</td></tr>
-<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting @ VIT Chennai</p>
-</td></tr>
-</table></td></tr></table>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#ffffff">
+<div style="max-width:600px;margin:0 auto;padding:24px 20px;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#222222;line-height:1.65">
+${escapeHtml(htmlBody).replace(/\n/g, "<br>")}
+<p style="margin:28px 0 0;font-size:13px;color:#666666;line-height:1.5">&#x2014;<br><strong>180 Degrees Consulting</strong><br>VIT Chennai</p>
+</div>
 </body></html>`;
 
     const SYNC_SEND_LIMIT = 10;
@@ -11007,7 +11013,7 @@ app.get("/api/admin/email-queue", async (c) => {
     return c.json({
       success: true,
       hourlyCount: hourly,
-      hourlyLimit: SMTP_MAX_PER_HOUR,
+      hourlyLimit: smtpHourlyLimit(c.env),
       counts: counts.results || [],
       recent: recent.results || [],
     });

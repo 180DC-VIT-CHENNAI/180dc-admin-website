@@ -137,6 +137,7 @@ The following bindings and secrets are used by `admin-api`:
 | `NEWSLETTER_SITE_URL` | Var | Base URL of the separate newsletter site (ADR-004). Consumed by bulk email templates when non-empty; set to `""` in production until the site is deployed. |
 | `SPACEMAIL_SMTP_USER` | Secret | Authenticated SMTP mailbox (`technical@180dcvitc.org`), also the From address. Set in production. |
 | `SPACEMAIL_SMTP_PASS` | Secret | Mailbox password for SMTP AUTH. Set in production. |
+| `SPACEMAIL_HOURLY_LIMIT` | Secret | Optional pacing cap for the mailbox messages/hour. Removed after upgrading to a paid plan; absent = default `500`. |
 
 The following are used by the frontend:
 
