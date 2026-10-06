@@ -1,5 +1,8 @@
 # Amazon SES Setup for 180DC
 
+> **SUPERSEDED** — This plan was never implemented. The newsletter/email migration uses
+> Spacemail SMTP instead; see `docs/operations/SPACEMAIL_SETUP.md`. Kept for history.
+
 ## Why SES
 
 - Replacing Resend for bulk newsletter/event mail sends

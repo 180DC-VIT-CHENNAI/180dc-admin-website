@@ -163,8 +163,8 @@ This document describes the system from the domain perspective. Each section cov
 
 - RULE-MEET-01: Meet links are hidden from list responses when `julianday(scheduled_at) < julianday('now', '-1 day')`.
 - RULE-MEET-02: Creating a meet can trigger email notifications to eligible members.
-- RULE-MEET-03: Email sending respects the daily 100-email quota. Excess recipients are stored in `pending_emails`.
-- RULE-MEET-04: Manual `POST /api/meets/process-queue` sends pending meet emails.
+- RULE-MEET-03: Meet notification recipients are enqueued in `email_queue` (kind `meet`) and delivered by the cron drain; the legacy `pending_emails` overflow is auto-migrated into the queue.
+- RULE-MEET-04: `POST /api/meets/process-queue` still flushes legacy `pending_emails` rows synchronously.
 - RULE-MEET-05: Meet links must be valid URLs if provided.
 
 ## Projects
@@ -220,7 +220,9 @@ This document describes the system from the domain perspective. Each section cov
 
 - RULE-NEWS-01: Public visitors can subscribe via `POST /api/newsletter/subscribe`.
 - RULE-NEWS-02: Subscribers can unsubscribe via `GET /api/newsletter/unsubscribe?email=...`.
-- RULE-NEWS-03: The system stores `active`, `subscribed_at`, and `unsubscribed_at`.
+- RULE-NEWS-03: The system stores `active`, `subscribed_at`, and `unsubscribed_at` in `newsletter_subscribers` in `NEWSLETTER_DB`. Subscribing sends a welcome email (re-subscribing sends a welcome-back email) synchronously; delivery failures are logged.
+- RULE-NEWS-03a: `GET /api/newsletter/:id` is public, rate-limited, and serves newsletter `content` only after sanitization (`sanitizeBlogHtml`) — never raw stored HTML. The separate newsletter site (ADR-004) fetches this endpoint.
+- RULE-NEWS-03b: The bulk-email CTA uses `NEWSLETTER_SITE_URL` when set (CTA → `{site}/newsletter/{id}`) and otherwise falls back to `https://180dcvitc.org/#newsletter`. The production var is intentionally empty until the separate newsletter site (ADR-004) is deployed. Bulk unsubscribe footers link to `https://180dcvitc.org/unsubscribe` because BCC batches share one body.
 
 ### Newsletter editor (OTP)
 
@@ -228,7 +230,7 @@ This document describes the system from the domain perspective. Each section cov
 - RULE-NEWS-05: A 6-digit OTP is emailed and expires in 5 minutes.
 - RULE-NEWS-06: A successful OTP verification creates a 24-hour session in `newsletter_sessions`.
 - RULE-NEWS-07: Editors can create drafts, upload source files, and send newsletters or event emails.
-- RULE-NEWS-08: Sends respect the 100/day quota and a 550ms delay between emails.
+- RULE-NEWS-08: Bulk sends insert one `email_queue` campaign and return `queued`/`total` immediately; the cron batches recipients into BCC groups of 50 and respects the 500-messages/hour Spacemail cap, updating `recipient_count` on completion.
 - RULE-NEWS-09: Source files are stored in `CASE_STUDIES` R2.
 
 ### Board newsletter management
@@ -242,7 +244,7 @@ This document describes the system from the domain perspective. Each section cov
 
 - RULE-CONSULT-01: Public visitors can submit a consulting request.
 - RULE-CONSULT-02: Board can list, accept, reject, and delete requests.
-- RULE-CONSULT-03: Accept/reject sends a custom email via Resend.
+- RULE-CONSULT-03: Accept/reject sends a custom email through the unified email path (Spacemail SMTP with Resend fallback).
 - RULE-CONSULT-04: A request can only be accepted or rejected once.
 
 ## Announcements
@@ -281,8 +283,12 @@ This document describes the system from the domain perspective. Each section cov
 
 - RULE-RATE-01: Most endpoints are rate-limited per IP and endpoint in the `rate_limits` table.
 - RULE-RATE-02: Login endpoints use a separate `checkLoginRateLimit` that resets on success.
-- RULE-QUOTA-01: The system sends at most 100 emails per day via `daily_email_count`.
-- RULE-QUOTA-02: Emails above the quota for meets are queued in `pending_emails`.
+- RULE-QUOTA-01: All outbound email goes through `sendEmail()`: Spacemail SMTP (`mail.spacemail.com:465`) is primary and Resend is the automatic fallback when SMTP fails.
+- RULE-QUOTA-02: BCC batching (up to 50 recipients per message) is used only for bulk queue campaigns (newsletter, event, meet); every other send is one recipient per message. SMTP sends are capped at 500 messages/hour in `email_hour_count` and drained with adaptive pacing (up to 15 messages/minute) by the `* * * * *` cron.
+- RULE-QUOTA-03: The Resend fallback is capped at 100 recipients/day in `resend_daily_count`.
+- RULE-QUOTA-04: Bulk sends (newsletter, event, meet, and Send Mail lists over 10 recipients) insert an `email_queue` campaign and return `queued`/`total`; the cron carries the campaign to completion, pacing adaptively up to the 500/hour cap, and retries up to 5 times. Send Mail lists of 10 or fewer are sent synchronously (one message per recipient).
+- RULE-QUOTA-05: Sends with no email provider configured fail without calling any provider; OTP and letter sends return 500.
+- RULE-QUOTA-06: Newsletter data lives in the separate `NEWSLETTER_DB`; the cron writes campaign completion (`sent_at`, `recipient_count`) back to `newsletters` there.
 
 ## Audit logging
 

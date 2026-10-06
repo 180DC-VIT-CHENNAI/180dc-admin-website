@@ -33,9 +33,9 @@ For different kinds of work, consult these documents in this order:
 | What API endpoints exist and who can call them? | `docs/contracts/api-contract.md` |
 | What must stay compatible? | `docs/compatibility/compatibility-contracts.md` |
 | How do I build, test, and deploy? | `docs/operations/deployment.md`, `docs/quality/testing-strategy.md` |
-| Where are design and UX constraints? | `DESIGN.md`, `frontend-design/plan.md`, `REPORT.md` |
-| Where are newsletter-specific details? | `NEWSLETTER_EDITOR.md`, `SES_SETUP.md` |
-| Where are architecture decisions? | `architecture/NEWSLETTER_BULK_SEND_DECISION.md`, `architecture/TEAM_INSTANCES_PLAN.md`, `architecture/backend-architecture-cloudflare.txt` |
+| Where are design and UX constraints? | `docs/design/DESIGN.md`, `docs/design/plan.md`, `docs/product/REPORT.md` |
+| Where are newsletter-specific details? | `docs/operations/NEWSLETTER_EDITOR.md`, `docs/operations/SPACEMAIL_SETUP.md`, `docs/operations/SES_SETUP.md` |
+| Where are architecture decisions? | `docs/architecture/decisions/README.md` (ADR index), `docs/architecture/backend-architecture-cloudflare.txt` |
 
 Index of all new docs: `docs/INDEX.md`.
 
@@ -49,20 +49,21 @@ Index of all new docs: `docs/INDEX.md`.
 4. **All schema changes must be backward-compatible and idempotent.** Add new columns/tables with `IF NOT EXISTS` or `ALTER TABLE ... ADD COLUMN` wrapped in `try/catch`. The production database has live data.
 5. **Auth is custom token-based, not Clerk, for the members portal.** The frontend uses Clerk for Google OAuth, but the backend validates a `Bearer` token against the `admin_tokens` table.
 6. **Do not expose secrets in documentation, logs, or code.** Environment variables and Wrangler bindings must be referenced by name only.
-7. **Rate limits and email quotas are enforced in D1.** Respect the `rate_limits` and `daily_email_count` tables.
+7. **Rate limits and email quotas are enforced in D1.** Respect the `rate_limits` table, the SMTP hourly cap in `email_hour_count` (500 messages/hour), and the Resend fallback cap in `resend_daily_count` (100/day).
 8. **Meet links are hidden 24 hours after the scheduled time.** This is implemented in the SQL that returns meet records.
-9. **The `QUEUE` binding in `admin-api` is configured but not actually used.** Pending meet emails are stored in the `pending_emails` table. The `job-processor` consumer is a placeholder.
+9. **The `QUEUE` binding in `admin-api` is configured but not actually used.** Bulk email (newsletters, events, meet notifications) is enqueued in the `email_queue` table and drained by the `* * * * *` cron trigger at up to 8 messages/minute (≤50 BCC recipients each). `pending_emails` is legacy and still drainable via `POST /api/meets/process-queue`. The `job-processor` consumer is a placeholder.
 10. **Frontend API calls are proxied through the Cloudflare Pages `_middleware.ts` to `admin-api.technical-vitc.workers.dev`.** Do not assume the worker is reached at `180dcvitc.org/api/*` from the Pages site, even though the worker route pattern says that.
 
 ## Repository boundaries
 
 - `apps/admin-api/index.ts` is the canonical backend. Any new API route, schema change, or business rule belongs there unless you are explicitly building a new service.
+- **Newsletter data lives in a separate D1 database**, bound as `NEWSLETTER_DB` (`newsletter-db`). It holds `newsletters`, `newsletter_subscribers`, `newsletter_authorized_emails`, `newsletter_otp_codes`, and `newsletter_sessions`. All newsletter routes must use `newsletterDb(c)`, not `c.env.DB`; `ensureNewsletterReady(c)` (invoked by middleware) creates the tables. The old copies in `180dc-db` are legacy backups — do not write to them.
 - `apps/frontend/` is the public site and members portal. It is a Vite React SPA.
 - `packages/db/` is currently a placeholder. Do not add production SQL migrations there without also updating `admin-api/index.ts`.
-- `architecture/` contains both current decisions and historical/aspirational documents. Read `architecture/backend-architecture-cloudflare.txt` with care: it describes a Cloudflare Access + Next.js design that was not implemented.
-- `DESIGN.md` and `frontend-design/plan.md` are the source of truth for visual design.
-- `REPORT.md` is a plain-English feature inventory and is useful for product context.
-- `NEWSLETTER_EDITOR.md` and `SES_SETUP.md` are operational docs for the newsletter subsystem.
+- `docs/architecture/` contains both current decisions and historical/aspirational documents (ADR index under `docs/architecture/decisions/`). Read `docs/architecture/backend-architecture-cloudflare.txt` with care: it describes a Cloudflare Access + Next.js design that was not implemented.
+- `docs/design/DESIGN.md` and `docs/design/plan.md` are the source of truth for visual design.
+- `docs/product/REPORT.md` is a plain-English feature inventory and is useful for product context.
+- `docs/operations/NEWSLETTER_EDITOR.md`, `SPACEMAIL_SETUP.md`, and `SES_SETUP.md` are operational docs for the newsletter/email subsystem.
 
 ## Commands to use
 

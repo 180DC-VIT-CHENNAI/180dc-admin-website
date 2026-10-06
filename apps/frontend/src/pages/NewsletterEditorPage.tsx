@@ -2,8 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import { apiUrl } from "../lib/api";
 import { useTheme } from "../context/ThemeContext";
 
+const SITE_URL = "https://180dc-newsletters.technical-vitc.workers.dev";
+const TEST_EMAIL = "lrkevindaniel@gmail.com";
+
 interface Newsletter {
   id: string;
+  slug: string | null;
   title: string;
   description: string;
   email_subject: string | null;
@@ -38,12 +42,8 @@ export default function NewsletterEditorPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
-  const [sourceFileUrl, setSourceFileUrl] = useState("");
-  const [_sourceFileKey, setSourceFileKey] = useState("");
-  const [sourceFileName, setSourceFileName] = useState("");
-  const [uploading, setUploading] = useState(false);
+  const [content, setContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
 
   const [editorTab, setEditorTab] = useState<EditorTab>("newsletters");
   const [eventSubject, setEventSubject] = useState("");
@@ -150,66 +150,12 @@ export default function NewsletterEditorPage() {
     setMode("list");
   };
 
-  const handleDocumentUpload = useCallback(async (file: File) => {
-    setUploading(true);
-    setError("");
-    setSourceFileName(file.name);
-    try {
-      const ext = file.name.split(".").pop()?.toLowerCase();
-      if (!ext || !["pdf", "docx"].includes(ext)) {
-        setError("Unsupported file type. Upload a PDF or DOCX.");
-        setSourceFileName("");
-        setUploading(false);
-        return;
-      }
-
-      const srcFd = new FormData();
-      srcFd.append("file", file);
-      const srcRes = await fetch(apiUrl("/api/newsletter-editor/upload-source"), {
-        method: "POST",
-        headers: authHeaders,
-        body: srcFd,
-      });
-      const srcData = await srcRes.json();
-      if (srcData.success) {
-        setSourceFileUrl(srcData.url);
-        setSourceFileKey(srcData.key);
-      } else {
-        setError(srcData.error || "Upload failed");
-        setSourceFileName("");
-      }
-    } catch (err: any) {
-      setError("Upload failed: " + (err?.message || "Unknown error"));
-    }
-    setUploading(false);
-  }, [authHeaders]);
-
-  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleDocumentUpload(file);
-  }, [handleDocumentUpload]);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleDocumentUpload(file);
-  }, [handleDocumentUpload]);
-
-  const handleRemoveDocument = useCallback(() => {
-    setSourceFileUrl("");
-    setSourceFileKey("");
-    setSourceFileName("");
-  }, []);
-
   const resetForm = useCallback(() => {
     setEditingId(null);
     setTitle("");
     setDescription("");
     setEmailSubject("");
-    setSourceFileUrl("");
-    setSourceFileKey("");
-    setSourceFileName("");
+    setContent("");
     setError("");
     setSuccess("");
   }, []);
@@ -315,7 +261,7 @@ export default function NewsletterEditorPage() {
     if (file) handleEventImageUpload(file);
   }, [handleEventImageUpload]);
 
-  const handleEventSend = async () => {
+  const handleEventSend = async (testEmail?: string) => {
     if (!eventSubject.trim()) { setError("Subject is required"); return; }
     setEventSending(true);
     setError("");
@@ -324,11 +270,21 @@ export default function NewsletterEditorPage() {
       const res = await fetch(apiUrl("/api/newsletter-editor/send-event"), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
-        body: JSON.stringify({ subject: eventSubject, description: eventDescription, sourceFileUrl: eventSourceFileUrl || undefined, imageUrl: eventImageUrl || undefined }),
+        body: JSON.stringify({
+          subject: eventSubject,
+          description: eventDescription,
+          sourceFileUrl: eventSourceFileUrl || undefined,
+          imageUrl: eventImageUrl || undefined,
+          testEmail: testEmail || undefined,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        setSuccess(`Event mail sent to ${data.sentCount} of ${data.total} subscribers!`);
+        setSuccess(
+          testEmail
+            ? `Test event mail queued to ${testEmail}.`
+            : `Event mail queued for ${data.queued ?? data.total} of ${data.total} subscribers — sending in the background.`,
+        );
         resetEventForm();
       } else {
         setError(data.error || "Failed to send");
@@ -340,7 +296,6 @@ export default function NewsletterEditorPage() {
   };
 
   const handleSubmit = async () => {
-    if (!sourceFileUrl) { setError("Upload a PDF or DOCX first"); return; }
     const finalTitle = title.trim();
     if (!finalTitle) { setError("Title is required"); return; }
 
@@ -356,7 +311,7 @@ export default function NewsletterEditorPage() {
           title: finalTitle,
           description: description.trim(),
           emailSubject: emailSubject.trim() || finalTitle,
-          sourceFileUrl: sourceFileUrl || undefined,
+          content: content,
         }),
       });
       const data = await res.json();
@@ -397,10 +352,33 @@ export default function NewsletterEditorPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setSuccess(`Sent to ${data.sentCount} of ${data.total} subscribers!`);
+        const nl = newsletters.find((n) => n.id === id);
+        setSuccess(`Newsletter queued for ${data.queued ?? data.total} of ${data.total} subscribers — sending in the background.${nl ? ` Read it on the web: ${SITE_URL}/newsletter/${nl.slug || nl.id}` : ""}`);
         loadDrafts();
       } else {
         setError(data.error || "Failed to send");
+      }
+    } catch {
+      setError("Network error");
+    }
+    setLoading(false);
+  };
+
+  const handleSendTest = async (id: string) => {
+    if (!confirm(`Send a test of this newsletter to ${TEST_EMAIL}?`)) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(apiUrl("/api/newsletter-editor/send"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ newsletterId: id, testEmail: TEST_EMAIL }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSuccess(`Test newsletter queued to ${TEST_EMAIL} (1 recipient) — check your inbox.`);
+      } else {
+        setError(data.error || "Failed to send test");
       }
     } catch {
       setError("Network error");
@@ -571,49 +549,20 @@ export default function NewsletterEditorPage() {
               style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: 12, border: "1px solid var(--border-light)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, marginBottom: 12, boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
             />
 
-            <div
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
-              onClick={() => document.getElementById("nl-editor-file-input")?.click()}
-              style={{
-                border: `2px dashed ${dragOver ? "var(--accent)" : "var(--border-light)"}`,
-                borderRadius: 12, padding: "24px 16px", textAlign: "center", cursor: "pointer",
-                background: dragOver ? "rgba(141,198,63,0.05)" : "transparent", transition: "all 0.2s", marginBottom: 12,
-              }}
-            >
-              <input id="nl-editor-file-input" type="file" accept=".pdf,.docx" style={{ display: "none" }} onChange={handleFileInput} />
-              {uploading ? (
-                <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)" }}>Uploading...</p>
-              ) : sourceFileName ? (
-                <div>
-                  <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{sourceFileName}</p>
-                  <button onClick={(e) => { e.stopPropagation(); handleRemoveDocument(); }} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, color: "var(--status-error)", background: "transparent" }}>Remove</button>
-                </div>
-              ) : (
-                <div>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 8px", opacity: 0.4, color: "var(--text-secondary)" }}>
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><polyline points="14 2 14 8 20 8" />
-                  </svg>
-                  <p style={{ margin: "0 0 4px", fontSize: 14, color: "var(--text-secondary)" }}>Drop a PDF or DOCX here, or click to browse</p>
-                  <p style={{ margin: 0, fontSize: 12, color: "var(--text-tertiary)" }}>Max 20 MB</p>
-                </div>
-              )}
-            </div>
-
-            {sourceFileUrl && (
-              <div style={{ marginBottom: 12 }}>
-                <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-secondary)" }}>Preview:</p>
-                <iframe src={apiUrl(sourceFileUrl)} title="Preview" style={{ width: "100%", height: 400, border: "none", borderRadius: 8, background: "var(--surface-soft)" }} />
-              </div>
-            )}
+            <textarea
+              placeholder="Article content (optional) — what readers see on the web. Separate paragraphs with a blank line; basic HTML is allowed."
+              rows={10}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: 12, border: "1px solid var(--border-light)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 14, marginBottom: 12, boxSizing: "border-box", resize: "vertical", fontFamily: "monospace", lineHeight: 1.6 }}
+            />
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => { resetForm(); setMode("list"); }} style={{ ...btnBase, padding: "8px 20px", background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-light)" }}>Cancel</button>
               <button
                 onClick={handleSubmit}
-                disabled={submitting || !sourceFileUrl}
-                style={{ ...btnBase, padding: "8px 20px", background: submitting || !sourceFileUrl ? "var(--text-tertiary)" : "var(--accent)", color: "#fff" }}
+                disabled={submitting}
+                style={{ ...btnBase, padding: "8px 20px", background: submitting ? "var(--text-tertiary)" : "var(--accent)", color: "#fff" }}
               >
                 {submitting ? "Saving..." : editingId ? "Update" : "Create"}
               </button>
@@ -642,8 +591,17 @@ export default function NewsletterEditorPage() {
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                        {!nl.sent_at && (
-                          <button onClick={() => handleSend(nl.id)} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "var(--status-success)", color: "#fff" }}>Send</button>
+                        <button onClick={() => handleSend(nl.id)} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "var(--status-success)", color: "#fff" }}>Send</button>
+                        <button onClick={() => handleSendTest(nl.id)} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "var(--accent)", color: "#fff" }}>Test</button>
+                        {nl.sent_at && (
+                          <a
+                            href={`${SITE_URL}/newsletter/${nl.slug || nl.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "var(--accent)", color: "#fff", textDecoration: "none" }}
+                          >
+                            View
+                          </a>
                         )}
                         <button
                           onClick={() => {
@@ -651,7 +609,7 @@ export default function NewsletterEditorPage() {
                             setTitle(nl.title);
                             setDescription(nl.description);
                             setEmailSubject(nl.email_subject || nl.title);
-                            setSourceFileUrl(nl.source_file_url || "");
+                            setContent(nl.content || "");
                             setMode("create");
                           }}
                           style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "var(--border-light)", color: "var(--text-primary)" }}
@@ -760,7 +718,14 @@ export default function NewsletterEditorPage() {
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={resetEventForm} style={{ ...btnBase, padding: "8px 20px", background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-light)" }}>Clear</button>
               <button
-                onClick={handleEventSend}
+                onClick={() => handleEventSend(TEST_EMAIL)}
+                disabled={eventSending || !eventSubject.trim()}
+                style={{ ...btnBase, padding: "8px 20px", background: eventSending || !eventSubject.trim() ? "var(--text-tertiary)" : "var(--accent)", color: "#fff" }}
+              >
+                {eventSending ? "Sending..." : `Send test to ${TEST_EMAIL.split("@")[0]}`}
+              </button>
+              <button
+                onClick={() => handleEventSend()}
                 disabled={eventSending || !eventSubject.trim()}
                 style={{ ...btnBase, padding: "8px 20px", background: eventSending || !eventSubject.trim() ? "var(--text-tertiary)" : "var(--accent-hover)", color: "#fff" }}
               >

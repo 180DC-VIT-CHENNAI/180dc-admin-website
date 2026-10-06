@@ -233,7 +233,6 @@ export function buildLetterHTML(d: LetterData): string {
         <tr><td class="k">Name</td><td class="sep">:</td><td>${h(d.name)}</td></tr>
         <tr><td class="k">Registration Number</td><td class="sep">:</td><td>${h(d.reg)}</td></tr>
         <tr><td class="k">Department</td><td class="sep">:</td><td>${h(isTransfer ? d.teamFrom : d.team)}</td></tr>
-        <tr><td class="k">FFCS Status</td><td class="sep">:</td><td>${h(d.ffcs)}</td></tr>
         ${d.team === "Technical" && d.techTrack && d.techTrack !== "General" ? `<tr><td class="k">Technical Track</td><td class="sep">:</td><td>${h(d.techTrack)}</td></tr>` : ""}
         <tr><td class="k">Position</td><td class="sep">:</td><td>${h(isPromotion ? d.positionTo : d.position)}</td></tr>`;
   const announcementTone =

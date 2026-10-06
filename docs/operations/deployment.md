@@ -31,9 +31,15 @@
 Create `apps/admin-api/.dev.vars` for local development:
 
 ```ini
+# Resend fallback — keep set while Spacemail is being rolled out
 RESEND_API_KEY=re_...
 CLERK_SECRET_KEY=sk_test_...
 ENVIRONMENT=development
+# Spacemail SMTP primary sender (authenticated mailbox; team@ is an alias on it)
+SPACEMAIL_SMTP_USER=technical@180dcvitc.org
+SPACEMAIL_SMTP_PASS=
+# Leave empty until the separate newsletter site (ADR-004) is deployed
+NEWSLETTER_SITE_URL=
 ```
 
 The frontend needs `VITE_CLERK_PUBLISHABLE_KEY` in `apps/frontend/.env.local`:
@@ -90,6 +96,11 @@ binding = "DB"
 database_name = "180dc-db"
 database_id = "<D1_DATABASE_ID>"
 
+[[d1_databases]]
+binding = "NEWSLETTER_DB"
+database_name = "newsletter-db"
+database_id = "<NEWSLETTER_D1_DATABASE_ID>"
+
 [[r2_buckets]]
 binding = "CLUB_FILES"
 bucket_name = "180dc-club-files"
@@ -110,13 +121,27 @@ id = "<KV_NAMESPACE_ID>"
 binding = "QUEUE"
 queue = "jobs-queue"
 
+[triggers]
+# Drains email_queue at up to 8 messages/minute (≤50 BCC recipients each)
+crons = ["* * * * *"]
+
 [vars]
 ENVIRONMENT = "production"
+# Empty until the ADR-004 newsletter site is deployed; newsletters then link to {url}/newsletter/{id}
+NEWSLETTER_SITE_URL = ""
 
 # Secrets must be set via `wrangler secret put`
-# RESEND_API_KEY
+# RESEND_API_KEY          (fallback sender — keep while Spacemail is rolled out)
 # CLERK_SECRET_KEY
+# SPACEMAIL_SMTP_USER     (technical@180dcvitc.org — also used as the From address)
+# SPACEMAIL_SMTP_PASS     (mailbox password)
+# EMAIL_PRIMARY           (optional: "resend" forces Resend first; default/absent = Spacemail SMTP first)
+# SPACEMAIL_HOURLY_LIMIT  (optional: mailbox plan's messages/hour cap; default 500. Set 20 on trial plans)
 ```
+
+> SMTP note: `sendEmail()` speaks SMTP directly from the Worker using `cloudflare:sockets` to `mail.spacemail.com:465` (implicit TLS). Workers cannot use port 25. Set the mailbox password with `npx wrangler secret put SPACEMAIL_SMTP_PASS` — never commit it.
+
+> Queue note: bulk sends (newsletter/event/meet) are inserted into `email_queue` and delivered by the cron trigger. Finished (`done`/`failed`) campaigns are purged automatically after 30 days. Local dev does not run crons unless you use `wrangler dev --test-scheduled` and hit `/__scheduled?cron=*+*+*+*+*`. Inspect queue state via `GET /api/admin/email-queue` (board token).
 
 The actual `database_id` and KV IDs are stored in `wrangler.toml` and should not be committed if they are sensitive. The repository currently has them in the file; this is a known configuration pattern but should be reviewed.
 

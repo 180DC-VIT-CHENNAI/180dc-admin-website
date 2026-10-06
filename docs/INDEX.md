@@ -20,6 +20,13 @@ This repository is documented as an agent-first knowledge system. Start with `AG
 | `docs/compatibility/compatibility-contracts.md` | Public API, auth, and data compatibility surfaces. |
 | `docs/quality/testing-strategy.md` | How to verify the system today and what tests are missing. |
 | `docs/operations/deployment.md` | Build, development, deployment, and environment instructions. |
+| `docs/operations/BUILD_AND_DEPLOY.md` | Build and deployment instructions for the whole workspace. |
+| `docs/operations/NEWSLETTER_EDITOR.md` | Newsletter editor subsystem: auth, endpoints, templates, gotchas. |
+| `docs/operations/SPACEMAIL_SETUP.md` | Spacemail migration: DNS fix, SMTP send architecture, Ken-style newsletter plan. |
+| `docs/operations/SES_SETUP.md` | Earlier Amazon SES plan (superseded by Spacemail, kept for history). |
+| `docs/design/DESIGN.md` | Visual and UX design constraints. |
+| `docs/design/plan.md` | Frontend design plan and constraints. |
+| `docs/product/REPORT.md` | Plain-English feature inventory and product narrative. |
 
 ## Task-based context routers
 
@@ -53,7 +60,7 @@ This repository is documented as an agent-first knowledge system. Start with `AG
 
 ### Changing the frontend
 
-1. `DESIGN.md` and `frontend-design/plan.md` — visual and UX constraints.
+1. `docs/design/DESIGN.md` and `docs/design/plan.md` — visual and UX constraints.
 2. `docs/product/product-spec.md` — relevant capability.
 3. `docs/domain/business-logic.md` — workflow.
 4. `docs/contracts/api-contract.md` — routes the UI calls.

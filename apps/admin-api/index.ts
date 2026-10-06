@@ -2,9 +2,11 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
 import { verifyToken } from "@clerk/backend";
+import { connect } from "cloudflare:sockets";
 
 type Bindings = {
   DB: any;
+  NEWSLETTER_DB: any;
   CLUB_FILES: R2Bucket;
   BLOG_IMAGES: R2Bucket;
   CASE_STUDIES: R2Bucket;
@@ -15,6 +17,11 @@ type Bindings = {
   CLERK_SECRET_KEY?: string;
   GEMINI_API_KEY?: string;
   GROQ_API_KEY?: string;
+  SPACEMAIL_SMTP_USER?: string;
+  SPACEMAIL_SMTP_PASS?: string;
+  SPACEMAIL_HOURLY_LIMIT?: string;
+  EMAIL_PRIMARY?: string;
+  NEWSLETTER_SITE_URL?: string;
 };
 
 type Variables = {
@@ -56,6 +63,12 @@ function isPublicRoute(pathname: string, method: string): boolean {
   if (pathname.startsWith("/api/gallery-cdn/") && method === "GET") return true;
   if (pathname === "/api/admin/maintenance" && method === "GET") return true;
   if (pathname === "/api/newsletter" && method === "GET") return true;
+  if (
+    method === "GET" &&
+    /^\/api\/newsletter\/[^/]+$/.test(pathname) &&
+    !pathname.startsWith("/api/newsletter/admin")
+  )
+    return true;
 
   return false;
 }
@@ -170,6 +183,23 @@ function decodeEntities(str: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'");
+}
+
+function textToParagraphHtml(text: string): string {
+  return text
+    .split(/\n{2,}/)
+    .map((p) =>
+      p
+        .replace(/\n/g, "<br>")
+        .replace(
+          /(https?:\/\/[^\s<>"']+)/g,
+          '<a href="$1" style="color:#8dc63f;font-weight:600">$1</a>',
+        )
+        .trim(),
+    )
+    .filter(Boolean)
+    .map((p) => "<p>" + p + "</p>")
+    .join("");
 }
 
 function sanitizeBlogHtml(input: string): string {
@@ -411,39 +441,20 @@ async function sendTokenEmail(
   token: string,
   name: string,
 ): Promise<{ ok: boolean; status?: number; error?: string }> {
-  const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.warn("RESEND_API_KEY not configured @ skipping email to " + email);
-    return { ok: false, error: "RESEND_API_KEY not configured" };
+  const result = await sendEmail(c, {
+    from: "180DC Admin <technical@180dcvitc.org>",
+    to: email,
+    subject: "Your 180DC Admin Access Token",
+    html: tokenEmailHtml(token, name),
+  });
+  if (result.sent > 0) {
+    console.log(`[email] Token email OK to=${email}`);
+    return { ok: true };
   }
-  const from = "180DC Admin <team@180dcvitc.org>";
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: email,
-        subject: "Your 180DC Admin Access Token",
-        html: tokenEmailHtml(token, name),
-      }),
-    });
-    const body = await res.text();
-    if (!res.ok) {
-      console.error(
-        `[email] Resend FAILED (${res.status}) to=${email}: ${body}`,
-      );
-      return { ok: false, status: res.status, error: body };
-    }
-    console.log(`[email] Resend OK (${res.status}) to=${email}: ${body}`);
-    return { ok: true, status: res.status };
-  } catch (e: any) {
-    console.error("[email] Resend error to=" + email + ": " + e.message);
-    return { ok: false, error: e.message };
-  }
+  console.error(
+    `[email] Token email FAILED to=${email}: ${result.error || "all delivery paths failed"}`,
+  );
+  return { ok: false, error: result.error || "Email delivery failed" };
 }
 
 function meetEmailHtml(
@@ -501,14 +512,1031 @@ async function getTodayEmailCount(db: any): Promise<number> {
   return row ? row.count : 0;
 }
 
-async function incrementEmailCount(db: any) {
+async function incrementEmailCount(db: any, amount = 1) {
   const today = new Date().toISOString().slice(0, 10);
   await db
     .prepare(
-      "INSERT INTO daily_email_count (date, count) VALUES (?, 1) ON CONFLICT(date) DO UPDATE SET count = count + 1",
+      "INSERT INTO daily_email_count (date, count) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET count = count + ?",
     )
-    .bind(today)
+    .bind(today, amount, amount)
     .run();
+}
+
+const SMTP_HOST = "mail.spacemail.com";
+const SMTP_PORT = 465;
+const SMTP_BATCH_SIZE = 50;
+const SMTP_MAX_PER_HOUR = 500;
+
+function smtpHourlyLimit(env: any): number {
+  const value = Number(env?.SPACEMAIL_HOURLY_LIMIT);
+  return Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : SMTP_MAX_PER_HOUR;
+}
+const RESEND_MAX_PER_DAY = 100;
+const SMTP_TIMEOUT_MS = 20000;
+
+type EmailAttachment = {
+  filename: string;
+  content: string;
+  contentType?: string;
+};
+
+type SendEmailOptions = {
+  from: string;
+  to: string | string[];
+  subject: string;
+  html: string;
+  attachments?: EmailAttachment[];
+  batchRecipients?: boolean;
+  extraHeaders?: Record<string, string>;
+};
+
+type SendEmailResult = {
+  sent: number;
+  failed: number;
+  skipped: number;
+  viaResend: number;
+  error?: string;
+};
+
+function utf8ToBase64(input: string): string {
+  return arrayBufferToBase64(new TextEncoder().encode(input).buffer as ArrayBuffer);
+}
+
+function wrapBase64(b64: string): string {
+  const clean = b64.replace(/\s+/g, "");
+  let out = "";
+  for (let i = 0; i < clean.length; i += 76) {
+    out += (i > 0 ? "\r\n" : "") + clean.slice(i, i + 76);
+  }
+  return out;
+}
+
+function sanitizeHeaderValue(value: string): string {
+  return value.replace(/[\r\n]+/g, " ").trim();
+}
+
+function encodeEmailSubject(subject: string): string {
+  const clean = sanitizeHeaderValue(subject);
+  if (/^[\x20-\x7E]*$/.test(clean)) return clean;
+  return "=?UTF-8?B?" + utf8ToBase64(clean) + "?=";
+}
+
+function extractEmailAddress(from: string): string {
+  const match = /<([^>]+)>/.exec(from);
+  return (match ? match[1] : from).trim();
+}
+
+function attachmentContentType(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  if (ext === "pdf") return "application/pdf";
+  if (ext === "png") return "image/png";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "webp") return "image/webp";
+  return "application/octet-stream";
+}
+
+function decodeHtmlEntities(input: string): string {
+  return input
+    .replace(/&#x([0-9a-f]+);/gi, (_m, hex) => {
+      try {
+        return String.fromCodePoint(parseInt(hex, 16));
+      } catch {
+        return "";
+      }
+    })
+    .replace(/&#(\d+);/g, (_m, dec) => {
+      try {
+        return String.fromCodePoint(parseInt(dec, 10));
+      } catch {
+        return "";
+      }
+    })
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#x27;|&apos;/gi, "'");
+}
+
+function htmlToPlainText(html: string): string {
+  return decodeHtmlEntities(
+    html
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<head[\s\S]*?<\/head>/gi, "")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|tr|h[1-6]|li|table)>/gi, "\n")
+      .replace(
+        /<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi,
+        (_m, href, label) => {
+          const text = decodeHtmlEntities(
+            String(label).replace(/<[^>]+>/g, ""),
+          ).trim();
+          return text ? text + " (" + href + ")" : href;
+        },
+      )
+      .replace(/<[^>]+>/g, ""),
+  )
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .filter((line, index, all) => !(line === "" && all[index - 1] === ""))
+    .join("\n")
+    .trim();
+}
+
+function toQuotedPrintable(input: string): string {
+  const bytes = new TextEncoder().encode(input.replace(/\r\n/g, "\n"));
+  let out = "";
+  let lineLength = 0;
+  for (const byte of bytes) {
+    if (byte === 0x0a) {
+      out += "\r\n";
+      lineLength = 0;
+      continue;
+    }
+    let token: string;
+    if (byte === 0x3d) token = "=3D";
+    else if (byte >= 0x20 && byte <= 0x7e) token = String.fromCharCode(byte);
+    else token = "=" + byte.toString(16).toUpperCase().padStart(2, "0");
+    if (lineLength + token.length > 75) {
+      out += "=\r\n";
+      lineLength = 0;
+    }
+    out += token;
+    lineLength += token.length;
+  }
+  return out
+    .split("\r\n")
+    .map((line) =>
+      line.replace(/[ \t]+$/, (m) =>
+        m
+          .split("")
+          .map((char) => (char === " " ? "=20" : "=09"))
+          .join(""),
+      ),
+    )
+    .join("\r\n");
+}
+
+function buildMimeMessage(message: {
+  from: string;
+  to: string[];
+  subject: string;
+  html: string;
+  attachments?: EmailAttachment[];
+  extraHeaders?: Record<string, string>;
+}): string {
+  const altBoundary = "180dc-alt-" + crypto.randomUUID().replace(/-/g, "");
+  const mixedBoundary = "180dc-mix-" + crypto.randomUUID().replace(/-/g, "");
+  const headers = [
+    "From: " + sanitizeHeaderValue(message.from),
+    "To: " +
+      (message.to.length === 1 ? message.to[0] : "undisclosed-recipients:;"),
+    "Subject: " + encodeEmailSubject(message.subject),
+    "Date: " + new Date().toUTCString(),
+    "Message-ID: <" + crypto.randomUUID() + "@180dcvitc.org>",
+    "MIME-Version: 1.0",
+  ];
+  if (message.extraHeaders) {
+    for (const [key, value] of Object.entries(message.extraHeaders)) {
+      const name = sanitizeHeaderValue(key).replace(/[^A-Za-z0-9-]/g, "");
+      const headerValue = sanitizeHeaderValue(value);
+      if (name && headerValue) headers.push(name + ": " + headerValue);
+    }
+  }
+  const textPart = toQuotedPrintable(htmlToPlainText(message.html));
+  const htmlPart = toQuotedPrintable(message.html);
+  const alternative =
+    "--" +
+    altBoundary +
+    '\r\nContent-Type: text/plain; charset="UTF-8"\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n' +
+    textPart +
+    "\r\n" +
+    "--" +
+    altBoundary +
+    '\r\nContent-Type: text/html; charset="UTF-8"\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n' +
+    htmlPart +
+    "\r\n" +
+    "--" +
+    altBoundary +
+    "--\r\n";
+
+  if (!message.attachments || message.attachments.length === 0) {
+    headers.push(
+      'Content-Type: multipart/alternative; boundary="' + altBoundary + '"',
+    );
+    return headers.join("\r\n") + "\r\n\r\n" + alternative;
+  }
+
+  headers.push(
+    'Content-Type: multipart/mixed; boundary="' + mixedBoundary + '"',
+  );
+  const parts: string[] = [];
+  parts.push(
+    "--" +
+      mixedBoundary +
+      '\r\nContent-Type: multipart/alternative; boundary="' +
+      altBoundary +
+      '"\r\n\r\n' +
+      alternative,
+  );
+  for (const attachment of message.attachments) {
+    const filename = sanitizeHeaderValue(attachment.filename).replace(/"/g, "");
+    const contentType =
+      attachment.contentType || attachmentContentType(filename);
+    parts.push(
+      "--" +
+        mixedBoundary +
+        "\r\nContent-Type: " +
+        contentType +
+        '; name="' +
+        filename +
+        '"\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename="' +
+        filename +
+        '"\r\n\r\n' +
+        wrapBase64(attachment.content) +
+        "\r\n",
+    );
+  }
+  parts.push("--" + mixedBoundary + "--\r\n");
+  return headers.join("\r\n") + "\r\n\r\n" + parts.join("");
+}
+
+class SmtpReader {
+  private reader: ReadableStreamDefaultReader<Uint8Array>;
+  private decoder = new TextDecoder();
+  private buffer = "";
+  private ended = false;
+
+  constructor(readable: ReadableStream<Uint8Array>) {
+    this.reader = readable.getReader();
+  }
+
+  private async fill(): Promise<boolean> {
+    if (this.ended) return false;
+    const { value, done } = await this.reader.read();
+    if (done) {
+      this.ended = true;
+      return false;
+    }
+    this.buffer += this.decoder.decode(value, { stream: true });
+    return true;
+  }
+
+  async readLine(): Promise<string> {
+    for (;;) {
+      const index = this.buffer.indexOf("\r\n");
+      if (index !== -1) {
+        const line = this.buffer.slice(0, index);
+        this.buffer = this.buffer.slice(index + 2);
+        return line;
+      }
+      if (!(await this.fill())) {
+        const line = this.buffer;
+        this.buffer = "";
+        return line;
+      }
+    }
+  }
+
+  async readReply(): Promise<{ code: number; text: string }> {
+    let text = "";
+    for (;;) {
+      const line = await this.readLine();
+      text += (text ? "\n" : "") + line;
+      const match = /^(\d{3})([ -])/.exec(line);
+      if (match && match[2] === " ") return { code: Number(match[1]), text };
+      if (match && match[2] === "-") continue;
+      if (line === "") continue;
+      throw new Error("Unexpected SMTP response: " + line);
+    }
+  }
+
+  release() {
+    try {
+      this.reader.releaseLock();
+    } catch {}
+  }
+}
+
+async function smtpSendMessage(
+  user: string,
+  pass: string,
+  message: {
+    from: string;
+    to: string[];
+    subject: string;
+    html: string;
+    attachments?: EmailAttachment[];
+    extraHeaders?: Record<string, string>;
+  },
+): Promise<{
+  ok: boolean;
+  accepted: string[];
+  rejected: string[];
+  error?: string;
+}> {
+  let socket: any = null;
+  let writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+  let reader: SmtpReader | null = null;
+  let timer: any = null;
+  try {
+    const encoder = new TextEncoder();
+    socket = connect(
+      { hostname: SMTP_HOST, port: SMTP_PORT },
+      { secureTransport: "on" },
+    );
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("SMTP timeout")),
+        SMTP_TIMEOUT_MS,
+      );
+    });
+    const session = (async () => {
+      writer = socket.writable.getWriter();
+      reader = new SmtpReader(socket.readable as ReadableStream<Uint8Array>);
+      const read = () => reader!.readReply();
+      const send = async (line: string) => {
+        await writer!.write(encoder.encode(line + "\r\n"));
+        return read();
+      };
+      const expect = async (line: string, codes: number[]) => {
+        const reply = await send(line);
+        if (!codes.includes(reply.code)) {
+          throw new Error(
+            "SMTP " +
+              line.split(" ")[0] +
+              " failed (" +
+              reply.code +
+              "): " +
+              reply.text,
+          );
+        }
+        return reply;
+      };
+
+      const greeting = await read();
+      if (greeting.code !== 220) {
+        throw new Error("SMTP greeting failed: " + greeting.text);
+      }
+      const ehlo = await expect("EHLO 180dcvitc.org", [250]);
+      const authText = ehlo.text.toUpperCase();
+      if (/AUTH[^\n]*\bPLAIN\b/.test(authText)) {
+        await expect(
+          "AUTH PLAIN " + utf8ToBase64("\u0000" + user + "\u0000" + pass),
+          [235],
+        );
+      } else if (/AUTH[^\n]*\bLOGIN\b/.test(authText)) {
+        await expect("AUTH LOGIN", [334]);
+        await expect(utf8ToBase64(user), [334]);
+        await expect(utf8ToBase64(pass), [235]);
+      } else {
+        throw new Error(
+          "SMTP server does not advertise AUTH PLAIN or AUTH LOGIN",
+        );
+      }
+
+      await expect("MAIL FROM:<" + extractEmailAddress(message.from) + ">", [
+        250,
+      ]);
+      const accepted: string[] = [];
+      const rejected: string[] = [];
+      for (const recipient of message.to) {
+        const reply = await send("RCPT TO:<" + recipient + ">");
+        if (reply.code === 250 || reply.code === 251) accepted.push(recipient);
+        else rejected.push(recipient);
+      }
+      if (accepted.length === 0) {
+        await send("QUIT");
+        return { ok: true, accepted, rejected };
+      }
+      await expect("DATA", [354]);
+      const mime = buildMimeMessage({
+        from: message.from,
+        to: accepted,
+        subject: message.subject,
+        html: message.html,
+        attachments: message.attachments,
+        extraHeaders: message.extraHeaders,
+      });
+      const dotStuffed = mime
+        .split("\r\n")
+        .map((line) => (line.startsWith(".") ? "." + line : line))
+        .join("\r\n");
+      await writer!.write(encoder.encode(dotStuffed + "\r\n.\r\n"));
+      const afterData = await read();
+      if (afterData.code !== 250) {
+        throw new Error(
+          "SMTP DATA failed (" + afterData.code + "): " + afterData.text,
+        );
+      }
+      await send("QUIT");
+      return { ok: true, accepted, rejected };
+    })();
+    return await Promise.race([session, timeout]);
+  } catch (e: any) {
+    return { ok: false, accepted: [], rejected: [], error: e.message };
+  } finally {
+    if (timer) clearTimeout(timer);
+    try {
+      writer?.releaseLock();
+    } catch {}
+    try {
+      reader?.release();
+    } catch {}
+    try {
+      await socket?.close();
+    } catch {}
+  }
+}
+
+async function updateEmailCounters(
+  db: any,
+  counts: { smtpMessages?: number; resendSends?: number; dailySends?: number },
+) {
+  const statements: any[] = [];
+  const hour = new Date().toISOString().slice(0, 13);
+  const today = new Date().toISOString().slice(0, 10);
+  if (counts.smtpMessages) {
+    statements.push(
+      db
+        .prepare(
+          "INSERT INTO email_hour_count (hour, count) VALUES (?, ?) ON CONFLICT(hour) DO UPDATE SET count = count + ?",
+        )
+        .bind(hour, counts.smtpMessages, counts.smtpMessages),
+    );
+  }
+  if (counts.resendSends) {
+    statements.push(
+      db
+        .prepare(
+          "INSERT INTO resend_daily_count (date, count) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET count = count + ?",
+        )
+        .bind(today, counts.resendSends, counts.resendSends),
+    );
+  }
+  if (counts.dailySends) {
+    statements.push(
+      db
+        .prepare(
+          "INSERT INTO daily_email_count (date, count) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET count = count + ?",
+        )
+        .bind(today, counts.dailySends, counts.dailySends),
+    );
+  }
+  if (statements.length > 0) await db.batch(statements);
+}
+
+async function getHourlyEmailCount(db: any): Promise<number> {
+  const hour = new Date().toISOString().slice(0, 13);
+  const row: any = await db
+    .prepare("SELECT count FROM email_hour_count WHERE hour = ?")
+    .bind(hour)
+    .first();
+  return row ? row.count : 0;
+}
+
+async function incrementHourlyEmailCount(db: any, amount = 1) {
+  const hour = new Date().toISOString().slice(0, 13);
+  await db
+    .prepare(
+      "INSERT INTO email_hour_count (hour, count) VALUES (?, ?) ON CONFLICT(hour) DO UPDATE SET count = count + ?",
+    )
+    .bind(hour, amount, amount)
+    .run();
+}
+
+async function getResendDailyCount(db: any): Promise<number> {
+  const today = new Date().toISOString().slice(0, 10);
+  const row: any = await db
+    .prepare("SELECT count FROM resend_daily_count WHERE date = ?")
+    .bind(today)
+    .first();
+  return row ? row.count : 0;
+}
+
+async function incrementResendDailyCount(db: any, amount = 1) {
+  const today = new Date().toISOString().slice(0, 10);
+  await db
+    .prepare(
+      "INSERT INTO resend_daily_count (date, count) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET count = count + ?",
+    )
+    .bind(today, amount, amount)
+    .run();
+}
+
+function isEmailConfigured(c: any): boolean {
+  return Boolean(
+    (c.env.SPACEMAIL_SMTP_USER && c.env.SPACEMAIL_SMTP_PASS) ||
+      c.env.RESEND_API_KEY,
+  );
+}
+
+function newsletterSiteBase(c: any): string {
+  return (c.env.NEWSLETTER_SITE_URL || "").trim().replace(/\/+$/, "");
+}
+
+function newsletterCtaUrl(
+  c: any,
+  newsletterId: string,
+  slug?: string | null,
+): string {
+  const base = newsletterSiteBase(c);
+  return base
+    ? base + "/newsletter/" + (slug || newsletterId)
+    : "https://180dcvitc.org/#newsletter";
+}
+
+async function sendViaResend(
+  apiKey: string,
+  message: {
+    from: string;
+    to: string;
+    subject: string;
+    html: string;
+    attachments?: EmailAttachment[];
+    extraHeaders?: Record<string, string>;
+  },
+): Promise<boolean> {
+  try {
+    const payload: any = {
+      from: message.from,
+      to: message.to,
+      subject: message.subject,
+      html: message.html,
+    };
+    if (
+      message.extraHeaders &&
+      Object.keys(message.extraHeaders).length > 0
+    ) {
+      payload.headers = message.extraHeaders;
+    }
+    if (message.attachments && message.attachments.length > 0) {
+      payload.attachments = message.attachments.map((attachment) => ({
+        filename: attachment.filename,
+        content: attachment.content,
+      }));
+    }
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      console.error(
+        `[email] Resend FAILED (${res.status}) to=${message.to}: ${body}`,
+      );
+      return false;
+    }
+    console.log(`[email] Resend OK (${res.status}) to=${message.to}`);
+    return true;
+  } catch (e: any) {
+    console.error("[email] Resend error to=" + message.to + ": " + e.message);
+    return false;
+  }
+}
+
+async function sendEmail(
+  c: any,
+  options: SendEmailOptions,
+): Promise<SendEmailResult> {
+  const recipients = (Array.isArray(options.to) ? options.to : [options.to])
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => value.length > 0);
+  const result: SendEmailResult = {
+    sent: 0,
+    failed: 0,
+    skipped: 0,
+    viaResend: 0,
+  };
+  if (recipients.length === 0) return result;
+
+  const smtpUser = c.env.SPACEMAIL_SMTP_USER;
+  const smtpPass = c.env.SPACEMAIL_SMTP_PASS;
+  const resendKey = c.env.RESEND_API_KEY;
+  let smtpUsable = Boolean(smtpUser && smtpPass);
+  let resendDailyUsed = resendKey ? await getResendDailyCount(c.env.DB) : 0;
+  let resendSent = 0;
+  let smtpMessagesSent = 0;
+  let stopped = false;
+  const preferResend =
+    String(c.env.EMAIL_PRIMARY || "").trim().toLowerCase() === "resend";
+  const chunkSize = options.batchRecipients ? SMTP_BATCH_SIZE : 1;
+  let hourlyCount = await getHourlyEmailCount(c.env.DB);
+
+  const sendBatchViaResend = async (batchRecipients: string[]) => {
+    for (const recipient of batchRecipients) {
+      if (!resendKey) {
+        result.failed++;
+        continue;
+      }
+      if (resendDailyUsed + resendSent >= RESEND_MAX_PER_DAY) {
+        stopped = true;
+        break;
+      }
+      const ok = await sendViaResend(resendKey, {
+        from: options.from,
+        to: recipient,
+        subject: options.subject,
+        html: options.html,
+        attachments: options.attachments,
+        extraHeaders: options.extraHeaders,
+      });
+      if (ok) {
+        resendSent++;
+        result.sent++;
+        result.viaResend++;
+      } else {
+        result.failed++;
+      }
+    }
+  };
+
+  for (let index = 0; index < recipients.length; index += chunkSize) {
+    const batch = recipients.slice(index, index + chunkSize);
+
+    if (preferResend && resendKey) {
+      await sendBatchViaResend(batch);
+      if (stopped) break;
+      continue;
+    }
+
+    if (smtpUsable) {
+      if (hourlyCount + smtpMessagesSent < smtpHourlyLimit(c.env)) {
+        const smtp = await smtpSendMessage(smtpUser, smtpPass, {
+          from: options.from,
+          to: batch,
+          subject: options.subject,
+          html: options.html,
+          attachments: options.attachments,
+          extraHeaders: options.extraHeaders,
+        });
+        if (smtp.ok) {
+          smtpMessagesSent++;
+          result.sent += smtp.accepted.length;
+          if (smtp.rejected.length > 0) {
+            console.warn(
+              "[email] Spacemail rejected " +
+                smtp.rejected.length +
+                " recipient(s), falling back to Resend",
+            );
+            await sendBatchViaResend(smtp.rejected);
+            if (stopped) break;
+          }
+          continue;
+        }
+        smtpUsable = false;
+        result.error = smtp.error;
+        console.warn(
+          "[email] Spacemail SMTP failed, falling back to Resend: " +
+            (smtp.error || "unknown error"),
+        );
+      } else {
+        stopped = true;
+      }
+    }
+
+    if (stopped) break;
+
+    await sendBatchViaResend(batch);
+    if (stopped) break;
+  }
+
+  await updateEmailCounters(c.env.DB, {
+    smtpMessages: smtpMessagesSent,
+    resendSends: resendSent,
+    dailySends: result.sent,
+  });
+  result.skipped = Math.max(
+    0,
+    recipients.length - result.sent - result.failed,
+  );
+  return result;
+}
+
+const QUEUE_MESSAGES_PER_RUN = 15;
+const QUEUE_MAX_ATTEMPTS = 5;
+const QUEUE_STALE_MINUTES = 10;
+
+type QueueAttachmentRef = {
+  filename: string;
+  key: string;
+  contentType?: string;
+};
+
+function normalizeRecipientList(to: string | string[]): string[] {
+  return (Array.isArray(to) ? to : [to])
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => value.length > 0)
+    .filter((value, index, all) => all.indexOf(value) === index);
+}
+
+function attachmentRefsFromUrl(
+  sourceFileUrl: string | null | undefined,
+  fallbackName: string,
+): QueueAttachmentRef[] {
+  if (!sourceFileUrl) return [];
+  const key = sourceFileUrl.replace(/^\/api\/case-studies\/images\//, "");
+  if (!key || key === sourceFileUrl) return [];
+  const rawName = key.split("/").pop() || fallbackName;
+  const filename = rawName.replace(/[^a-zA-Z0-9._-]/g, "-");
+  return [{ filename, key, contentType: attachmentContentType(filename) }];
+}
+
+async function enqueueEmailCampaign(
+  c: any,
+  options: {
+    kind: string;
+    from: string;
+    subject: string;
+    html: string;
+    recipients: string[];
+    attachments?: QueueAttachmentRef[];
+    meta?: Record<string, unknown>;
+    createdBy?: string;
+  },
+): Promise<{ queued: number; id: string | null }> {
+  const recipients = normalizeRecipientList(options.recipients);
+  if (recipients.length === 0) return { queued: 0, id: null };
+  const id = crypto.randomUUID();
+  await c.env.DB.prepare(
+    "INSERT INTO email_queue (id, kind, from_address, subject, html, attachments, recipients, total, meta, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  )
+    .bind(
+      id,
+      options.kind,
+      options.from,
+      options.subject,
+      options.html,
+      JSON.stringify(options.attachments || []),
+      JSON.stringify(recipients),
+      recipients.length,
+      options.meta ? JSON.stringify(options.meta) : null,
+      options.createdBy || null,
+    )
+    .run();
+  return { queued: recipients.length, id };
+}
+
+async function materializeQueueAttachments(
+  env: any,
+  refs: QueueAttachmentRef[],
+): Promise<EmailAttachment[]> {
+  const attachments: EmailAttachment[] = [];
+  for (const ref of refs) {
+    try {
+      const obj = await env.CASE_STUDIES.get(ref.key);
+      if (!obj) {
+        console.error("[email-queue] attachment missing: " + ref.key);
+        continue;
+      }
+      const buf = await obj.arrayBuffer();
+      attachments.push({
+        filename: ref.filename,
+        content: arrayBufferToBase64(buf),
+        contentType: ref.contentType || attachmentContentType(ref.filename),
+      });
+    } catch (e: any) {
+      console.error(
+        "[email-queue] attachment error " + ref.key + ": " + e.message,
+      );
+    }
+  }
+  return attachments;
+}
+
+async function migrateLegacyPendingEmails(env: any) {
+  try {
+    const rows: any = await env.DB.prepare(
+      "SELECT * FROM pending_emails ORDER BY created_at ASC LIMIT 500",
+    ).all();
+    const pending = rows.results || [];
+    if (pending.length === 0) return;
+    const groups = new Map<string, any[]>();
+    for (const row of pending) {
+      const key = row.meet_id || row.id;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(row);
+    }
+    for (const group of groups.values()) {
+      const first = group[0];
+      await enqueueEmailCampaign(
+        { env },
+        {
+          kind: "meet",
+          from: "180DC Admin <technical@180dcvitc.org>",
+          subject: "New Meet: " + first.meet_title,
+          html: meetEmailHtml(
+            first.meet_title,
+            first.meet_description,
+            first.meet_link,
+            first.scheduled_at,
+            first.meet_type,
+          ),
+          recipients: group.map((r: any) => r.recipient_email),
+          meta: { meet_id: first.meet_id, meet_type: first.meet_type },
+          createdBy: "legacy-migration",
+        },
+      );
+      const ids = group.map((r: any) => r.id);
+      const placeholders = ids.map(() => "?").join(",");
+      await env.DB.prepare(
+        `DELETE FROM pending_emails WHERE id IN (${placeholders})`,
+      )
+        .bind(...ids)
+        .run();
+    }
+    console.log(
+      `[email-queue] migrated ${pending.length} legacy pending email(s)`,
+    );
+  } catch (e: any) {
+    console.error("[email-queue] legacy migration failed: " + e.message);
+  }
+}
+
+async function finalizeQueuedCampaign(
+  env: any,
+  campaign: any,
+  sent: number,
+  failed: number,
+) {
+  try {
+    const meta = campaign.meta ? JSON.parse(campaign.meta) : null;
+    if (!meta) return;
+    if (meta.test) return;
+    if (meta.newsletter_id) {
+      const db = env.NEWSLETTER_DB || env.DB;
+      await db
+        .prepare(
+          "UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?",
+        )
+        .bind(sent, meta.newsletter_id)
+        .run();
+    }
+    if (meta.meet_id) {
+      await env.DB.prepare(
+        "INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details) VALUES (lower(hex(randomblob(16))), 'meet_emails_sent', ?, 'meet', ?, ?)",
+      )
+        .bind(
+          campaign.created_by || "system",
+          meta.meet_id,
+          `sent=${sent}, failed=${failed}`,
+        )
+        .run();
+    }
+  } catch (e: any) {
+    console.error("[email-queue] finalize failed: " + e.message);
+  }
+}
+
+async function drainEmailQueue(env: any): Promise<{
+  sent: number;
+  failed: number;
+  campaignId?: string;
+  done?: boolean;
+  skippedByQuota?: boolean;
+}> {
+  await ensureDbReady(env.DB, env);
+  await migrateLegacyPendingEmails(env);
+  await env.DB.prepare(
+    "DELETE FROM email_queue WHERE status IN ('done','failed') AND finished_at < datetime('now', '-30 days')",
+  ).run();
+  await env.DB.prepare(
+    "UPDATE email_queue SET status='failed', last_error='max attempts reached', updated_at=CURRENT_TIMESTAMP, finished_at=CURRENT_TIMESTAMP WHERE status IN ('pending','processing') AND attempts >= ?",
+  )
+    .bind(QUEUE_MAX_ATTEMPTS)
+    .run();
+
+  const hourly = await getHourlyEmailCount(env.DB);
+  const remaining = Math.max(0, smtpHourlyLimit(env) - hourly);
+  if (remaining <= 0) return { sent: 0, failed: 0, skippedByQuota: true };
+  const minutesLeft = Math.max(1, 60 - new Date().getUTCMinutes());
+  let budget = Math.min(
+    QUEUE_MESSAGES_PER_RUN,
+    Math.max(1, Math.ceil(remaining / minutesLeft)),
+  );
+
+  const staleIso = new Date(Date.now() - QUEUE_STALE_MINUTES * 60000)
+    .toISOString()
+    .replace("T", " ")
+    .slice(0, 19);
+  let campaign: any = null;
+  for (let attempt = 0; attempt < 5 && !campaign; attempt++) {
+    const next: any = await env.DB.prepare(
+      "SELECT id FROM email_queue WHERE (status = 'pending' OR (status = 'processing' AND updated_at < ?)) ORDER BY created_at ASC LIMIT 1",
+    )
+      .bind(staleIso)
+      .first();
+    if (!next) break;
+    const claimed = await env.DB.prepare(
+      "UPDATE email_queue SET status='processing', attempts = attempts + 1, updated_at=CURRENT_TIMESTAMP WHERE id = ? AND (status = 'pending' OR (status = 'processing' AND updated_at < ?))",
+    )
+      .bind(next.id, staleIso)
+      .run();
+    if (claimed.meta && claimed.meta.changes > 0) {
+      campaign = await env.DB.prepare(
+        "SELECT * FROM email_queue WHERE id = ?",
+      )
+        .bind(next.id)
+        .first();
+    }
+  }
+  if (!campaign) return { sent: 0, failed: 0 };
+
+  const recipients: string[] = JSON.parse(campaign.recipients || "[]");
+  const refs: QueueAttachmentRef[] = JSON.parse(campaign.attachments || "[]");
+  const attachments =
+    refs.length > 0
+      ? await materializeQueueAttachments(env, refs)
+      : undefined;
+
+  let cursor = campaign.cursor || 0;
+  let sent = campaign.sent || 0;
+  let failed = campaign.failed || 0;
+  let lastError = campaign.last_error || null;
+  let stoppedByQuota = false;
+
+  const batchMode =
+    campaign.kind === "newsletter" ||
+    campaign.kind === "event" ||
+    campaign.kind === "meet";
+  const campaignBatchSize = batchMode ? SMTP_BATCH_SIZE : 1;
+
+  while (budget > 0 && cursor < recipients.length) {
+    const batch = recipients.slice(cursor, cursor + campaignBatchSize);
+    const result = await sendEmail(
+      { env },
+      {
+        from: campaign.from_address,
+        to: batch,
+        subject: campaign.subject,
+        html: campaign.html,
+        attachments,
+        batchRecipients: batchMode,
+        extraHeaders:
+          campaign.kind === "newsletter" || campaign.kind === "event"
+            ? {
+                "List-Unsubscribe": "<https://180dcvitc.org/unsubscribe>",
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+              }
+            : undefined,
+      },
+    );
+    sent += result.sent;
+    if (result.error && /subrequest/i.test(result.error)) {
+      lastError = result.error;
+      cursor += result.sent;
+      stoppedByQuota = true;
+      break;
+    }
+    failed += result.failed;
+    if (result.error) lastError = result.error;
+    const processed = result.sent + result.failed;
+    cursor += processed;
+    budget--;
+    if (result.skipped > 0) {
+      stoppedByQuota = true;
+      break;
+    }
+    if (processed === 0) break;
+  }
+
+  const done = cursor >= recipients.length;
+  await env.DB.prepare(
+    "UPDATE email_queue SET cursor=?, sent=?, failed=?, status=?, last_error=?, updated_at=CURRENT_TIMESTAMP, finished_at=? WHERE id=?",
+  )
+    .bind(
+      cursor,
+      sent,
+      failed,
+      done ? "done" : "pending",
+      lastError,
+      done ? new Date().toISOString().replace("T", " ").slice(0, 19) : null,
+      campaign.id,
+    )
+    .run();
+
+  if (done) {
+    console.log(
+      `[email-queue] campaign ${campaign.id} (${campaign.kind}) done: sent=${sent}, failed=${failed}`,
+    );
+    await finalizeQueuedCampaign(env, campaign, sent, failed);
+  }
+
+  return {
+    sent,
+    failed,
+    campaignId: campaign.id,
+    done,
+    skippedByQuota: stoppedByQuota,
+  };
 }
 
 async function sendMeetEmail(
@@ -521,50 +1549,30 @@ async function sendMeetEmail(
   scheduledAt: string,
   meetType: string,
 ): Promise<boolean> {
-  const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) {
+  if (!isEmailConfigured(c)) {
     console.warn(
-      "[email] RESEND_API_KEY not configured @ skipping meet email to " + to,
+      "[email] Email not configured @ skipping meet email to " + to,
     );
     return false;
   }
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "180DC Admin <team@180dcvitc.org>",
-        to,
-        subject: "New Meet: " + title,
-        html: meetEmailHtml(
-          title,
-          description,
-          meetLink,
-          scheduledAt,
-          meetType,
-        ),
-      }),
-    });
-    const body = await res.text();
-    if (!res.ok) {
-      console.error(
-        "[email] Meet email FAILED (" + res.status + ") to=" + to + ": " + body,
-      );
-      return false;
-    }
-    console.log("[email] Meet email OK (" + res.status + ") to=" + to);
+  const result = await sendEmail(c, {
+    from: "180DC Admin <technical@180dcvitc.org>",
+    to,
+    subject: "New Meet: " + title,
+    html: meetEmailHtml(
+      title,
+      description,
+      meetLink,
+      scheduledAt,
+      meetType,
+    ),
+  });
+  if (result.sent > 0) {
+    console.log("[email] Meet email OK to=" + to);
     return true;
-  } catch (e: any) {
-    console.error("[email] Meet email error to=" + to + ": " + e.message);
-    return false;
   }
-}
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
+  console.error("[email] Meet email FAILED to=" + to);
+  return false;
 }
 
 async function queueOrSendMeetEmails(
@@ -577,62 +1585,32 @@ async function queueOrSendMeetEmails(
   meetLink: string | null,
   scheduledAt: string,
 ) {
-  const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.warn(
-      "[email] RESEND_API_KEY not configured @ skipping meet emails",
-    );
-    return { sent: 0, queued: 0 };
+  if (!isEmailConfigured(c)) {
+    console.warn("[email] Email not configured @ skipping meet emails");
+    return { sent: 0, queued: 0, failed: 0 };
   }
+  if (recipients.length === 0) return { sent: 0, queued: 0, failed: 0 };
 
-  let count = await getTodayEmailCount(c.env.DB);
-  const MAX_DAILY = 100;
-  let sent = 0;
-  let queued = 0;
-  let failed = 0;
+  const campaign = await enqueueEmailCampaign(c, {
+    kind: "meet",
+    from: "180DC Admin <technical@180dcvitc.org>",
+    subject: "New Meet: " + title,
+    html: meetEmailHtml(
+      title,
+      description,
+      meetLink,
+      scheduledAt,
+      meetType,
+    ),
+    recipients: recipients.map((r) => r.email),
+    meta: { meet_id: meetId, meet_type: meetType },
+    createdBy: c.get ? c.get("user")?.email : null,
+  });
 
-  for (const r of recipients) {
-    if (count < MAX_DAILY) {
-      const ok = await sendMeetEmail(
-        c,
-        r.email,
-        r.name,
-        title,
-        description,
-        meetLink,
-        scheduledAt,
-        meetType,
-      );
-      if (ok) {
-        await incrementEmailCount(c.env.DB);
-        count++;
-        sent++;
-      } else {
-        failed++;
-      }
-      await sleep(550);
-    } else {
-      await c.env.DB.prepare(
-        "INSERT INTO pending_emails (id, meet_id, meet_type, recipient_email, recipient_name, meet_title, meet_description, meet_link, scheduled_at) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-        .bind(
-          meetId,
-          meetType,
-          r.email,
-          r.name,
-          title,
-          description,
-          meetLink,
-          scheduledAt,
-        )
-        .run();
-      queued++;
-    }
-  }
   console.log(
-    `[email] Meet emails: sent=${sent}, queued=${queued}, failed=${failed}, total_recipients=${recipients.length}`,
+    `[email] Meet emails queued: queued=${campaign.queued}, total_recipients=${recipients.length}`,
   );
-  return { sent, queued, failed };
+  return { sent: 0, queued: campaign.queued, failed: 0 };
 }
 
 async function getMeetRecipients(
@@ -678,8 +1656,7 @@ async function sendProjectAssignmentEmail(
   projectName: string,
   departmentIds: string[],
 ) {
-  const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) return;
+  if (!isEmailConfigured(c)) return;
   const safeProjectName = escapeHtml(projectName);
   const rows: any = await c.env.DB.prepare(
     `SELECT u.email, u.name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.department_id IN (${departmentIds.map(() => "?").join(",")}) AND r.power_level >= 50 AND NOT (u.role_id = 'advisory' AND u.department_id IS NULL)`,
@@ -687,22 +1664,12 @@ async function sendProjectAssignmentEmail(
     .bind(...departmentIds)
     .all();
   const leads = rows.results || [];
-  let count = await getTodayEmailCount(c.env.DB);
-  const MAX_DAILY = 100;
-  for (const lead of leads) {
-    if (count >= MAX_DAILY) break;
-    try {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "180DC Admin <team@180dcvitc.org>",
-          to: lead.email,
-          subject: "New Project Assigned: " + projectName,
-          html: `<!DOCTYPE html>
+  if (leads.length === 0) return;
+  await sendEmail(c, {
+    from: "180DC Admin <technical@180dcvitc.org>",
+    to: leads.map((lead: any) => lead.email),
+    subject: "New Project Assigned: " + projectName,
+    html: `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -723,18 +1690,7 @@ async function sendProjectAssignmentEmail(
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.text();
-        console.error("Project email failed (" + res.status + "): " + body);
-      }
-    } catch (e: any) {
-      console.error("Project email error: " + e.message);
-    }
-    await incrementEmailCount(c.env.DB);
-    count++;
-  }
+  });
 }
 
 async function sendRoleAssignmentEmail(
@@ -744,25 +1700,15 @@ async function sendRoleAssignmentEmail(
   roleName: string,
   projectName: string,
 ) {
-  const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) return;
-  const count = await getTodayEmailCount(c.env.DB);
-  if (count >= 100) return;
+  if (!isEmailConfigured(c)) return;
   const safeName = escapeHtml(name);
   const safeRoleName = escapeHtml(roleName);
   const safeProjectName = escapeHtml(projectName);
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "180DC Admin <team@180dcvitc.org>",
-        to: email,
-        subject: "Role Assigned: " + roleName + " for " + projectName,
-        html: `<!DOCTYPE html>
+  await sendEmail(c, {
+    from: "180DC Admin <technical@180dcvitc.org>",
+    to: email,
+    subject: "Role Assigned: " + roleName + " for " + projectName,
+    html: `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -783,16 +1729,7 @@ async function sendRoleAssignmentEmail(
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      console.error("Role email failed (" + res.status + "): " + body);
-    }
-  } catch (e: any) {
-    console.error("Role email error: " + e.message);
-  }
-  await incrementEmailCount(c.env.DB);
+  });
 }
 
 async function sendRoleChangeEmail(
@@ -801,24 +1738,14 @@ async function sendRoleChangeEmail(
   name: string,
   roleName: string,
 ) {
-  const apiKey = c.env.RESEND_API_KEY;
-  if (!apiKey) return;
-  const count = await getTodayEmailCount(c.env.DB);
-  if (count >= 100) return;
+  if (!isEmailConfigured(c)) return;
   const safeName = escapeHtml(name);
   const safeRoleName = escapeHtml(roleName);
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "180DC Admin <team@180dcvitc.org>",
-        to: email,
-        subject: "Your Role Has Been Updated",
-        html: `<!DOCTYPE html>
+  await sendEmail(c, {
+    from: "180DC Admin <technical@180dcvitc.org>",
+    to: email,
+    subject: "Your Role Has Been Updated",
+    html: `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -839,16 +1766,7 @@ async function sendRoleChangeEmail(
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      console.error("Role change email failed (" + res.status + "): " + body);
-    }
-  } catch (e: any) {
-    console.error("Role change email error: " + e.message);
-  }
-  await incrementEmailCount(c.env.DB);
+  });
 }
 
 async function hashPassword(
@@ -932,6 +1850,50 @@ function ensureDbReady(db: any, env?: any): Promise<void> {
   return dbReadyPromise;
 }
 
+function newsletterDb(c: any): any {
+  return c.env.NEWSLETTER_DB || c.env.DB;
+}
+
+let newsletterDbReadyPromise: Promise<void> | null = null;
+function ensureNewsletterReady(c: any): Promise<void> {
+  if (!newsletterDbReadyPromise) {
+    newsletterDbReadyPromise = ensureNewsletterTables(newsletterDb(c)).catch(
+      (e: any) => {
+        newsletterDbReadyPromise = null;
+        throw e;
+      },
+    );
+  }
+  return newsletterDbReadyPromise;
+}
+
+async function ensureNewsletterTables(db: any) {
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS newsletters (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '', content TEXT DEFAULT '', source_file_url TEXT, image_url TEXT, sent_at DATETIME, recipient_count INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, email_subject TEXT, slug TEXT);
+    CREATE TABLE IF NOT EXISTS newsletter_subscribers (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, active INTEGER DEFAULT 1, subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP, unsubscribed_at DATETIME);
+    CREATE TABLE IF NOT EXISTS newsletter_authorized_emails (email TEXT PRIMARY KEY, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS newsletter_otp_codes (id TEXT PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, expires_at DATETIME NOT NULL, used INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS newsletter_sessions (id TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    `);
+  try {
+    await db.exec("ALTER TABLE newsletters ADD COLUMN slug TEXT");
+  } catch {
+    console.warn("Migration: newsletters.slug may already exist");
+  }
+}
+
+async function nextNewsletterSlug(db: any): Promise<string> {
+  const rows: any = await db
+    .prepare("SELECT slug FROM newsletters WHERE slug LIKE 'issue-%'")
+    .all();
+  let max = 0;
+  for (const row of rows.results || []) {
+    const match = /^issue-(\d+)$/.exec(String(row.slug || ""));
+    if (match) max = Math.max(max, parseInt(match[1], 10));
+  }
+  return "issue-" + String(max + 1).padStart(2, "0");
+}
+
 async function ensureTables(db: any) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS departments (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT);
@@ -965,7 +1927,10 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS rate_limits (ip TEXT NOT NULL, endpoint TEXT NOT NULL, count INTEGER DEFAULT 1, window_start DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (ip, endpoint));
     CREATE TABLE IF NOT EXISTS audit_log (id TEXT PRIMARY KEY, action TEXT NOT NULL, actor_email TEXT, target_type TEXT, target_id TEXT, details TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS daily_email_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS email_hour_count (hour TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS resend_daily_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS pending_emails (id TEXT PRIMARY KEY, meet_id TEXT NOT NULL, meet_type TEXT NOT NULL, recipient_email TEXT NOT NULL, recipient_name TEXT NOT NULL, meet_title TEXT NOT NULL, meet_description TEXT, meet_link TEXT, scheduled_at TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS email_queue (id TEXT PRIMARY KEY, kind TEXT NOT NULL, from_address TEXT NOT NULL, subject TEXT NOT NULL, html TEXT NOT NULL, attachments TEXT, recipients TEXT NOT NULL, cursor INTEGER DEFAULT 0, total INTEGER NOT NULL, sent INTEGER DEFAULT 0, failed INTEGER DEFAULT 0, attempts INTEGER DEFAULT 0, status TEXT DEFAULT 'pending', last_error TEXT, meta TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, finished_at DATETIME);
     CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
     CREATE TABLE IF NOT EXISTS maintenance_mode (id INTEGER PRIMARY KEY DEFAULT 1, enabled INTEGER DEFAULT 0, message TEXT DEFAULT 'Site is under maintenance. Please check back later.', updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
@@ -1671,6 +2636,8 @@ const ALLOWED_ORIGINS = [
   "https://180dc-admin.pages.dev",
   "https://admin.180dc.org",
   "https://180dc-admin-frontend.pages.dev",
+  "https://newsletter.180dcvitc.org",
+  "https://180dc-newsletters.technical-vitc.workers.dev",
 ];
 
 const isDevOrigin = (o: string) => {
@@ -1716,6 +2683,14 @@ app.use(
 app.use("*", async (c, next) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
+    const initPath = new URL(c.req.url).pathname;
+    if (
+      initPath === "/api/newsletter" ||
+      initPath.startsWith("/api/newsletter/") ||
+      initPath.startsWith("/api/newsletter-editor/")
+    ) {
+      await ensureNewsletterReady(c);
+    }
   } catch (e: any) {
     logError("DB init failed", e, c);
     return c.json({ error: "Database initialization failed" }, 500);
@@ -1902,124 +2877,77 @@ function newsletterEmailHtml(
   siteUrl: string,
   subscriberEmail?: string,
   hasPdf?: boolean,
+  contentHtml?: string,
 ): string {
   const safeTitle = escapeHtml(title);
   const safeDesc = escapeHtml(description);
   const unsubUrl = subscriberEmail
-    ? `https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(subscriberEmail)}`
+    ? "https://180dcvitc.org/unsubscribe?email=" + encodeURIComponent(subscriberEmail)
     : "https://180dcvitc.org/unsubscribe";
+  const showLink = siteUrl.startsWith("http");
+  const issueLabel = showLink
+    ? siteUrl.slice(siteUrl.lastIndexOf("/") + 1).toUpperCase()
+    : "";
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
-</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background-color:#f3ede8;font-family:'Inter',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3ede8;padding:28px 12px">
 <tr><td align="center">
-<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:18px;border:2px solid #2b2b2b;box-shadow:3px 3px 0 #2b2b2b">
 
-<!-- HEADER -->
-<tr><td style="background:#8dc63f;padding:28px 24px 20px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dcvitc.org/images/180DC.png" alt="180DC" width="52" style="margin-bottom:6px">
-<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:26px;margin:0;font-weight:600;text-shadow:2px 2px 0 rgba(0,0,0,0.12)">180 Degrees Consulting</h1>
-<p style="color:#1a1a1a;font-size:12px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
+<!-- MASTHEAD -->
+<tr><td style="padding:36px 30px 0;text-align:center">
+<p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.28em;color:#2b2b2b;margin:0 0 16px;opacity:0.65">180° Consulting · VIT Chennai presents</p>
+<div style="font-family:'Anton','Impact',sans-serif;font-weight:400;font-size:58px;line-height:0.9;color:#2b2b2b;letter-spacing:-0.01em;margin:0 0 8px">The Catalyst</div>
+<p style="font-family:'Inter',sans-serif;font-size:12px;line-height:1.6;color:#2b2b2b;margin:0;opacity:0.65">One story with the numbers left in, one playbook you can copy, and three things worth reading.</p>
+<div style="height:2px;background:#2b2b2b;margin:22px 0 0"></div>
 </td></tr>
 
-<!-- GREETING -->
-<tr><td style="padding:28px 32px 0">
-<p style="font-size:15px;color:#1a1a1a;margin:0 0 4px;font-weight:700">Hey there! &#x1F44B;</p>
-<p style="font-size:13px;color:#777777;margin:0 0 20px;line-height:1.5">Happy to have you here. Here's what's new from 180DC.</p>
+<!-- ISSUE BAR -->
+<tr><td style="padding:14px 30px 0;text-align:center">
+<p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.18em;color:#00854a;margin:0">${issueLabel || "The Catalyst Newsletter"}</p>
 </td></tr>
 
-<!-- NEWSLETTER LABEL -->
-<tr><td style="padding:0 32px">
-<table cellpadding="0" cellspacing="0" style="margin:0 0 6px">
-<tr><td style="background:#8dc63f;border-radius:4px;padding:3px 10px">
-<span style="font-size:10px;color:#ffffff;font-weight:800;text-transform:uppercase;letter-spacing:1.5px">Newsletter</span>
-</td></tr>
-</table>
+<!-- TITLE + DEK -->
+<tr><td style="padding:28px 30px 0">
+<p style="font-family:'Anton','Impact',sans-serif;font-size:38px;line-height:1.02;color:#2b2b2b;margin:0 0 14px;letter-spacing:-0.01em">${safeTitle}</p>
+${safeDesc ? "<p style=\"font-family:'Inter',sans-serif;font-size:15px;line-height:1.6;color:#2b2b2b;margin:0;opacity:0.8\">" + safeDesc + "</p>" : ""}
 </td></tr>
 
-<!-- TITLE -->
-<tr><td style="padding:0 32px">
-<h2 style="font-size:22px;color:#1a1a1a;margin:0 0 14px;line-height:1.4;font-weight:800">${safeTitle}</h2>
-</td></tr>
+<!-- FULL CONTENT -->
+${contentHtml
+  ? "<tr><td style=\"padding:20px 30px 0\"><div style=\"font-family:'Inter',sans-serif;font-size:15px;line-height:1.75;color:#2b2b2b\">" + contentHtml + "</div></td></tr>\n<tr><td style=\"padding:20px 30px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td style=\"border-bottom:2px solid #e5ddd4\"></td></tr></table></td></tr>"
+  : ""}
 
-<!-- DESCRIPTION -->
-${
-  safeDesc
-    ? `<tr><td style="padding:0 32px">
-<p style="font-size:14px;color:#555555;margin:0 0 24px;line-height:1.7">${safeDesc}</p>
-</td></tr>`
-    : ""
-}
+<!-- PDF NOTICE -->
+${hasPdf
+  ? "<tr><td style=\"padding:20px 30px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border:2px dashed #c9beb2;border-radius:12px;background:#f9f5f1\"><tr><td style=\"padding:14px 18px;text-align:center\"><p style=\"font-family:'Inter',sans-serif;font-size:12px;color:#2b2b2b;margin:0;font-weight:600\">&#x1F4CE; PDF attached \u2014 download for offline reading</p></td></tr></table></td></tr>"
+  : ""}
 
-<!-- PDF ATTACHMENT NOTICE -->
-${
-  hasPdf
-    ? `<tr><td style="padding:0 32px">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f5;border:2px dashed #d0cec8;border-radius:12px;margin:0 0 24px">
-<tr><td style="padding:16px 20px;text-align:center">
-<p style="font-size:13px;color:#1a1a1a;margin:0 0 4px;font-weight:700">&#x1F4CE; PDF Attached</p>
-<p style="font-size:12px;color:#777777;margin:0;line-height:1.5">The full newsletter is attached as a PDF for your convenience. Download it for offline reading!</p>
-</td></tr>
-</table>
-</td></tr>`
-    : ""
-}
-
-<!-- CTA BUTTON -->
-<tr><td style="padding:0 32px 28px;text-align:center">
-<table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto">
-<tr><td style="padding:12px 32px;text-align:center">
-<a href="${escapeHtml(siteUrl)}" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Read on Website</a>
-</td></tr>
-</table>
-</td></tr>
-
-<!-- DIVIDER -->
-<tr><td style="padding:0 32px">
-<table width="100%" cellpadding="0" cellspacing="0"><tr>
-<td style="border-bottom:2px solid #e8e6e1"></td>
-</tr></table>
-</td></tr>
-
-<!-- SOCIAL LINKS -->
-<tr><td style="padding:24px 32px 0;text-align:center">
-<p style="font-size:11px;color:#777777;margin:0 0 12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">Follow Us</p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto">
-<tr>
-<td style="padding:0 8px">
-<a href="https://www.instagram.com/180dc.vitc/" style="text-decoration:none;display:inline-block">
-<table cellpadding="0" cellspacing="0"><tr>
-<td style="background:#1a1a1a;border-radius:8px;padding:8px 14px;text-align:center">
-<span style="font-size:11px;color:#ffffff;font-weight:700;text-decoration:none">Instagram</span>
-</td></tr></table>
-</a>
-</td>
-<td style="padding:0 8px">
-<a href="https://www.linkedin.com/company/180-degrees-consulting-vit-chennai/" style="text-decoration:none;display:inline-block">
-<table cellpadding="0" cellspacing="0"><tr>
-<td style="background:#1a1a1a;border-radius:8px;padding:8px 14px;text-align:center">
-<span style="font-size:11px;color:#ffffff;font-weight:700;text-decoration:none">LinkedIn</span>
-</td></tr></table>
-</a>
-</td>
-</tr>
-</table>
+<!-- CTA -->
+<tr><td style="padding:28px 30px;text-align:center">
+<a href="${siteUrl}" style="display:inline-block;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#ffffff;background:#00854a;border:2px solid #2b2b2b;border-radius:999px;padding:13px 30px;text-decoration:none;box-shadow:3px 3px 0 #2b2b2b">Read on the web &#x2192;</a>
+${showLink ? "<p style=\"font-family:'Inter',sans-serif;font-size:11px;color:#2b2b2b;margin:16px 0 0;opacity:0.5;word-break:break-all\">" + siteUrl + "</p>" : ""}
 </td></tr>
 
 <!-- FOOTER -->
-<tr><td style="background:#f9f8f5;border-top:3px solid #1a1a1a;border-radius:0 0 13px 13px;padding:20px 32px;text-align:center">
-<p style="font-size:12px;color:#1a1a1a;margin:0 0 4px;font-weight:700">180 Degrees Consulting &#x2014; VIT Chennai</p>
-<p style="font-size:11px;color:#777777;margin:0 0 12px;line-height:1.5">You received this because you subscribed to our newsletter.</p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto">
-<tr><td style="border:1.5px solid #d0cec8;border-radius:50px;padding:6px 16px">
-<a href="${escapeHtml(unsubUrl)}" style="color:#888888;text-decoration:none;font-size:11px;font-weight:600">Unsubscribe</a>
-</td></tr>
-</table>
+<tr><td style="background:#ffffff;border-top:2px solid #2b2b2b;border-radius:0 0 16px 16px;padding:20px 30px;text-align:center">
+<p style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:#2b2b2b;margin:0 0 4px">180 Degrees Consulting \u2014 VIT Chennai</p>
+<p style="font-family:'Inter',sans-serif;font-size:11px;color:#2b2b2b;margin:0 0 12px;opacity:0.6">You received this because you subscribed to our newsletter.</p>
+<p style="font-family:'Inter',sans-serif;font-size:11px;margin:0">
+<a href="https://www.instagram.com/180dc.vitc/" style="color:#00854a;text-decoration:none;font-weight:700">Instagram</a>
+&nbsp;&middot;&nbsp;
+<a href="https://www.linkedin.com/company/180-degrees-consulting-vit-chennai/" style="color:#00854a;text-decoration:none;font-weight:700">LinkedIn</a>
+&nbsp;&middot;&nbsp;
+<a href="${unsubUrl}" style="color:#2b2b2b;text-decoration:underline">Unsubscribe</a>
+</p>
 </td></tr>
 
 </table></td></tr></table>
-</body></html>`;
+</body>
+</html>`;
 }
 
 function eventMailEmailHtml(
@@ -2158,8 +3086,294 @@ ${
 </table></td></tr></table>
 </body></html>`;
 }
-function sendWelcomeEmail(apiKey: string, email: string) {
-  const html = `<!DOCTYPE html>
+type EmailIssueBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "heading"; text: string }
+  | { type: "lead"; text: string }
+  | { type: "quote"; text: string; by?: string }
+  | { type: "stats"; items: { value: string; label: string }[] }
+  | { type: "image"; src: string; alt?: string; caption?: string; fit?: string }
+  | { type: "list"; items: string[] }
+  | { type: "note"; title: string; text: string };
+
+type EmailIssueSection = {
+  kicker: string;
+  title: string;
+  blocks: EmailIssueBlock[];
+};
+
+type EmailIssue = {
+  id: string;
+  slug?: string;
+  title: string;
+  category?: string;
+  date?: string;
+  readTime?: string;
+  editors?: string;
+  dek?: string;
+  cover?: string;
+  sections: EmailIssueSection[];
+};
+
+function formatEmailIssueDate(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(+d)) return "";
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function issueBlockRows(block: EmailIssueBlock): string {
+  switch (block.type) {
+    case "lead":
+      return `<tr><td style="padding:6px 0"><p style="font-family:'Inter',sans-serif;font-size:17px;line-height:1.6;color:#2b2b2b;margin:0;font-weight:600">${escapeHtml(block.text)}</p></td></tr>`;
+    case "paragraph":
+      return `<tr><td style="padding:6px 0"><p style="font-family:'Inter',sans-serif;font-size:15px;line-height:1.75;color:#2b2b2b;margin:0">${escapeHtml(block.text)}</p></td></tr>`;
+    case "heading":
+      return `<tr><td style="padding:22px 0 4px"><p style="font-family:'Anton','Impact',sans-serif;font-size:22px;line-height:1.1;color:#2b2b2b;margin:0;letter-spacing:-0.01em">${escapeHtml(block.text)}</p></td></tr>`;
+    case "quote":
+      return `<tr><td style="padding:16px 0"><table width="100%" cellpadding="0" cellspacing="0" style="background:#00854a;border:2px solid #2b2b2b;border-radius:14px;box-shadow:3px 3px 0 #2b2b2b"><tr><td style="padding:24px 26px"><p style="font-family:'Anton','Impact',sans-serif;font-size:20px;line-height:1.3;color:#ffffff;margin:0">${escapeHtml(block.text)}</p>${block.by ? `<p style="font-family:'Inter',sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:#ffffff;margin:14px 0 0;opacity:0.85">— ${escapeHtml(block.by)}</p>` : ""}</td></tr></table></td></tr>`;
+    case "stats": {
+      const cells = block.items
+        .map(
+          (s) => `<td width="50%" style="padding:8px;vertical-align:top"><table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:2px solid #2b2b2b;border-radius:12px;box-shadow:2px 2px 0 #2b2b2b"><tr><td style="padding:16px 18px"><div style="font-family:'Anton','Impact',sans-serif;font-size:24px;line-height:1;color:#00854a">${escapeHtml(s.value)}</div><p style="font-family:'Inter',sans-serif;font-size:12px;line-height:1.45;color:#2b2b2b;margin:8px 0 0;opacity:0.75">${escapeHtml(s.label)}</p></td></tr></table></td>`,
+        )
+        .join("");
+      return `<tr><td style="padding:16px 0"><table width="100%" cellpadding="0" cellspacing="0">${block.items
+        .reduce<string[]>((acc, _, i) => {
+          const idx = Math.floor(i / 2);
+          if (!acc[idx]) acc[idx] = "";
+          acc[idx] += cells[i];
+          return acc;
+        }, [])
+        .map((pair) => `<tr>${pair}</tr>`)
+        .join("")}</table></td></tr>`;
+    }
+    case "image":
+      return `<tr><td style="padding:12px 0"><table width="100%" cellpadding="0" cellspacing="0"><tr><td><img src="${block.src}" alt="${escapeHtml(block.alt || "")}" width="100%" style="width:100%;height:auto;display:block;border:2px solid #2b2b2b;border-radius:12px;background:#ffffff" />${block.caption ? `<p style="font-family:'Inter',sans-serif;font-size:12px;line-height:1.5;color:#2b2b2b;margin:10px 0 0;opacity:0.65">${escapeHtml(block.caption)}</p>` : ""}</td></tr></table></td></tr>`;
+    case "list": {
+      const items = block.items
+        .map(
+          (item, i) => `<tr><td style="padding:7px 0;vertical-align:top"><table cellpadding="0" cellspacing="0"><tr><td width="34" style="vertical-align:top"><table width="30" cellpadding="0" cellspacing="0" style="border:2px solid #2b2b2b;border-radius:50%;background:#ffffff"><tr><td height="26" align="center" style="font-family:'Anton','Impact',sans-serif;font-size:13px;color:#00854a">${String(i + 1).padStart(2, "0")}</td></tr></table></td><td style="padding-left:12px"><p style="font-family:'Inter',sans-serif;font-size:14px;line-height:1.6;color:#2b2b2b;margin:0">${escapeHtml(item)}</p></td></tr></table></td></tr>`,
+        )
+        .join("");
+      return `<tr><td style="padding:8px 0"><table width="100%" cellpadding="0" cellspacing="0">${items}</table></td></tr>`;
+    }
+    case "note":
+      return `<tr><td style="padding:16px 0"><table width="100%" cellpadding="0" cellspacing="0" style="border:2px dashed #00854a;border-radius:12px;background:#f9f5f1"><tr><td style="padding:20px 24px"><p style="font-family:'Anton','Impact',sans-serif;font-size:15px;text-transform:uppercase;letter-spacing:0.04em;color:#00854a;margin:0 0 8px">${escapeHtml(block.title)}</p><p style="font-family:'Inter',sans-serif;font-size:14px;line-height:1.65;color:#2b2b2b;margin:0">${escapeHtml(block.text)}</p></td></tr></table></td></tr>`;
+  }
+}
+
+function issueToEmailHtml(
+  issue: EmailIssue,
+  articleUrl: string,
+  subscriberEmail?: string,
+): string {
+  const issueLabel =
+    "ISSUE " + String(issue.issue || 1).padStart(2, "0");
+  const dateText = formatEmailIssueDate(issue.date);
+  const unsubUrl = subscriberEmail
+    ? "https://180dcvitc.org/unsubscribe?email=" + encodeURIComponent(subscriberEmail)
+    : "https://180dcvitc.org/unsubscribe";
+  const blk = (b: EmailIssueBlock): string => {
+    switch (b.type) {
+      case "lead":
+        return "<tr><td style=\"padding:4px 0 2px\"><p style=\"font-family:'Inter',sans-serif;font-size:15.5px;line-height:1.6;color:#1f1c18;margin:0;font-weight:600\">" +
+          escapeHtml(b.text) + "</p></td></tr>";
+      case "paragraph":
+        return "<tr><td style=\"padding:6px 0\"><p style=\"font-family:'Inter',sans-serif;font-size:14.5px;line-height:1.85;color:#44403b;margin:0\">" +
+          escapeHtml(b.text) + "</p></td></tr>";
+      case "heading":
+        return "<tr><td style=\"padding:22px 0 2px\"><p style=\"font-family:'Anton','Impact',sans-serif;font-size:20px;line-height:1.2;color:#1f1c18;margin:0\">" +
+          escapeHtml(b.text) + "</p></td></tr>";
+      case "quote":
+        return "<tr><td style=\"padding:14px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-left:3px solid #00854a;padding-left:18px\"><tr><td style=\"padding:0\"><p style=\"font-family:Georgia,serif;font-size:16.5px;font-style:italic;line-height:1.6;color:#2b2b2b;margin:0\">" +
+          escapeHtml(b.text) +
+          (b.by ? "</p><p style=\"font-family:'Inter',sans-serif;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.16em;color:#00854a;margin:12px 0 0\">&mdash; " + escapeHtml(b.by) + "</p>" : "</p>") +
+          "</td></tr></table></td></tr>";
+      case "stats": {
+        const items = b.items
+          .map(
+            (st) => "<td width=\"50%\" style=\"padding:5px;vertical-align:top\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border:1px solid #e3dcd2;border-radius:10px;background:#ffffff\"><tr><td style=\"padding:14px 16px\"><div style=\"font-family:'Anton','Impact',sans-serif;font-size:22px;line-height:1;color:#00854a;letter-spacing:0\">" +
+              escapeHtml(st.value) +
+              "</div><p style=\"font-family:'Inter',sans-serif;font-size:11.5px;line-height:1.5;color:#6f675e;margin:7px 0 0\">" +
+              escapeHtml(st.label) + "</p></td></tr></table></td>",
+          )
+          .join("")
+          .split("</td>");
+        items.pop();
+        const pairs: string[] = [];
+        for (let i = 0; i < items.length; i += 2) {
+          pairs.push(
+            "<tr>" + items[i] + "</td>" + (items[i + 1] ? items[i + 1] + "</td>" : "<td width=\"50%\"></td>") + "</tr>",
+          );
+        }
+        return "<tr><td style=\"padding:12px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">" + pairs.join("") + "</table></td></tr>";
+      }
+      case "image":
+        return "<tr><td style=\"padding:14px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td><img src=\"" +
+          b.src +
+          "\" alt=\"" +
+          escapeHtml(b.alt || "") +
+          "\" width=\"100%\" style=\"width:100%;height:auto;display:block;border:1px solid #e3dcd2;border-radius:10px;background:#ffffff\" />" +
+          (b.caption
+            ? "<p style=\"font-family:'Inter',sans-serif;font-size:11px;line-height:1.5;color:#6f675e;margin:9px 0 0;text-align:center\">" +
+              escapeHtml(b.caption) +
+              "</p>"
+            : "") +
+          "</td></tr></table></td></tr>";
+      case "list": {
+        const rows = b.items
+          .map(
+            (it, i) => "<tr><td style=\"padding:5px 0;vertical-align:top\"><table cellpadding=\"0\" cellspacing=\"0\"><tr><td width=\"28\" style=\"vertical-align:top\"><table width=\"24\" cellpadding=\"0\" cellspacing=\"0\" style=\"border:1px solid #00854a;border-radius:50%\"><tr><td height=\"22\" align=\"center\" style=\"font-family:'Inter',sans-serif;font-size:11px;font-weight:700;color:#00854a\">" +
+              String(i + 1) +
+              "</td></tr></table></td><td style=\"padding-left:12px\"><p style=\"font-family:'Inter',sans-serif;font-size:13.5px;line-height:1.7;color:#44403b;margin:0\">" +
+              escapeHtml(it) + "</p></td></tr></table></td></tr>",
+          )
+          .join("");
+        return "<tr><td style=\"padding:6px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">" + rows + "</table></td></tr>";
+      }
+      case "note":
+        return "<tr><td style=\"padding:12px 0\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border:1px dashed #8fbc8f;border-radius:10px;background:#faf8f4\"><tr><td style=\"padding:16px 20px\"><p style=\"font-family:'Inter',sans-serif;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.14em;color:#00854a;margin:0 0 7px\">" +
+          escapeHtml(b.title) +
+          "</p><p style=\"font-family:'Inter',sans-serif;font-size:13.5px;line-height:1.7;color:#44403b;margin:0\">" +
+          escapeHtml(b.text) + "</p></td></tr></table></td></tr>";
+    }
+  };
+  const sectionRows = issue.sections
+    .map((sec) => {
+      const rows = sec.blocks.map((b) => blk(b)).join("");
+      return "<tr><td style=\"padding:26px 0 0\"><p style=\"font-family:'Inter',sans-serif;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.28em;color:#00854a;margin:0 0 8px\">" +
+        escapeHtml(sec.kicker) +
+        "</p><p style=\"font-family:'Anton','Impact',sans-serif;font-size:26px;line-height:1.1;color:#1f1c18;margin:0 0 10px;letter-spacing:0\">" +
+        escapeHtml(sec.title) +
+        "</p><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">" + rows + "</table></td></tr>";
+    })
+    .join("");
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background-color:#f3ede8;font-family:'Inter',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3ede8;padding:24px 12px">
+<tr><td align="center">
+<table width="580" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #d9d1c6;border-radius:14px">
+
+<!-- WORDMARK -->
+<tr><td style="padding:28px 34px 0">
+<table width="100%" cellpadding="0" cellspacing="0"><tr>
+<td style="font-family:'Anton','Impact',sans-serif;font-size:20px;letter-spacing:0.08em;color:#1f1c18">THE CATALYST</td>
+<td align="right" style="font-family:'Inter',sans-serif;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.18em;color:#8a8178">180° Consulting · VIT Chennai</td>
+</tr></table>
+</td></tr>
+
+<!-- ISSUE BAR -->
+<tr><td style="padding:14px 34px 0">
+<table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e3dcd2;border-bottom:1px solid #e3dcd2"><tr>
+<td style="padding:8px 0;font-family:'Inter',sans-serif;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.16em;color:#00854a">${issueLabel}</td>
+<td align="center" style="padding:8px 0;font-family:'Inter',sans-serif;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.14em;color:#6f675e">${dateText}</td>
+<td align="right" style="padding:8px 0;font-family:'Inter',sans-serif;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.14em;color:#6f675e">${issue.readTime ? escapeHtml(issue.readTime.replace(" min read", "").toUpperCase() + " MIN") : ""}</td>
+</tr></table>
+</td></tr>
+
+<!-- HEAD -->
+<tr><td style="padding:28px 34px 0">
+${issue.cover ? "<img src=\"" + issue.cover + "\" alt=\"\" width=\"100%\" style=\"width:100%;height:auto;display:block;border:1px solid #e3dcd2;border-radius:10px;background:#ffffff;margin-bottom:24px\" />" : ""}
+<p style="font-family:'Inter',sans-serif;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;color:#00854a;margin:0 0 12px">${escapeHtml(issue.category || "The Catalyst")}</p>
+<p style="font-family:'Anton','Impact',sans-serif;font-size:38px;line-height:1.05;color:#1f1c18;margin:0 0 16px;letter-spacing:0">${escapeHtml(issue.title)}</p>
+${issue.dek ? "<p style=\"font-family:'Inter',sans-serif;font-size:15.5px;line-height:1.6;color:#6f675e;margin:0 0 16px\">" + escapeHtml(issue.dek) + "</p>" : ""}
+${issue.editors ? "<p style=\"font-family:'Inter',sans-serif;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.16em;color:#8a8178;margin:0\">BY " + escapeHtml(issue.editors.toUpperCase()) + "</p>" : ""}
+</td></tr>
+
+<!-- ARTICLE -->
+<tr><td style="padding:0 34px"><table width="100%" cellpadding="0" cellspacing="0">${sectionRows}</table></td></tr>
+
+<!-- CTA -->
+<tr><td style="padding:30px 34px 0;text-align:center">
+<table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e3dcd2"><tr><td style="padding:26px 0 0">
+<a href="${escapeHtml(articleUrl)}" style="display:inline-block;font-family:'Inter',sans-serif;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#ffffff;background:#00854a;border-radius:999px;padding:12px 28px;text-decoration:none">Read the full issue →</a>
+<p style="font-family:'Inter',sans-serif;font-size:10px;color:#8a8178;margin:14px 0 0;word-break:break-all">${escapeHtml(articleUrl)}</p>
+</td></tr></table>
+</td></tr>
+
+<!-- FOOTER -->
+<tr><td style="padding:22px 34px 28px;text-align:center">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td style="border-top:1px solid #e3dcd2;padding:18px 0 0">
+<p style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:#1f1c18;margin:0 0 3px">180 Degrees Consulting — VIT Chennai</p>
+<p style="font-family:'Inter',sans-serif;font-size:10.5px;color:#8a8178;margin:0 0 12px">You received this because you subscribed to our newsletter.</p>
+<p style="font-family:'Inter',sans-serif;font-size:10.5px;margin:0">
+<a href="https://www.instagram.com/180dc.vitc/" style="color:#00854a;text-decoration:none;font-weight:700">Instagram</a>
+&nbsp;&middot;&nbsp;
+<a href="https://www.linkedin.com/company/180-degrees-consulting-vit-chennai/" style="color:#00854a;text-decoration:none;font-weight:700">LinkedIn</a>
+&nbsp;&middot;&nbsp;
+<a href="${unsubUrl}" style="color:#6f675e;text-decoration:underline">Unsubscribe</a>
+</p>
+</td></tr></table>
+</td></tr>
+
+</table></td></tr></table>
+</body>
+</html>`;
+}
+
+async function buildNewsletterEmailHtml(
+  c: any,
+  newsletter: any,
+  siteUrl: string,
+  hasPdf: boolean,
+  subscriberEmail?: string,
+): Promise<string> {
+  const base = newsletterSiteBase(c);
+  if (base && newsletter.slug) {
+    try {
+      const res = await fetch(
+        base + "/data/" + encodeURIComponent(newsletter.slug) + ".json",
+        { headers: { accept: "application/json" } },
+      );
+      if (res.ok) {
+        const issue: EmailIssue = await res.json();
+        if (issue && Array.isArray(issue.sections)) {
+          return issueToEmailHtml(issue, siteUrl, subscriberEmail);
+        }
+      }
+    } catch {
+      console.warn(
+        "[email] structured issue fetch failed for " + newsletter.slug,
+      );
+    }
+  }
+  return newsletterEmailHtml(
+    newsletter.title,
+    newsletter.description || "",
+    siteUrl,
+    subscriberEmail,
+    hasPdf,
+    sanitizeBlogHtml(newsletter.content || ""),
+  );
+}
+
+function welcomeEmailHtml(
+  email: string,
+  variant: "new" | "back",
+  siteUrl: string,
+): string {
+  const isNew = variant === "new";
+  const heading = isNew
+    ? "Welcome aboard! &#x1F389;"
+    : "Welcome back! &#x1F44B;";
+  const sub = isNew
+    ? "You're now part of the 180DC family."
+    : "Good to have you again.";
+  const body = isNew
+    ? '<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.7">Thanks for subscribing to the 180DC newsletter. Our latest updates, case-study insights, and event announcements will land straight in your inbox.</p>'
+    : '<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.7">You\'ve been re-subscribed to the 180DC newsletter. Expect our latest updates and insights in your inbox again.</p>';
+  const unsubUrl =
+    "https://180dcvitc.org/unsubscribe?email=" + encodeURIComponent(email);
+  return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -2174,22 +3388,34 @@ function sendWelcomeEmail(apiKey: string, email: string) {
 <p style="color:#1a1a1a;font-size:12px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
 </td></tr>
 
-<!-- CONTENT -->
+<!-- GREETING -->
 <tr><td style="padding:28px 32px 0">
-<p style="font-size:15px;color:#1a1a1a;margin:0 0 4px;font-weight:700">Welcome aboard! &#x1F389;</p>
-<p style="font-size:13px;color:#777777;margin:0 0 20px;line-height:1.5">You're now part of the 180DC family.</p>
+<p style="font-size:16px;color:#1a1a1a;margin:0 0 4px;font-weight:800">${heading}</p>
+<p style="font-size:13px;color:#777777;margin:0 0 20px;line-height:1.5">${sub}</p>
 </td></tr>
 
+<!-- BODY -->
 <tr><td style="padding:0 32px">
-<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.7">Thank you for subscribing to the 180DC newsletter. You'll now receive our latest updates, insights, and event announcements directly in your inbox.</p>
-<p style="font-size:14px;color:#555555;margin:0 0 24px;line-height:1.7">Stay tuned for our upcoming newsletters packed with case studies, industry insights, and opportunities to grow.</p>
+${body}
+</td></tr>
+
+<!-- WHAT TO EXPECT -->
+<tr><td style="padding:0 32px">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f5;border:2px solid #e8e6e1;border-radius:12px;margin:0 0 24px">
+<tr><td style="padding:16px 20px">
+<p style="font-size:12px;color:#1a1a1a;margin:0 0 10px;font-weight:800;text-transform:uppercase;letter-spacing:1px">What to expect</p>
+<p style="font-size:13px;color:#555555;margin:0 0 6px;line-height:1.6">&#x1F4F0;&nbsp; Newsletters and case-study insights</p>
+<p style="font-size:13px;color:#555555;margin:0 0 6px;line-height:1.6">&#x1F4C5;&nbsp; Event and workshop announcements</p>
+<p style="font-size:13px;color:#555555;margin:0;line-height:1.6">&#x1F513;&nbsp; One-click unsubscribe, anytime</p>
+</td></tr>
+</table>
 </td></tr>
 
 <!-- CTA BUTTON -->
 <tr><td style="padding:0 32px 28px;text-align:center">
 <table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto">
 <tr><td style="padding:12px 32px;text-align:center">
-<a href="https://180dcvitc.org" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Visit Our Website</a>
+<a href="${siteUrl}" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Visit Our Website</a>
 </td></tr>
 </table>
 </td></tr>
@@ -2232,86 +3458,43 @@ function sendWelcomeEmail(apiKey: string, email: string) {
 <p style="font-size:11px;color:#777777;margin:0 0 12px;line-height:1.5">You received this because you subscribed to our newsletter.</p>
 <table cellpadding="0" cellspacing="0" style="margin:0 auto">
 <tr><td style="border:1.5px solid #d0cec8;border-radius:50px;padding:6px 16px">
-<a href="https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(email)}" style="color:#888888;text-decoration:none;font-size:11px;font-weight:600">Unsubscribe</a>
+<a href="${unsubUrl}" style="color:#888888;text-decoration:none;font-size:11px;font-weight:600">Unsubscribe</a>
 </td></tr>
 </table>
 </td></tr>
 
 </table></td></tr></table>
 </body></html>`;
-  fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: "180DC Newsletter <team@180dcvitc.org>",
-      to: email,
-      subject: "Welcome to the 180DC Newsletter!",
-      html,
-    }),
-  }).catch(() => {});
 }
 
-function sendWelcomeBackEmail(apiKey: string, email: string) {
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
-</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
-<tr><td align="center">
-<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
-<tr><td style="background:#8dc63f;padding:28px 24px 20px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dcvitc.org/images/180DC.png" alt="180DC" width="52" style="margin-bottom:6px">
-<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:26px;margin:0;font-weight:600;text-shadow:2px 2px 0 rgba(0,0,0,0.12)">180 Degrees Consulting</h1>
-<p style="color:#1a1a1a;font-size:12px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
-</td></tr>
-<tr><td style="padding:28px 32px 0">
-<p style="font-size:15px;color:#1a1a1a;margin:0 0 4px;font-weight:700">Welcome back! &#x1F44B;</p>
-<p style="font-size:13px;color:#777777;margin:0 0 20px;line-height:1.5">Good to have you again.</p>
-</td></tr>
-<tr><td style="padding:0 32px">
-<p style="font-size:14px;color:#555555;margin:0 0 24px;line-height:1.7">You've been re-subscribed to the 180DC newsletter. You'll continue receiving our latest updates and insights in your inbox.</p>
-</td></tr>
-<tr><td style="padding:0 32px">
-<table width="100%" cellpadding="0" cellspacing="0"><tr>
-<td style="border-bottom:2px solid #e8e6e1"></td>
-</tr></table>
-</td></tr>
-<tr><td style="padding:24px 32px 0;text-align:center">
-<p style="font-size:11px;color:#777777;margin:0 0 12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">Follow Us</p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto">
-<tr>
-<td style="padding:0 8px"><a href="https://www.instagram.com/180dc.vitc/" style="text-decoration:none"><table cellpadding="0" cellspacing="0"><tr><td style="background:#1a1a1a;border-radius:8px;padding:8px 14px;text-align:center"><span style="font-size:11px;color:#ffffff;font-weight:700">Instagram</span></td></tr></table></a></td>
-<td style="padding:0 8px"><a href="https://www.linkedin.com/company/180-degrees-consulting-vit-chennai/" style="text-decoration:none"><table cellpadding="0" cellspacing="0"><tr><td style="background:#1a1a1a;border-radius:8px;padding:8px 14px;text-align:center"><span style="font-size:11px;color:#ffffff;font-weight:700">LinkedIn</span></td></tr></table></a></td>
-</tr>
-</table>
-</td></tr>
-<tr><td style="background:#f9f8f5;border-top:3px solid #1a1a1a;border-radius:0 0 13px 13px;padding:20px 32px;text-align:center">
-<p style="font-size:12px;color:#1a1a1a;margin:0 0 4px;font-weight:700">180 Degrees Consulting &#x2014; VIT Chennai</p>
-<p style="font-size:11px;color:#777777;margin:0 0 12px;line-height:1.5">You received this because you subscribed to our newsletter.</p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto">
-<tr><td style="border:1.5px solid #d0cec8;border-radius:50px;padding:6px 16px">
-<a href="https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(email)}" style="color:#888888;text-decoration:none;font-size:11px;font-weight:600">Unsubscribe</a>
-</td></tr>
-</table>
-</td></tr>
-</table></td></tr></table>
-</body></html>`;
-  fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: "180DC Newsletter <team@180dcvitc.org>",
-      to: email,
-      subject: "Welcome back to the 180DC Newsletter!",
-      html,
-    }),
-  }).catch(() => {});
+async function sendWelcomeEmail(c: any, email: string) {
+  const siteUrl = newsletterSiteBase(c) || "https://180dcvitc.org";
+  const result = await sendEmail(c, {
+    from: "180DC Newsletter <technical@180dcvitc.org>",
+    to: email,
+    subject: "Welcome to the 180DC Newsletter!",
+    html: welcomeEmailHtml(email, "new", siteUrl),
+  });
+  if (result.sent > 0) {
+    console.log("[newsletter] Welcome email sent to=" + email);
+  } else {
+    console.error("[newsletter] Welcome email FAILED to=" + email);
+  }
+}
+
+async function sendWelcomeBackEmail(c: any, email: string) {
+  const siteUrl = newsletterSiteBase(c) || "https://180dcvitc.org";
+  const result = await sendEmail(c, {
+    from: "180DC Newsletter <technical@180dcvitc.org>",
+    to: email,
+    subject: "Welcome back to the 180DC Newsletter!",
+    html: welcomeEmailHtml(email, "back", siteUrl),
+  });
+  if (result.sent > 0) {
+    console.log("[newsletter] Welcome-back email sent to=" + email);
+  } else {
+    console.error("[newsletter] Welcome-back email FAILED to=" + email);
+  }
 }
 
 // Public: Subscribe to newsletter (called from /subscriber after the email is
@@ -2332,7 +3515,7 @@ app.post("/api/newsletter/subscribe", async (c) => {
     const email = validateEmail(body?.email);
     if (!email) return c.json({ error: "Valid email address required" }, 400);
 
-    const existing = await c.env.DB.prepare(
+    const existing = await newsletterDb(c).prepare(
       "SELECT id, active FROM newsletter_subscribers WHERE email = ?",
     )
       .bind(email)
@@ -2343,27 +3526,25 @@ app.post("/api/newsletter/subscribe", async (c) => {
           success: true,
           message: "You are already subscribed!",
         });
-      await c.env.DB.prepare(
+      await newsletterDb(c).prepare(
         "UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL WHERE id = ?",
       )
         .bind(existing.id)
         .run();
-      const apiKey = c.env.RESEND_API_KEY;
-      if (apiKey) sendWelcomeBackEmail(apiKey, email);
+      await sendWelcomeBackEmail(c, email);
       return c.json({
         success: true,
         message: "Welcome back! You have been re-subscribed.",
       });
     }
 
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "INSERT INTO newsletter_subscribers (id, email, active) VALUES (?, ?, 1)",
     )
       .bind(crypto.randomUUID(), email)
       .run();
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (apiKey) sendWelcomeEmail(apiKey, email);
+    await sendWelcomeEmail(c, email);
 
     return c.json({
       success: true,
@@ -2382,7 +3563,7 @@ app.get("/api/newsletter/unsubscribe", async (c) => {
     if (!email || !validateEmail(email))
       return c.json({ error: "Invalid email address." }, 400);
 
-    const sub = await c.env.DB.prepare(
+    const sub = await newsletterDb(c).prepare(
       "SELECT id, active FROM newsletter_subscribers WHERE email = ?",
     )
       .bind(email)
@@ -2402,7 +3583,7 @@ app.get("/api/newsletter/unsubscribe", async (c) => {
       });
     }
 
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "UPDATE newsletter_subscribers SET active = 0, unsubscribed_at = CURRENT_TIMESTAMP WHERE id = ?",
     )
       .bind(sub.id)
@@ -2427,10 +3608,46 @@ app.get("/api/newsletter", async (c) => {
         { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
         429,
       );
-    const rows = await c.env.DB.prepare(
-      "SELECT id, title, description, image_url, source_file_url, created_at FROM newsletters ORDER BY created_at DESC LIMIT 10",
+const rows = await newsletterDb(c).prepare(
+      "SELECT id, title, description, image_url, source_file_url, slug, created_at FROM newsletters WHERE sent_at IS NOT NULL ORDER BY created_at DESC LIMIT 10",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Public: Get a single newsletter with sanitized content (newsletter site fetches this)
+app.get("/api/newsletter/:id", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const rl = await checkRateLimit(c, "content_newsletter", 100, 60);
+    if (!rl.allowed)
+      return c.json(
+        { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
+        429,
+      );
+const id = c.req.param("id");
+    const row = await newsletterDb(c).prepare(
+      "SELECT id, title, description, content, image_url, source_file_url, slug, created_at, sent_at FROM newsletters WHERE id = ? OR slug = ?",
+    )
+      .bind(id, id)
+      .first();
+    if (!row) return c.json({ error: "Newsletter not found" }, 404);
+    return c.json({
+      success: true,
+      data: {
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        content: sanitizeBlogHtml(row.content || ""),
+        image_url: row.image_url,
+        source_file_url: row.source_file_url,
+        slug: row.slug,
+        created_at: row.created_at,
+        sent_at: row.sent_at,
+      },
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -2440,7 +3657,7 @@ app.get("/api/newsletter", async (c) => {
 app.get("/api/newsletter/subscribers/count", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    const row = await c.env.DB.prepare(
+    const row = await newsletterDb(c).prepare(
       "SELECT COUNT(*) as count FROM newsletter_subscribers WHERE active = 1",
     ).first();
     return c.json({ success: true, count: row?.count || 0 });
@@ -2454,7 +3671,7 @@ app.get("/api/newsletter/admin", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
-    const rows = await c.env.DB.prepare(
+    const rows = await newsletterDb(c).prepare(
       "SELECT * FROM newsletters ORDER BY created_at DESC",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
@@ -2468,7 +3685,7 @@ app.get("/api/newsletter/admin/subscribers", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
-    const rows = await c.env.DB.prepare(
+    const rows = await newsletterDb(c).prepare(
       "SELECT id, email, active, subscribed_at, unsubscribed_at FROM newsletter_subscribers ORDER BY subscribed_at DESC",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
@@ -2539,13 +3756,13 @@ app.post("/api/newsletter", async (c) => {
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
     const imageUrl = sanitizeStr(body.imageUrl);
 
-    const existing = await c.env.DB.prepare(
+    const existing = await newsletterDb(c).prepare(
       "SELECT id FROM newsletters WHERE id = ?",
     )
       .bind(id)
       .first();
     if (existing) {
-      await c.env.DB.prepare(
+      await newsletterDb(c).prepare(
         "UPDATE newsletters SET title = ?, description = ?, content = ?, source_file_url = COALESCE(?, source_file_url), image_url = COALESCE(?, image_url) WHERE id = ?",
       )
         .bind(
@@ -2557,9 +3774,10 @@ app.post("/api/newsletter", async (c) => {
           id,
         )
         .run();
-    } else {
-      await c.env.DB.prepare(
-        "INSERT INTO newsletters (id, title, description, content, source_file_url, image_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+} else {
+      const slug = await nextNewsletterSlug(newsletterDb(c));
+      await newsletterDb(c).prepare(
+        "INSERT INTO newsletters (id, title, description, content, source_file_url, image_url, created_by, slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       )
         .bind(
           id,
@@ -2569,6 +3787,7 @@ app.post("/api/newsletter", async (c) => {
           sourceFileUrl || null,
           imageUrl || null,
           user.email,
+          slug,
         )
         .run();
     }
@@ -2587,7 +3806,7 @@ app.delete("/api/newsletter/:id", async (c) => {
     if (!user || user.power_level < 100)
       return c.json({ error: "Forbidden: Board only" }, 403);
     const id = c.req.param("id");
-    await c.env.DB.prepare("DELETE FROM newsletters WHERE id = ?")
+    await newsletterDb(c).prepare("DELETE FROM newsletters WHERE id = ?")
       .bind(id)
       .run();
     return c.json({ success: true });
@@ -2613,99 +3832,60 @@ app.post("/api/newsletter/send", async (c) => {
         429,
       );
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
+    if (!isEmailConfigured(c))
+      return c.json({ error: "Email not configured" }, 500);
 
     const body = await c.req.json();
     const newsletterId = body.newsletterId;
     if (!newsletterId) return c.json({ error: "newsletterId required" }, 400);
 
-    const newsletter = await c.env.DB.prepare(
+    const newsletter = await newsletterDb(c).prepare(
       "SELECT * FROM newsletters WHERE id = ?",
     )
       .bind(newsletterId)
       .first();
     if (!newsletter) return c.json({ error: "Newsletter not found" }, 404);
 
-    const currentCount = await getTodayEmailCount(c.env.DB);
-    if (currentCount >= 100) {
-      return c.json(
-        { error: "Daily email quota reached (100). Try again after 24 hours." },
-        429,
-      );
-    }
-
-    const subscribers = await c.env.DB.prepare(
+    const subscribers = await newsletterDb(c).prepare(
       "SELECT email FROM newsletter_subscribers WHERE active = 1",
     ).all();
     const recipients = (subscribers.results || []).map((s: any) => s.email);
     if (recipients.length === 0)
       return c.json({ error: "No active subscribers" }, 400);
 
-    let sentCount = 0;
-    const siteUrl = "https://180dcvitc.org/#newsletter";
+    const siteUrl = newsletterCtaUrl(c, newsletterId, newsletter.slug);
 
-    let pdfAttachment: any = null;
-    if (newsletter.source_file_url) {
-      const r2Key = newsletter.source_file_url.replace(
-        /^\/api\/case-studies\/images\//,
-        "",
-      );
-      const r2Obj = await c.env.CASE_STUDIES.get(r2Key);
-      if (r2Obj) {
-        const buf = await r2Obj.arrayBuffer();
-        const b64 = arrayBufferToBase64(buf);
-        pdfAttachment = {
-          filename: r2Key.split("/").pop() || "newsletter.pdf",
-          content: b64,
-        };
-      }
-    }
-
-    const html = newsletterEmailHtml(
-      newsletter.title,
-      newsletter.description || "",
-      siteUrl,
-      undefined,
-      !!pdfAttachment,
+    const attachmentRefs = attachmentRefsFromUrl(
+      newsletter.source_file_url,
+      "newsletter.pdf",
     );
 
-    for (const email of recipients) {
-      if (currentCount + sentCount >= 100) break;
-      try {
-        const payload: any = {
-          from: "180DC Newsletter <team@180dcvitc.org>",
-          to: email,
-          subject: newsletter.title,
-          html,
-        };
-        if (pdfAttachment) payload.attachments = [pdfAttachment];
-        const res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + apiKey,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) sentCount++;
-        await new Promise((r) => setTimeout(r, 550));
-      } catch (err: any) {
-        console.error(
-          "[newsletter] Failed to send to " + email + ": " + err.message,
-        );
-      }
-    }
+    const html = await buildNewsletterEmailHtml(
+      c,
+      newsletter,
+      siteUrl,
+      attachmentRefs.length > 0,
+    );
 
-    for (let i = 0; i < sentCount; i++) await incrementEmailCount(c.env.DB);
+    const campaign = await enqueueEmailCampaign(c, {
+      kind: "newsletter",
+      from: "180DC Newsletter <technical@180dcvitc.org>",
+      subject: newsletter.title,
+      html,
+      recipients,
+      attachments: attachmentRefs,
+      meta: { newsletter_id: newsletterId, slug: newsletter.slug },
+      createdBy: user.email,
+    });
 
-    await c.env.DB.prepare(
-      "UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?",
-    )
-      .bind(sentCount, newsletterId)
-      .run();
-
-    return c.json({ success: true, sentCount, total: recipients.length });
+    return c.json({
+      success: true,
+      queued: campaign.queued,
+      sentCount: 0,
+      failed: 0,
+      total: recipients.length,
+      campaignId: campaign.id,
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -2753,14 +3933,14 @@ async function verifyNewsletterSession(c: any): Promise<string | null> {
   const authHeader = c.req.header("Authorization");
   if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
   const token = authHeader.slice(7);
-  const row = await c.env.DB.prepare(
+  const row = await newsletterDb(c).prepare(
     "SELECT email, expires_at FROM newsletter_sessions WHERE id = ?",
   )
     .bind(token)
     .first();
   if (!row) return null;
   if (new Date(row.expires_at as string) < new Date()) {
-    await c.env.DB.prepare("DELETE FROM newsletter_sessions WHERE id = ?")
+    await newsletterDb(c).prepare("DELETE FROM newsletter_sessions WHERE id = ?")
       .bind(token)
       .run();
     return null;
@@ -2786,7 +3966,7 @@ app.post("/api/newsletter-editor/otp/send", async (c) => {
         429,
       );
 
-    const authorized = await c.env.DB.prepare(
+    const authorized = await newsletterDb(c).prepare(
       "SELECT email FROM newsletter_authorized_emails WHERE email = ?",
     )
       .bind(email)
@@ -2808,38 +3988,21 @@ app.post("/api/newsletter-editor/otp/send", async (c) => {
     const id = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "INSERT INTO newsletter_otp_codes (id, email, code, expires_at) VALUES (?, ?, ?, ?)",
     )
       .bind(id, email, code, expiresAt)
       .run();
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (apiKey) {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "180DC Newsletter <team@180dcvitc.org>",
-          to: email,
-          subject: "Your Newsletter Editor OTP",
-          html: otpEmailHtml(code),
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        console.error(
-          "[newsletter-editor] OTP email failed:",
-          res.status,
-          errBody,
-        );
-        return c.json({ error: "Failed to send OTP email" }, 500);
-      }
-    } else {
-      console.warn("[newsletter-editor] RESEND_API_KEY not set, OTP:", code);
+    const result = await sendEmail(c, {
+      from: "180DC Newsletter <technical@180dcvitc.org>",
+      to: email,
+      subject: "Your Newsletter Editor OTP",
+      html: otpEmailHtml(code),
+    });
+    if (result.sent === 0) {
+      console.error("[newsletter-editor] OTP email failed");
+      return c.json({ error: "Failed to send OTP email" }, 500);
     }
 
     return c.json({ success: true, message: "OTP sent to " + email });
@@ -2868,7 +4031,7 @@ app.post("/api/newsletter-editor/otp/verify", async (c) => {
         429,
       );
 
-    const row = await c.env.DB.prepare(
+    const row = await newsletterDb(c).prepare(
       "SELECT id, code, expires_at, used FROM newsletter_otp_codes WHERE email = ? ORDER BY created_at DESC LIMIT 1",
     )
       .bind(email)
@@ -2880,7 +4043,7 @@ app.post("/api/newsletter-editor/otp/verify", async (c) => {
       return c.json({ error: "OTP expired. Request a new one." }, 400);
     if (row.code !== code) return c.json({ error: "Invalid OTP" }, 400);
 
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "UPDATE newsletter_otp_codes SET used = 1 WHERE id = ?",
     )
       .bind(row.id)
@@ -2890,7 +4053,7 @@ app.post("/api/newsletter-editor/otp/verify", async (c) => {
     const sessionExpires = new Date(
       Date.now() + 24 * 60 * 60 * 1000,
     ).toISOString();
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "INSERT INTO newsletter_sessions (id, email, expires_at) VALUES (?, ?, ?)",
     )
       .bind(sessionId, email, sessionExpires)
@@ -2907,7 +4070,7 @@ app.post("/api/newsletter-editor/logout", async (c) => {
   try {
     const authHeader = c.req.header("Authorization");
     if (authHeader?.startsWith("Bearer ")) {
-      await c.env.DB.prepare("DELETE FROM newsletter_sessions WHERE id = ?")
+      await newsletterDb(c).prepare("DELETE FROM newsletter_sessions WHERE id = ?")
         .bind(authHeader.slice(7))
         .run();
     }
@@ -2931,10 +4094,10 @@ app.get("/api/newsletter-editor/me", async (c) => {
 // Draft: List
 app.get("/api/newsletter-editor/drafts", async (c) => {
   try {
-    const email = await verifyNewsletterSession(c);
+const email = await verifyNewsletterSession(c);
     if (!email) return c.json({ error: "Not authenticated" }, 401);
-    const rows = await c.env.DB.prepare(
-      "SELECT * FROM newsletters WHERE created_by = ? ORDER BY created_at DESC",
+    const rows = await newsletterDb(c).prepare(
+      "SELECT * FROM newsletters WHERE created_by = ? OR created_by = 'editorial-sync' ORDER BY created_at DESC",
     )
       .bind(email)
       .all();
@@ -2953,33 +4116,50 @@ app.post("/api/newsletter-editor/drafts", async (c) => {
     const title = sanitizeStr(body.title);
     if (!title) return c.json({ error: "Title is required" }, 400);
 
-    const id = body.id || crypto.randomUUID();
+const id = body.id || crypto.randomUUID();
     const description = sanitizeStr(body.description, 1000);
     const emailSubject = sanitizeStr(body.emailSubject, 200) || title;
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
+    const articleContent = sanitizeStr(body.content, 50000);
+    const isPlainText = !articleContent || !/<[a-z][^>]*>/i.test(articleContent);
+    const contentHtml = articleContent
+      ? sanitizeBlogHtml(
+          isPlainText ? textToParagraphHtml(articleContent) : articleContent,
+        )
+      : "";
 
-    const existing = await c.env.DB.prepare(
+    const existing = await newsletterDb(c).prepare(
       "SELECT id FROM newsletters WHERE id = ?",
     )
       .bind(id)
       .first();
     if (existing) {
-      await c.env.DB.prepare(
-        "UPDATE newsletters SET title = ?, description = ?, email_subject = ?, source_file_url = COALESCE(?, source_file_url) WHERE id = ?",
+      await newsletterDb(c).prepare(
+        "UPDATE newsletters SET title = ?, description = ?, email_subject = ?, content = ?, source_file_url = COALESCE(?, source_file_url) WHERE id = ?",
       )
-        .bind(title, description, emailSubject, sourceFileUrl || null, id)
+        .bind(
+          title,
+          description,
+          emailSubject,
+          contentHtml,
+          sourceFileUrl || null,
+          id,
+        )
         .run();
     } else {
-      await c.env.DB.prepare(
-        "INSERT INTO newsletters (id, title, description, email_subject, source_file_url, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+      const slug = await nextNewsletterSlug(newsletterDb(c));
+      await newsletterDb(c).prepare(
+        "INSERT INTO newsletters (id, title, description, email_subject, content, source_file_url, created_by, slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       )
         .bind(
           id,
           title,
           description,
           emailSubject,
+          contentHtml,
           sourceFileUrl || null,
           email,
+          slug,
         )
         .run();
     }
@@ -2995,7 +4175,7 @@ app.delete("/api/newsletter-editor/drafts/:id", async (c) => {
     const email = await verifyNewsletterSession(c);
     if (!email) return c.json({ error: "Not authenticated" }, 401);
     const id = c.req.param("id");
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "DELETE FROM newsletters WHERE id = ? AND created_by = ?",
     )
       .bind(id, email)
@@ -3061,96 +4241,68 @@ app.post("/api/newsletter-editor/send", async (c) => {
         429,
       );
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
+    if (!isEmailConfigured(c))
+      return c.json({ error: "Email not configured" }, 500);
 
     const body = await c.req.json();
     const newsletterId = body.newsletterId;
     if (!newsletterId) return c.json({ error: "newsletterId required" }, 400);
 
-    const newsletter = await c.env.DB.prepare(
+    const newsletter = await newsletterDb(c).prepare(
       "SELECT * FROM newsletters WHERE id = ?",
     )
       .bind(newsletterId)
       .first();
     if (!newsletter) return c.json({ error: "Newsletter not found" }, 404);
 
-    const currentCount = await getTodayEmailCount(c.env.DB);
-    if (currentCount >= 100)
-      return c.json({ error: "Daily email quota reached (100)." }, 429);
-
-    const subscribers = await c.env.DB.prepare(
+const subscribers = await newsletterDb(c).prepare(
       "SELECT email FROM newsletter_subscribers WHERE active = 1",
     ).all();
-    const recipients = (subscribers.results || []).map((s: any) => s.email);
+    const testEmail = validateEmail(body.testEmail);
+    const recipients = testEmail
+      ? [testEmail]
+      : (subscribers.results || []).map((s: any) => s.email);
     if (recipients.length === 0)
       return c.json({ error: "No active subscribers" }, 400);
 
-    let sentCount = 0;
-    const siteUrl = "https://180dcvitc.org/#newsletter";
+    const siteUrl = newsletterCtaUrl(c, newsletterId, newsletter.slug);
 
     const subject = newsletter.email_subject || newsletter.title;
+    const attachmentRefs = attachmentRefsFromUrl(
+      newsletter.source_file_url,
+      "newsletter.pdf",
+    );
 
-    let pdfAttachment: any = null;
-    if (newsletter.source_file_url) {
-      const r2Key = newsletter.source_file_url.replace(
-        /^\/api\/case-studies\/images\//,
-        "",
-      );
-      const r2Obj = await c.env.CASE_STUDIES.get(r2Key);
-      if (r2Obj) {
-        const buf = await r2Obj.arrayBuffer();
-        const b64 = arrayBufferToBase64(buf);
-        pdfAttachment = {
-          filename: r2Key.split("/").pop() || "newsletter.pdf",
-          content: b64,
-        };
-      }
-    }
+    const html = await buildNewsletterEmailHtml(
+      c,
+      newsletter,
+      siteUrl,
+      attachmentRefs.length > 0,
+    );
 
-    for (const to of recipients) {
-      if (currentCount + sentCount >= 100) break;
-      try {
-        const html = newsletterEmailHtml(
-          newsletter.title,
-          newsletter.description || "",
-          siteUrl,
-          to,
-          !!pdfAttachment,
-        );
-        const payload: any = {
-          from: "180DC Newsletter <team@180dcvitc.org>",
-          to,
-          subject,
-          html,
-        };
-        if (pdfAttachment) payload.attachments = [pdfAttachment];
-        const res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + apiKey,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) sentCount++;
-        await new Promise((r) => setTimeout(r, 550));
-      } catch (err: any) {
-        console.error(
-          "[newsletter-editor] Failed to send to " + to + ": " + err.message,
-        );
-      }
-    }
+    const campaign = await enqueueEmailCampaign(c, {
+      kind: "newsletter",
+      from: "180DC Newsletter <technical@180dcvitc.org>",
+      subject,
+      html,
+      recipients,
+      attachments: attachmentRefs,
+      meta: {
+        newsletter_id: newsletterId,
+        slug: newsletter.slug,
+        test: !!testEmail,
+      },
+      createdBy: email,
+    });
 
-    for (let i = 0; i < sentCount; i++) await incrementEmailCount(c.env.DB);
-
-    await c.env.DB.prepare(
-      "UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?",
-    )
-      .bind(sentCount, newsletterId)
-      .run();
-
-    return c.json({ success: true, sentCount, total: recipients.length });
+    return c.json({
+      success: true,
+      queued: campaign.queued,
+      sentCount: 0,
+      failed: 0,
+      total: recipients.length,
+      campaignId: campaign.id,
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -3172,8 +4324,8 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
         429,
       );
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
+    if (!isEmailConfigured(c))
+      return c.json({ error: "Email not configured" }, 500);
 
     const body = await c.req.json();
     const { subject, description } = body;
@@ -3182,75 +4334,48 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
     if (!subject || !subject.trim())
       return c.json({ error: "Subject is required" }, 400);
 
-    const currentCount = await getTodayEmailCount(c.env.DB);
-    if (currentCount >= 100)
-      return c.json({ error: "Daily email quota reached (100)." }, 429);
-
-    const subscribers = await c.env.DB.prepare(
+const subscribers = await newsletterDb(c).prepare(
       "SELECT email FROM newsletter_subscribers WHERE active = 1",
     ).all();
-    const recipients = (subscribers.results || []).map((s: any) => s.email);
+    const testEmail = validateEmail(body.testEmail);
+    const recipients = testEmail
+      ? [testEmail]
+      : (subscribers.results || []).map((s: any) => s.email);
     if (recipients.length === 0)
       return c.json({ error: "No active subscribers" }, 400);
 
-    let sentCount = 0;
-    const siteUrl = "https://180dcvitc.org/#newsletter";
+    const siteUrl =
+      newsletterSiteBase(c) || "https://180dcvitc.org/#newsletter";
+    const attachmentRefs = attachmentRefsFromUrl(sourceFileUrl, "event.pdf");
 
-    let pdfAttachment: any = null;
-    if (sourceFileUrl) {
-      const r2Key = sourceFileUrl.replace(/^\/api\/case-studies\/images\//, "");
-      const r2Obj = await c.env.CASE_STUDIES.get(r2Key);
-      if (r2Obj) {
-        const buf = await r2Obj.arrayBuffer();
-        const b64 = arrayBufferToBase64(buf);
-        pdfAttachment = {
-          filename: r2Key.split("/").pop() || "event.pdf",
-          content: b64,
-        };
-      }
-    }
+    const html = eventMailEmailHtml(
+      subject,
+      description || "",
+      siteUrl,
+      undefined,
+      attachmentRefs.length > 0,
+      imageUrl || undefined,
+    );
 
-    for (const to of recipients) {
-      if (currentCount + sentCount >= 100) break;
-      try {
-        const html = eventMailEmailHtml(
-          subject,
-          description || "",
-          siteUrl,
-          to,
-          !!pdfAttachment,
-          imageUrl || undefined,
-        );
-        const payload: any = {
-          from: "180DC Events <team@180dcvitc.org>",
-          to,
-          subject: subject,
-          html,
-        };
-        if (pdfAttachment) payload.attachments = [pdfAttachment];
-        const res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer " + apiKey,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) sentCount++;
-        await new Promise((r) => setTimeout(r, 550));
-      } catch (err: any) {
-        console.error(
-          "[newsletter-editor] Failed to send event mail to " +
-            to +
-            ": " +
-            err.message,
-        );
-      }
-    }
+    const campaign = await enqueueEmailCampaign(c, {
+      kind: "event",
+      from: "180DC Events <technical@180dcvitc.org>",
+      subject,
+      html,
+      recipients,
+      attachments: attachmentRefs,
+      meta: { test: !!testEmail },
+      createdBy: email,
+    });
 
-    for (let i = 0; i < sentCount; i++) await incrementEmailCount(c.env.DB);
-
-    return c.json({ success: true, sentCount, total: recipients.length });
+    return c.json({
+      success: true,
+      queued: campaign.queued,
+      sentCount: 0,
+      failed: 0,
+      total: recipients.length,
+      campaignId: campaign.id,
+    });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
   }
@@ -3259,7 +4384,7 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
 app.get("/api/newsletter-editor/admin/authorized-emails", async (c) => {
   try {
     requireBoard(c);
-    const rows = await c.env.DB.prepare(
+    const rows = await newsletterDb(c).prepare(
       "SELECT * FROM newsletter_authorized_emails ORDER BY created_at DESC",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
@@ -3277,14 +4402,14 @@ app.post("/api/newsletter-editor/admin/authorized-emails", async (c) => {
     const email = validateEmail(body.email);
     if (!email) return c.json({ error: "Valid email required" }, 400);
 
-    const existing = await c.env.DB.prepare(
+    const existing = await newsletterDb(c).prepare(
       "SELECT email FROM newsletter_authorized_emails WHERE email = ?",
     )
       .bind(email)
       .first();
     if (existing) return c.json({ error: "Email already authorized" }, 409);
 
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "INSERT INTO newsletter_authorized_emails (email, added_by) VALUES (?, ?)",
     )
       .bind(email, user.email)
@@ -3303,7 +4428,7 @@ app.delete(
       if (!user || user.power_level < 100)
         return c.json({ error: "Forbidden: Board only" }, 403);
       const email = c.req.param("email");
-      await c.env.DB.prepare(
+      await newsletterDb(c).prepare(
         "DELETE FROM newsletter_authorized_emails WHERE email = ?",
       )
         .bind(email)
@@ -3407,32 +4532,15 @@ app.post("/api/letter-studio/otp/send", async (c) => {
       .bind(id, email, code, expiresAt)
       .run();
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (apiKey) {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "180DC Letter Studio <team@180dcvitc.org>",
-          to: email,
-          subject: "Your 180DC Letter Studio OTP",
-          html: letterOtpEmailHtml(code),
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        console.error(
-          "[letter-studio] OTP email failed:",
-          res.status,
-          errBody,
-        );
-        return c.json({ error: "Failed to send OTP email" }, 500);
-      }
-    } else {
-      console.warn("[letter-studio] RESEND_API_KEY not set, OTP:", code);
+    const result = await sendEmail(c, {
+      from: "180DC Letter Studio <technical@180dcvitc.org>",
+      to: email,
+      subject: "Your 180DC Letter Studio OTP",
+      html: letterOtpEmailHtml(code),
+    });
+    if (result.sent === 0) {
+      console.error("[letter-studio] OTP email failed");
+      return c.json({ error: "Failed to send OTP email" }, 500);
     }
 
     return c.json({ success: true, message: "OTP sent to " + email });
@@ -3813,8 +4921,8 @@ app.post("/api/letter-studio/send", async (c) => {
         429,
       );
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
+    if (!isEmailConfigured(c))
+      return c.json({ error: "Email not configured" }, 500);
 
     const body = await c.req.json();
     const fileKey = sanitizeStr(body.fileKey, 300);
@@ -3825,14 +4933,6 @@ app.post("/api/letter-studio/send", async (c) => {
     if (!fileKey.startsWith("letters/"))
       return c.json({ error: "Invalid file key" }, 400);
 
-    const currentCount = await getTodayEmailCount(c.env.DB);
-    if (currentCount >= 100) {
-      return c.json(
-        { error: "Daily email quota reached (100). Try again after 24 hours." },
-        429,
-      );
-    }
-
     const r2Obj = await c.env.CLUB_FILES.get(fileKey);
     if (!r2Obj) return c.json({ error: "Letter PDF not found" }, 404);
     const buf = await r2Obj.arrayBuffer();
@@ -3840,6 +4940,7 @@ app.post("/api/letter-studio/send", async (c) => {
     const attachment = {
       filename: (fileKey.split("/").pop() || "letter.pdf").replace(/[^a-zA-Z0-9._-]/g, "-"),
       content: b64,
+      contentType: attachmentContentType(fileKey),
     };
 
     const details = {
@@ -3850,29 +4951,17 @@ app.post("/api/letter-studio/send", async (c) => {
       dateStr: sanitizeStr(body.dateStr, 64) || "",
     };
 
-    const payload: any = {
-      from: "180DC Letter Studio <team@180dcvitc.org>",
+    const result = await sendEmail(c, {
+      from: "180DC Letter Studio <technical@180dcvitc.org>",
       to: recipientEmail,
       subject: letterEmailSubject(docType, details.name),
       html: letterEmailHtml(docType, details),
       attachments: [attachment],
-    };
-
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
     });
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.error("[letter-studio] send failed:", res.status, errBody);
+    if (result.sent === 0) {
+      console.error("[letter-studio] send failed");
       return c.json({ error: "Failed to send email" }, 500);
     }
-
-    await incrementEmailCount(c.env.DB);
 
     await c.env.DB.prepare(
       "INSERT INTO letters_sent (id, docnum, doc_type, member_name, recipient_email, file_key, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -4084,18 +5173,6 @@ app.post("/api/auth/forgot-token", async (c) => {
       return c.json({ error: "Valid email is required" }, 400);
     }
 
-    // Check quota before lookup to prevent email enumeration
-    const count = await getTodayEmailCount(c.env.DB);
-    if (count >= 100) {
-      return c.json(
-        {
-          error:
-            "Daily email quota reached. Please contact the administrator or try again after 24 hours.",
-        },
-        429,
-      );
-    }
-
     const row: any = await c.env.DB.prepare(
       "SELECT token, name, email, revoked_at, expires_at FROM admin_tokens WHERE email = ?",
     )
@@ -4116,7 +5193,6 @@ app.post("/api/auth/forgot-token", async (c) => {
       console.log(
         `[forgot-token] Token found for ${email}, email sent: ${emailResult.ok}${emailResult.error ? `, error: ${emailResult.error}` : ""}`,
       );
-      await incrementEmailCount(c.env.DB);
     } else {
       console.warn(
         `[forgot-token] No active token found for ${email}${row ? " (token exists but revoked or expired)" : " (no token record)"}`,
@@ -4517,6 +5593,8 @@ app.get("/api/dashboard", async (c) => {
         upcomingMeetsCount: totalUpcomingMeets,
         announcementsCount: (announcements.results || []).length,
         todayEmailCount: await getTodayEmailCount(c.env.DB),
+        hourEmailCount: await getHourlyEmailCount(c.env.DB),
+        hourEmailLimit: smtpHourlyLimit(c.env),
       },
       recentMeets,
       pendingRequests: pendingRequests.results || [],
@@ -6133,18 +7211,25 @@ app.post("/api/meets/process-queue", async (c) => {
     if (user.power_level < 100)
       return c.json({ error: "Forbidden: Board only" }, 403);
 
-    let count = await getTodayEmailCount(c.env.DB);
-    const MAX_DAILY = 100;
+    const hourly = await getHourlyEmailCount(c.env.DB);
+    const capacity = Math.max(0, smtpHourlyLimit(c.env) - hourly);
+    if (capacity === 0) {
+      return c.json({
+        success: true,
+        emailsSent: 0,
+        message: "Hourly email limit reached. Try again later.",
+      });
+    }
+    const limit = Math.min(100, capacity);
     let sent = 0;
 
     const pending: any = await c.env.DB.prepare(
       "SELECT * FROM pending_emails ORDER BY created_at ASC LIMIT ?",
     )
-      .bind(MAX_DAILY - count)
+      .bind(limit)
       .all();
     for (const p of pending.results || []) {
-      if (count >= MAX_DAILY) break;
-      await sendMeetEmail(
+      const ok = await sendMeetEmail(
         c,
         p.recipient_email,
         p.recipient_name,
@@ -6154,11 +7239,10 @@ app.post("/api/meets/process-queue", async (c) => {
         p.scheduled_at,
         p.meet_type,
       );
-      await incrementEmailCount(c.env.DB);
+      if (!ok) break;
       await c.env.DB.prepare("DELETE FROM pending_emails WHERE id = ?")
         .bind(p.id)
         .run();
-      count++;
       sent++;
     }
 
@@ -9398,19 +10482,12 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
     }
 
     // Send the email
-    const apiKey = c.env.RESEND_API_KEY;
-    if (apiKey) {
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "180DC Consulting <team@180dcvitc.org>",
-          to: request.email,
-          subject: emailSubject,
-          html: `<!DOCTYPE html>
+    if (isEmailConfigured(c)) {
+      await sendEmail(c, {
+        from: "180DC Consulting <technical@180dcvitc.org>",
+        to: request.email,
+        subject: emailSubject,
+        html: `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -9429,7 +10506,6 @@ app.post("/api/consulting-requests/:id/accept", async (c) => {
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
-        }),
       });
     }
 
@@ -9487,19 +10563,12 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
     }
 
     // Send the email
-    const apiKey = c.env.RESEND_API_KEY;
-    if (apiKey) {
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "180DC Consulting <team@180dcvitc.org>",
-          to: request.email,
-          subject: emailSubject,
-          html: `<!DOCTYPE html>
+    if (isEmailConfigured(c)) {
+      await sendEmail(c, {
+        from: "180DC Consulting <technical@180dcvitc.org>",
+        to: request.email,
+        subject: emailSubject,
+        html: `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -9518,7 +10587,6 @@ app.post("/api/consulting-requests/:id/reject", async (c) => {
 </td></tr>
 </table></td></tr></table>
 </body></html>`,
-        }),
       });
     }
 
@@ -9817,7 +10885,7 @@ app.post("/api/send-email", async (c) => {
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
     }
-    const to = sanitizeStr(body.to, MAX_MSG_LEN);
+    const to = sanitizeStr(body.to, 20000);
     const subject = sanitizeStr(body.subject);
     const htmlBody = sanitizeStr(body.body, MAX_MSG_LEN * 2);
 
@@ -9825,19 +10893,8 @@ app.post("/api/send-email", async (c) => {
       return c.json({ error: "Missing recipient, subject, or body" }, 400);
     }
 
-    const apiKey = c.env.RESEND_API_KEY;
-    if (!apiKey) return c.json({ error: "Email not configured" }, 500);
-
-    const currentCount = await getTodayEmailCount(c.env.DB);
-    if (currentCount >= 100) {
-      return c.json(
-        {
-          error:
-            "Daily email quota reached (100 emails). Try again after 24 hours.",
-        },
-        429,
-      );
-    }
+    if (!isEmailConfigured(c))
+      return c.json({ error: "Email not configured" }, 500);
 
     // Support multiple recipients separated by comma/semicolon
     const recipients = to
@@ -9881,45 +10938,46 @@ app.post("/api/send-email", async (c) => {
       return c.json({ error: "No valid email addresses provided" }, 400);
     }
 
-    for (const recipient of validRecipients) {
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "180DC Admin <team@180dcvitc.org>",
-          to: recipient,
-          subject,
-          html: `<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
-</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
-<tr><td align="center">
-<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
-<tr><td style="background:#8dc63f;padding:24px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dcvitc.org/images/180DC.png" alt="180DC" width="48" style="margin-bottom:6px">
-<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:24px;margin:0">180DC Admin Message</h1>
-</td></tr>
-<tr><td style="padding:28px">
-<div style="font-size:14px;color:#555555;margin:0;line-height:1.8;white-space:pre-wrap">${escapeHtml(htmlBody).replace(/\n/g, "<br>")}</div>
-</td></tr>
-<tr><td style="background:#f5f3ee;border-top:3px solid #1a1a1a;padding:14px 28px;text-align:center">
-<p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting @ VIT Chennai</p>
-</td></tr>
-</table></td></tr></table>
-</body></html>`,
-        }),
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#ffffff">
+<div style="max-width:600px;margin:0 auto;padding:24px 20px;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#222222;line-height:1.65">
+${escapeHtml(htmlBody).replace(/\n/g, "<br>")}
+<p style="margin:28px 0 0;font-size:13px;color:#666666;line-height:1.5">&#x2014;<br><strong>180 Degrees Consulting</strong><br>VIT Chennai</p>
+</div>
+</body></html>`;
+
+    const SYNC_SEND_LIMIT = 10;
+    if (validRecipients.length > SYNC_SEND_LIMIT) {
+      const campaign = await enqueueEmailCampaign(c, {
+        kind: "custom",
+        from: "180DC Admin <technical@180dcvitc.org>",
+        subject,
+        html,
+        recipients: validRecipients,
+        createdBy: user.email,
+      });
+      return c.json({
+        success: true,
+        message: `Email queued for ${campaign.queued} recipient(s) — delivering in the background.`,
+        queued: campaign.queued,
+        total: validRecipients.length,
       });
     }
 
-    await incrementEmailCount(c.env.DB);
+    const result = await sendEmail(c, {
+      from: "180DC Admin <technical@180dcvitc.org>",
+      to: validRecipients,
+      subject,
+      html,
+    });
+
     return c.json(
       {
         success: true,
-        message: `Email sent to ${validRecipients.length} recipient(s)`,
+        message: `Email sent to ${result.sent} recipient(s)${result.failed ? `, ${result.failed} failed` : ""}${result.skipped ? `, ${result.skipped} queued` : ""}`,
+        failed: result.failed,
+        queued: result.skipped,
       },
       200,
     );
@@ -10270,8 +11328,34 @@ app.get("/api/gallery-cdn/*", async (c) => {
   }
 });
 
+app.get("/api/admin/email-queue", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    requireBoard(c);
+    const counts: any = await c.env.DB.prepare(
+      "SELECT status, COUNT(*) as campaigns, SUM(total) as recipients, SUM(sent) as sent, SUM(failed) as failed FROM email_queue GROUP BY status",
+    ).all();
+    const recent: any = await c.env.DB.prepare(
+      "SELECT id, kind, subject, total, sent, failed, cursor, status, attempts, last_error, created_at, finished_at FROM email_queue ORDER BY created_at DESC LIMIT 10",
+    ).all();
+    const hourly = await getHourlyEmailCount(c.env.DB);
+    return c.json({
+      success: true,
+      hourlyCount: hourly,
+      hourlyLimit: smtpHourlyLimit(c.env),
+      counts: counts.results || [],
+      recent: recent.results || [],
+    });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
 export default {
   async fetch(request: Request, env: any, ctx: any) {
     return app.fetch(request, env, ctx);
+  },
+  async scheduled(_event: any, env: any, ctx: any) {
+    ctx.waitUntil(drainEmailQueue(env));
   },
 };

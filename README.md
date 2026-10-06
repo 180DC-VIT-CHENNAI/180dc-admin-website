@@ -34,17 +34,12 @@ For the agent-first guide, project mode, authoritative sources, commands, and ha
 │   ├── domain/
 │   ├── architecture/
 │   ├── contracts/
+│   ├── design/
 │   ├── execution/
 │   ├── compatibility/
 │   ├── quality/
 │   └── operations/
 │
-├── architecture/         # Existing architecture decisions and plans
-├── DESIGN.md
-├── REPORT.md
-├── NEWSLETTER_EDITOR.md
-├── SES_SETUP.md
-├── BUILD_AND_DEPLOY.md
 ├── AGENTS.md
 ├── turbo.json
 ├── pnpm-workspace.yaml
@@ -223,16 +218,17 @@ See `docs/operations/deployment.md` for full environment setup.
 
 For agent and contributor guidance, see [AGENTS.md](./AGENTS.md) and [docs/INDEX.md](./docs/INDEX.md).
 
-Original documentation files:
+Documentation lives under `docs/`:
 
-- `DESIGN.md` — visual and UX design constraints
-- `REPORT.md` — feature inventory and product narrative
-- `NEWSLETTER_EDITOR.md` — newsletter editor operational guide
-- `SES_SETUP.md` — Amazon SES setup plan
-- `BUILD_AND_DEPLOY.md` — build and deployment instructions
-- `architecture/NEWSLETTER_BULK_SEND_DECISION.md` — bulk email ADR
-- `architecture/TEAM_INSTANCES_PLAN.md` — team instances ADR
-- `architecture/backend-architecture-cloudflare.txt` — historical/aspirational design (not current)
+- `docs/design/DESIGN.md` — visual and UX design constraints
+- `docs/design/plan.md` — frontend design plan
+- `docs/product/REPORT.md` — feature inventory and product narrative
+- `docs/operations/NEWSLETTER_EDITOR.md` — newsletter editor operational guide
+- `docs/operations/SPACEMAIL_SETUP.md` — Spacemail migration (DNS fix, SMTP, Ken-style newsletter plan)
+- `docs/operations/SES_SETUP.md` — earlier Amazon SES plan (superseded)
+- `docs/operations/BUILD_AND_DEPLOY.md` — build and deployment instructions
+- `docs/architecture/decisions/README.md` — architecture decision record index
+- `docs/architecture/backend-architecture-cloudflare.txt` — historical/aspirational design (not current)
 
 ---
 

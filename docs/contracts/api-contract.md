@@ -13,7 +13,7 @@ This document describes the public and authenticated surface of `admin-api.techn
   - `newsletter` — requires a valid newsletter editor session token (OTP based).
 - **Response shape:** `{ success: true, ... }` on success; `{ error: "..." }` on failure.
 - **Rate limiting:** Most endpoints have per-IP rate limits. See `checkRateLimit` in `apps/admin-api/index.ts`.
-- **Email quota:** Send endpoints respect the 100/day `daily_email_count` cap.
+- **Email delivery:** All email goes through the `sendEmail()` choke-point: Spacemail SMTP (`mail.spacemail.com:465`, implicit TLS) is primary, with Resend as an automatic fallback. Bulk queue campaigns (newsletter, event, meet) batch recipients into BCC groups of up to 50 per message; all other sends (Send Mail, project/role notices, OTPs, letters, tokens) are one recipient per message. SMTP is capped at 500 messages/hour (`email_hour_count`) and the Resend fallback at 100 recipients/day (`resend_daily_count`). Bulk sends insert an `email_queue` campaign and return `queued`/`total`; the `* * * * *` cron delivers it at up to 8 messages/minute. Newsletter tables live in `NEWSLETTER_DB`.
 
 ## Public routes
 
@@ -25,7 +25,8 @@ This document describes the public and authenticated surface of `admin-api.techn
 | POST | `/api/newsletter/subscribe` | public | Subscribe to newsletter. |
 | GET | `/api/newsletter/unsubscribe` | public | Unsubscribe from newsletter. |
 | GET | `/api/newsletter/subscribers/count` | public | Active subscriber count. |
-| GET | `/api/newsletter` | public | Public newsletter archive. |
+| GET | `/api/newsletter` | public | Public newsletter archive — sent (published) issues only. |
+| GET | `/api/newsletter/:id` | public | Single newsletter with sanitized `content` (fetched by the separate newsletter site). |
 | POST | `/api/newsletter-editor/otp/send` | public | Request OTP for newsletter editor. |
 | POST | `/api/newsletter-editor/otp/verify` | public | Verify OTP and get session token. |
 | POST | `/api/signup-requests` | public | Submit a member account request. |
@@ -138,8 +139,8 @@ This document describes the public and authenticated surface of `admin-api.techn
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/meets/:type/:id/send-notification` | director | Resend meet email for an existing meet. |
-| POST | `/api/meets/process-queue` | board | Send pending meet emails up to daily quota. |
+| POST | `/api/meets/:type/:id/send-notification` | director | Meet email for an existing meet (Spacemail SMTP, Resend fallback). |
+| POST | `/api/meets/process-queue` | board | Send pending meet emails up to the hourly SMTP cap. |
 
 ## Department panel content
 
@@ -227,7 +228,7 @@ This document describes the public and authenticated surface of `admin-api.techn
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/send-email` | director | Send arbitrary email to members; directors limited to own department. |
+| POST | `/api/send-email` | director | Send arbitrary email to members; directors limited to own department. Up to 10 recipients send synchronously (one message each); larger lists enqueue a `custom` campaign delivered by the queue. |
 
 ## Club files
 
@@ -254,6 +255,7 @@ This document describes the public and authenticated surface of `admin-api.techn
 |--------|------|------|-------------|
 | GET | `/api/admin/maintenance` | public | Get maintenance status. |
 | POST | `/api/admin/maintenance` | board | Toggle maintenance mode. |
+| GET | `/api/admin/email-queue` | board | Email queue stats: hourly usage and recent campaigns. |
 
 ## Newsletter editor (OTP session)
 
@@ -265,8 +267,8 @@ This document describes the public and authenticated surface of `admin-api.techn
 | POST | `/api/newsletter-editor/drafts` | newsletter | Create or update a draft. |
 | DELETE | `/api/newsletter-editor/drafts/:id` | newsletter | Delete own draft. |
 | POST | `/api/newsletter-editor/upload-source` | newsletter | Upload source file. |
-| POST | `/api/newsletter-editor/send` | newsletter | Send a draft to active subscribers. |
-| POST | `/api/newsletter-editor/send-event` | newsletter | Send event mail to active subscribers. |
+| POST | `/api/newsletter-editor/send` | newsletter | Enqueue a draft for active subscribers (returns `queued`/`total`). |
+| POST | `/api/newsletter-editor/send-event` | newsletter | Enqueue event mail for active subscribers. |
 | GET | `/api/newsletter-editor/admin/authorized-emails` | board | List authorized emails. |
 | POST | `/api/newsletter-editor/admin/authorized-emails` | board | Add authorized email. |
 | DELETE | `/api/newsletter-editor/admin/authorized-emails/:email` | board | Remove authorized email. |
@@ -279,7 +281,7 @@ This document describes the public and authenticated surface of `admin-api.techn
 | GET | `/api/newsletter/admin/subscribers` | board | List subscribers. |
 | POST | `/api/newsletter` | board | Create or update a newsletter. |
 | DELETE | `/api/newsletter/:id` | board | Delete a newsletter. |
-| POST | `/api/newsletter/send` | board | Send newsletter to subscribers. |
+| POST | `/api/newsletter/send` | board | Enqueue newsletter to subscribers (returns `queued`/`total`). |
 | POST | `/api/newsletter/upload-source` | board | Upload newsletter source file. |
 
 ## Letter Studio (OTP session)
@@ -293,7 +295,7 @@ The Letter Studio at `/letters` is the official letterhead generator (appointmen
 | POST | `/api/letter-studio/logout` | letter session | Delete letter session. |
 | GET | `/api/letter-studio/me` | letter session | Get session email. |
 | POST | `/api/letter-studio/upload` | letter session | Upload generated letter PDF to R2 `letters/` folder. |
-| POST | `/api/letter-studio/send` | letter session | Send the letter PDF with a standard per-type mail via Resend. Respects daily 100-email cap and rate limits. Logs to `letters_sent`. |
+| POST | `/api/letter-studio/send` | letter session | Send the letter PDF with a standard per-type mail through `sendEmail()` (Spacemail SMTP, Resend fallback). Respects rate limits and SMTP hourly cap. Logs to `letters_sent`. |
 | GET | `/api/letter-studio/members` | letter session | Member directory (name, email, role, department) for the recipient picker. Excludes advisory members. |
 | GET | `/api/letter-studio/files/*` | letter session (via `?t=` token) | Download a stored letter PDF. |
 | GET | `/api/letter-studio/admin/authorized-emails` | board | List authorized emails. |
@@ -309,3 +311,4 @@ Standard mail subjects/bodies are generated server-side per document type (`lett
 - `token` means the route requires authentication but does not itself enforce a minimum power level beyond being a valid user.
 - `public` routes still pass through `isPublicRoute` and may be rate-limited.
 - The frontend always calls `/api/*` and relies on `apps/frontend/functions/_middleware.ts` to proxy to the `admin-api` Worker.
+- CORS is enabled for `https://newsletter.180dcvitc.org` (the separate newsletter site, ADR-004) plus the existing `180dcvitc.org` origins. CORS/CSRF allowlists live in `apps/admin-api/index.ts` (`ALLOWED_ORIGINS`).

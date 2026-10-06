@@ -4,7 +4,7 @@ This document describes the repository as it exists on the `main` branch. It is 
 
 ## Overall status
 
-The project is a **brownfield** Cloudflare-native monorepo. The `admin-api` Worker and the Vite/React frontend are the production system. The `public-api` and `job-processor` Workers are placeholders. Several documents in `architecture/` and `REPORT.md` describe aspirational features that do not exist in code.
+The project is a **brownfield** Cloudflare-native monorepo. The `admin-api` Worker and the Vite/React frontend are the production system. The `public-api` and `job-processor` Workers are placeholders. Several documents in `docs/architecture/` and `docs/product/REPORT.md` describe aspirational features that do not exist in code.
 
 ## What is implemented
 
@@ -17,7 +17,10 @@ This single file is the entire production backend. It is a Hono Worker with:
 - R2 object storage for case-study images, source files, club files, and static completed-projects JSON.
 - KV for auth sessions (bound as `AUTH_SESSIONS` but not actively used in `main`; the token registry lives in D1).
 - Queue producer binding (`QUEUE`) configured but unused.
-- Resend-based email sending.
+- Unified email delivery: `sendEmail()` sends through Spacemail SMTP (primary, BCC batches of 50, `cloudflare:sockets`) with automatic per-recipient Resend fallback.
+- Hourly/daily email accounting in D1 (`email_hour_count`, `resend_daily_count`, `daily_email_count`).
+- Bulk email queue (`email_queue`) drained by the `* * * * *` cron at up to 8 messages/minute (≤50 BCC recipients each): newsletter, event, and meet notifications enqueue and return immediately; failed campaigns retry up to 5 times; completion writes `recipient_count` back to the newsletter row.
+- Newsletter data lives in a separate D1 database (`NEWSLETTER_DB`, `newsletter-db`); the old tables in `180dc-db` are frozen backups.
 - Rate limiting in D1.
 - HTML sanitization (`sanitizeBlogHtml`).
 - Password hashing (PBKDF2) but no password login flow currently used.
@@ -34,9 +37,30 @@ A Vite + React + TypeScript SPA with React Router.
 - `/recruitments` and `/request-account` public pages.
 - Cloudflare Pages `_middleware.ts` proxies `/api/*` to `admin-api.technical-vitc.workers.dev` and adds security headers.
 
+### Newsletter API (prep for the separate newsletter site, ADR-004)
+
+- `GET /api/newsletter/:id` public endpoint exists — rate-limited, returns newsletter
+  detail with `content` sanitized via `sanitizeBlogHtml` (never raw stored HTML).
+  The planned separate newsletter site (own repo, `newsletter.180dcvitc.org`) fetches
+  `GET /api/newsletter` (list), `GET /api/newsletter/:id` (detail), subscribe, and
+  unsubscribe.
+- CORS/CSRF allowlist (`ALLOWED_ORIGINS` in `apps/admin-api/index.ts`) includes
+  `https://newsletter.180dcvitc.org` and `https://180dc-newsletters.technical-vitc.workers.dev`.
+- The newsletter site (repo `180DC-VIT-CHENNAI/Newsletters`) is live as a static
+  Cloudflare Worker at `https://180dc-newsletters.technical-vitc.workers.dev`: archive at
+  `/newsletters`, Ken-style article pages at `/newsletter/{slug|id}`, server-side-free
+  (Vite SPA) with client-side fetches to the public API. `NEWSLETTER_SITE_URL` is set to
+  it, so bulk email CTAs link to `{site}/newsletter/{slug}`.
+- `/subscriber/newsletter` is the single send hub (newsletter issues + event mail). Sent
+  issues get a "View on the web" link there; the public list returns **sent issues only**,
+  so drafts stay unpublished until they are mailed. The `/newsletter` pages on the main
+  site were removed — the separate site owns the archive and articles.
+
 ### D1 data
 
 Live data is in the `180dc-db` D1 database. Schema creation and migrations are run by the Worker on first request via `ensureDbReady`.
+
+Newsletter data (`newsletters`, `newsletter_subscribers`, `newsletter_authorized_emails`, `newsletter_otp_codes`, `newsletter_sessions`) lives in the separate `newsletter-db` database (`NEWSLETTER_DB` binding), initialized by `ensureNewsletterReady`. The copies in `180dc-db` are frozen legacy backups.
 
 ### Cloudflare Pages
 
@@ -55,23 +79,23 @@ The frontend is deployed as a Cloudflare Pages project named `180dc-admin-fronte
 | `public-api` Worker | `apps/public-api/index.ts` | Returns "Hello from public-api!" only. No routes or logic. |
 | `job-processor` Worker | `apps/job-processor/index.ts` | Returns `{ success: true }` only. Queue consumer configured but no messages are produced. |
 | `packages/db` | `packages/db/schema.sql` | Contains destructive `DROP TABLE` statements and a partial schema. Not used at runtime. |
-| `architecture/backend-architecture-cloudflare.txt` | `architecture/` | Historical/aspirational design. Mentions Cloudflare Access, Next.js, Zod, KV caching, and presigned R2 uploads that do not exist in code. |
-| Recruitment system | Mentioned in `REPORT.md` | Removed from code. `runMigrations` drops recruitment tables. |
-| Real-time chat | Mentioned in `REPORT.md` | Not implemented in `main`. |
-| AI chatbot (ConsultAI) | Mentioned in `REPORT.md` | Not implemented in `main`. |
-| Amazon SES | `SES_SETUP.md`, `architecture/NEWSLETTER_BULK_SEND_DECISION.md` | Decision made, not implemented. Resend is still used. |
+| `docs/architecture/backend-architecture-cloudflare.txt` | `docs/architecture/` | Historical/aspirational design. Mentions Cloudflare Access, Next.js, Zod, KV caching, and presigned R2 uploads that do not exist in code. |
+| Recruitment system | Mentioned in `docs/product/REPORT.md` | Removed from code. `runMigrations` drops recruitment tables. |
+| Real-time chat | Mentioned in `docs/product/REPORT.md` | Not implemented in `main`. |
+| AI chatbot (ConsultAI) | Mentioned in `docs/product/REPORT.md` | Not implemented in `main`. |
+| Amazon SES | `docs/operations/SES_SETUP.md`, `architecture/NEWSLETTER_BULK_SEND_DECISION.md` | Decision made, not implemented. Resend is still used. Spacemail migration planned (`docs/operations/SPACEMAIL_SETUP.md`). |
 
 ## Important discrepancies between documentation and code
 
 | Document/code | Claims | Reality | Classification |
 |---------------|--------|---------|----------------|
-| `architecture/backend-architecture-cloudflare.txt` | Cloudflare Access enforces Google OAuth before admin requests. | Auth is custom token-based; Clerk is only used for Google login in the frontend, not Cloudflare Access. | ACCIDENTAL/HISTORICAL |
-| `architecture/backend-architecture-cloudflare.txt` | Public API is a separate Hono Worker at `api.180dc-vit.in`. | `public-api` is a placeholder. All API calls are served by `admin-api`. | ACCIDENTAL/HISTORICAL |
-| `architecture/backend-architecture-cloudflare.txt` | KV caching for public API. | KV is bound but not used for caching. | ACCIDENTAL/HISTORICAL |
-| `architecture/backend-architecture-cloudflare.txt` | Zod validation. | No Zod schemas in code. | ACCIDENTAL/HISTORICAL |
-| `REPORT.md` | Recruitment, chat, AI chatbot features. | Not implemented in `main`. | UNKNOWN/PLANNED |
+| `docs/architecture/backend-architecture-cloudflare.txt` | Cloudflare Access enforces Google OAuth before admin requests. | Auth is custom token-based; Clerk is only used for Google login in the frontend, not Cloudflare Access. | ACCIDENTAL/HISTORICAL |
+| `docs/architecture/backend-architecture-cloudflare.txt` | Public API is a separate Hono Worker at `api.180dc-vit.in`. | `public-api` is a placeholder. All API calls are served by `admin-api`. | ACCIDENTAL/HISTORICAL |
+| `docs/architecture/backend-architecture-cloudflare.txt` | KV caching for public API. | KV is bound but not used for caching. | ACCIDENTAL/HISTORICAL |
+| `docs/architecture/backend-architecture-cloudflare.txt` | Zod validation. | No Zod schemas in code. | ACCIDENTAL/HISTORICAL |
+| `docs/product/REPORT.md` | Recruitment, chat, AI chatbot features. | Not implemented in `main`. | UNKNOWN/PLANNED |
 | `packages/db/schema.sql` | "Placeholder for D1 schema and migrations." | File is dangerous and out of sync with runtime schema. | BUG (for documentation only) |
-| `NEWSLETTER_EDITOR.md` | Describes newsletter editor accurately. | Current and accurate. | REQUIRED |
+| `docs/operations/NEWSLETTER_EDITOR.md` | Describes newsletter editor accurately. | Current and accurate. | REQUIRED |
 | `TEAM_INSTANCES_PLAN.md` | Describes team instances feature. | Implemented in `admin-api/index.ts` and `TeamInstancesSection.tsx`. | REQUIRED |
 
 ## Deployment topology
@@ -84,11 +108,13 @@ Public DNS 180dcvitc.org
 
 admin-api Worker
   → Deployed from apps/admin-api/index.ts
-  → D1 database 180dc-db
+  → D1 database 180dc-db (members, projects, meets, email_queue, counters)
+  → D1 database newsletter-db via NEWSLETTER_DB (newsletter tables)
   → R2 buckets CLUB_FILES, BLOG_IMAGES, CASE_STUDIES
   → KV namespace AUTH_SESSIONS
   → Queue binding QUEUE (unused)
-  → Resend API for email
+  → Cron trigger * * * * * drains email_queue
+  → Spacemail SMTP for email (Resend fallback)
 
 job-processor Worker
   → Queue consumer for jobs-queue (no producers)
@@ -103,15 +129,20 @@ The following bindings and secrets are used by `admin-api`:
 
 | Name | Type | Purpose |
 |------|------|---------|
-| `DB` | D1 database | Main application database. |
+| `DB` | D1 database | Main application database (`180dc-db`). |
+| `NEWSLETTER_DB` | D1 database | Newsletter database (`newsletter-db`): newsletters, subscribers, editor auth. |
 | `CLUB_FILES` | R2 bucket | File manager uploads. |
 | `BLOG_IMAGES` | R2 bucket | Static completed projects JSON and case-study source files. |
 | `CASE_STUDIES` | R2 bucket | Case study images and newsletter source files. |
 | `AUTH_SESSIONS` | KV namespace | Bound but not actively used in `main`. |
-| `QUEUE` | Queue producer | Bound but not used in `main`. |
-| `RESEND_API_KEY` | Secret | Resend email API. |
+| `QUEUE` | Queue producer | Bound but not used in `main`; bulk email uses `email_queue` + cron. |
+| `RESEND_API_KEY` | Secret | Fallback email sender (used when Spacemail SMTP fails). |
 | `CLERK_SECRET_KEY` | Secret | Clerk JWT verification. |
 | `ENVIRONMENT` | Var | Set to `production` on the deployed worker. |
+| `NEWSLETTER_SITE_URL` | Var | Base URL of the newsletter site (ADR-004): `https://180dc-newsletters.technical-vitc.workers.dev`. Bulk email CTAs link to `{site}/newsletter/{slug}`. |
+| `SPACEMAIL_SMTP_USER` | Secret | Authenticated SMTP mailbox (`technical@180dcvitc.org`), also the From address. Set in production. |
+| `SPACEMAIL_SMTP_PASS` | Secret | Mailbox password for SMTP AUTH. Set in production. |
+| `SPACEMAIL_HOURLY_LIMIT` | Secret | Optional pacing cap for the mailbox messages/hour. Removed after upgrading to a paid plan; absent = default `500`. |
 
 The following are used by the frontend:
 
@@ -124,7 +155,7 @@ The following are used by the frontend:
 
 - All API routes are served by `admin-api`. The frontend relies on this.
 - Token auth uses the `admin_tokens` table. Tokens are created by board members and emailed.
-- Rate limits and daily email cap are enforced.
+- Rate limits and email caps are enforced (`email_hour_count`, `resend_daily_count`).
 - Meet link visibility is hidden after the scheduled time.
 - `runMigrations` is idempotent and drops legacy recruitment tables.
 - `ensureTables` creates tables only if they do not exist.
@@ -135,4 +166,42 @@ The following are used by the frontend:
 - No formal migration files; schema evolution is in `admin-api/index.ts`.
 - `public-api` and `job-processor` are not used.
 - `packages/db` is a placeholder and misleading.
-- `architecture/backend-architecture-cloudflare.txt` is historical and may confuse new agents.
+- `docs/architecture/backend-architecture-cloudflare.txt` is historical and may confuse new agents.
+
+## Next steps — newsletter system (Spacemail + separate newsletter site)
+
+Ordered by dependency. `[done]` items are live in production (verified 2026-10-05/06).
+
+1. **Cloudflare DNS:** `[done]` root `180dcvitc.org` has MX `mx1/mx2.spacemail.com`
+   (priority 0), SPF `v=spf1 include:spf.spacemail.com ~all`, and DKIM at
+   `spacemail._domainkey` (verified live 2026-10-06). DMARC stays `p=none`. Resend keeps
+   authenticating via its own `resend._domainkey` DKIM, so no root SPF include is needed.
+2. **Spacemail Manager:** `[done]` domain verified (`fbf0abfa...` TXT present); DKIM TXT
+   added. Mailbox `technical@180dcvitc.org` exists and SMTP AUTH works; all From addresses
+   use this mailbox, so Spacemail's sender-ownership check passes without an alias. The old
+   `mail.180dcvitc.org` MX/SPF records are gone.
+3. **Separate newsletter repo:** `[done]` the newsletter site lives in repo
+   `180DC-VIT-CHENNAI/Newsletters` (static Vite SPA Worker) at
+   `https://180dc-newsletters.technical-vitc.workers.dev`, fetching
+   `GET /api/newsletter` (archive) and `GET /api/newsletter/{slug|id}` (article). CTA to a
+   `newsletter.180dcvitc.org` custom domain is optional.
+4. **DNS:** optional. Add CNAME `newsletter` → the Worker host if a custom domain is wanted.
+5. **Deploy admin-api:** `[done]` public `GET /api/newsletter/:id`, CORS origins, SMTP email
+   layer, bulk `email_queue` + cron, slugs, and the `NEWSLETTER_DB` split are deployed.
+6. **Secrets:** `[done]` `SPACEMAIL_SMTP_USER=technical@180dcvitc.org` /
+   `SPACEMAIL_SMTP_PASS` set via `wrangler secret put`; SMTP AUTH and sender acceptance
+   verified live, plus a production queue drain test.
+7. **SMTP migration:** `[done]` `sendEmail()` choke-point (SMTP via `cloudflare:sockets`,
+   BCC batches of 50, MIME + attachments, 500/hour accounting, Resend fallback) replaces all
+   16 Resend call sites. Bulk sends now enqueue to `email_queue` and drain via cron.
+8. **Email templates:** `[done]` bulk CTAs link to `NEWSLETTER_SITE_URL/newsletter/{slug}`
+   (now live); fallback remains `180dcvitc.org/#newsletter`. Welcome/re-subscribe templates
+   redesigned.
+9. **Verify:** `[done]` test sends `From: technical@180dcvitc.org` went through SMTP (no
+   Resend fallback). Keep DMARC `p=none` for a week after switch, then consider
+   `p=quarantine`.
+10. **Newsletter D1 split:** `[done]` newsletter tables migrated to `newsletter-db`
+    (`NEWSLETTER_DB`); old copies in `180dc-db` remain as frozen backups.
+11. **Docs cleanup:** `[done]` for `NEWSLETTER_EDITOR.md`, `api-contract.md`,
+    `business-logic.md`, `invariants.md`, `deployment.md`, data model, architecture, and
+    `AGENTS.md`.

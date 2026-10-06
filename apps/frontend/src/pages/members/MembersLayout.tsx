@@ -204,7 +204,7 @@ export default function MembersLayout() {
   const [adminTokens, setAdminTokens] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [dashboardReady, setDashboardReady] = useState(false);
-  const [stats, setStats] = useState({ membersCount: 0, projectsCount: 0, upcomingMeetsCount: 0, announcementsCount: 0, todayEmailCount: 0 });
+  const [stats, setStats] = useState({ membersCount: 0, projectsCount: 0, upcomingMeetsCount: 0, announcementsCount: 0, todayEmailCount: 0, hourEmailCount: 0, hourEmailLimit: 500 });
   const [recentMeets, setRecentMeets] = useState<any[]>([]);
 
   const [tokenEmail, setTokenEmail] = useState("");
