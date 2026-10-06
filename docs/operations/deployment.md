@@ -136,6 +136,7 @@ NEWSLETTER_SITE_URL = ""
 # SPACEMAIL_SMTP_USER     (technical@180dcvitc.org — also used as the From address)
 # SPACEMAIL_SMTP_PASS     (mailbox password)
 # EMAIL_PRIMARY           (optional: "resend" forces Resend first; default/absent = Spacemail SMTP first)
+# SPACEMAIL_HOURLY_LIMIT  (optional: mailbox plan's messages/hour cap; default 500. Set 20 on trial plans)
 ```
 
 > SMTP note: `sendEmail()` speaks SMTP directly from the Worker using `cloudflare:sockets` to `mail.spacemail.com:465` (implicit TLS). Workers cannot use port 25. Set the mailbox password with `npx wrangler secret put SPACEMAIL_SMTP_PASS` — never commit it.
