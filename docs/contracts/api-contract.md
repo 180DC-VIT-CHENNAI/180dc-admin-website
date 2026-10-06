@@ -25,7 +25,7 @@ This document describes the public and authenticated surface of `admin-api.techn
 | POST | `/api/newsletter/subscribe` | public | Subscribe to newsletter. |
 | GET | `/api/newsletter/unsubscribe` | public | Unsubscribe from newsletter. |
 | GET | `/api/newsletter/subscribers/count` | public | Active subscriber count. |
-| GET | `/api/newsletter` | public | Public newsletter archive. |
+| GET | `/api/newsletter` | public | Public newsletter archive — sent (published) issues only. |
 | GET | `/api/newsletter/:id` | public | Single newsletter with sanitized `content` (fetched by the separate newsletter site). |
 | POST | `/api/newsletter-editor/otp/send` | public | Request OTP for newsletter editor. |
 | POST | `/api/newsletter-editor/otp/verify` | public | Verify OTP and get session token. |

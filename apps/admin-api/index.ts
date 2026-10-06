@@ -3332,7 +3332,7 @@ app.get("/api/newsletter", async (c) => {
         429,
       );
 const rows = await newsletterDb(c).prepare(
-      "SELECT id, title, description, image_url, source_file_url, slug, created_at FROM newsletters ORDER BY created_at DESC LIMIT 10",
+      "SELECT id, title, description, image_url, source_file_url, slug, created_at FROM newsletters WHERE sent_at IS NOT NULL ORDER BY created_at DESC LIMIT 10",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {

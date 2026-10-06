@@ -2,8 +2,11 @@ import { useState, useEffect, useCallback } from "react";
 import { apiUrl } from "../lib/api";
 import { useTheme } from "../context/ThemeContext";
 
+const SITE_URL = "https://180dc-newsletters.technical-vitc.workers.dev";
+
 interface Newsletter {
   id: string;
+  slug: string | null;
   title: string;
   description: string;
   email_subject: string | null;
@@ -397,7 +400,8 @@ export default function NewsletterEditorPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setSuccess(`Newsletter queued for ${data.queued ?? data.total} of ${data.total} subscribers — sending in the background.`);
+        const nl = newsletters.find((n) => n.id === id);
+        setSuccess(`Newsletter queued for ${data.queued ?? data.total} of ${data.total} subscribers — sending in the background.${nl ? ` Read it on the web: ${SITE_URL}/newsletter/${nl.slug || nl.id}` : ""}`);
         loadDrafts();
       } else {
         setError(data.error || "Failed to send");
@@ -644,6 +648,16 @@ export default function NewsletterEditorPage() {
                       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                         {!nl.sent_at && (
                           <button onClick={() => handleSend(nl.id)} style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "var(--status-success)", color: "#fff" }}>Send</button>
+                        )}
+                        {nl.sent_at && (
+                          <a
+                            href={`${SITE_URL}/newsletter/${nl.slug || nl.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ ...btnBase, padding: "4px 12px", fontSize: 12, background: "var(--accent)", color: "#fff", textDecoration: "none" }}
+                          >
+                            View
+                          </a>
                         )}
                         <button
                           onClick={() => {

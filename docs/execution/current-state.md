@@ -51,6 +51,10 @@ A Vite + React + TypeScript SPA with React Router.
   `/newsletters`, Ken-style article pages at `/newsletter/{slug|id}`, server-side-free
   (Vite SPA) with client-side fetches to the public API. `NEWSLETTER_SITE_URL` is set to
   it, so bulk email CTAs link to `{site}/newsletter/{slug}`.
+- `/subscriber/newsletter` is the single send hub (newsletter issues + event mail). Sent
+  issues get a "View on the web" link there; the public list returns **sent issues only**,
+  so drafts stay unpublished until they are mailed. The `/newsletter` pages on the main
+  site were removed — the separate site owns the archive and articles.
 
 ### D1 data
 
