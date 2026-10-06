@@ -985,10 +985,14 @@ function newsletterSiteBase(c: any): string {
   return (c.env.NEWSLETTER_SITE_URL || "").trim().replace(/\/+$/, "");
 }
 
-function newsletterCtaUrl(c: any, newsletterId: string): string {
+function newsletterCtaUrl(
+  c: any,
+  newsletterId: string,
+  slug?: string | null,
+): string {
   const base = newsletterSiteBase(c);
   return base
-    ? base + "/newsletter/" + newsletterId
+    ? base + "/newsletter/" + (slug || newsletterId)
     : "https://180dcvitc.org/#newsletter";
 }
 
@@ -1811,12 +1815,29 @@ function ensureNewsletterReady(c: any): Promise<void> {
 
 async function ensureNewsletterTables(db: any) {
   await db.exec(`
-    CREATE TABLE IF NOT EXISTS newsletters (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '', content TEXT DEFAULT '', source_file_url TEXT, image_url TEXT, sent_at DATETIME, recipient_count INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, email_subject TEXT);
+    CREATE TABLE IF NOT EXISTS newsletters (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '', content TEXT DEFAULT '', source_file_url TEXT, image_url TEXT, sent_at DATETIME, recipient_count INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, email_subject TEXT, slug TEXT);
     CREATE TABLE IF NOT EXISTS newsletter_subscribers (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, active INTEGER DEFAULT 1, subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP, unsubscribed_at DATETIME);
     CREATE TABLE IF NOT EXISTS newsletter_authorized_emails (email TEXT PRIMARY KEY, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS newsletter_otp_codes (id TEXT PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, expires_at DATETIME NOT NULL, used INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS newsletter_sessions (id TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     `);
+  try {
+    await db.exec("ALTER TABLE newsletters ADD COLUMN slug TEXT");
+  } catch {
+    console.warn("Migration: newsletters.slug may already exist");
+  }
+}
+
+async function nextNewsletterSlug(db: any): Promise<string> {
+  const rows: any = await db
+    .prepare("SELECT slug FROM newsletters WHERE slug LIKE 'issue-%'")
+    .all();
+  let max = 0;
+  for (const row of rows.results || []) {
+    const match = /^issue-(\d+)$/.exec(String(row.slug || ""));
+    if (match) max = Math.max(max, parseInt(match[1], 10));
+  }
+  return "issue-" + String(max + 1).padStart(2, "0");
 }
 
 async function ensureTables(db: any) {
@@ -2562,6 +2583,7 @@ const ALLOWED_ORIGINS = [
   "https://admin.180dc.org",
   "https://180dc-admin-frontend.pages.dev",
   "https://newsletter.180dcvitc.org",
+  "https://180dc-newsletters.technical-vitc.workers.dev",
 ];
 
 const isDevOrigin = (o: string) => {
@@ -3309,8 +3331,8 @@ app.get("/api/newsletter", async (c) => {
         { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
         429,
       );
-    const rows = await newsletterDb(c).prepare(
-      "SELECT id, title, description, image_url, source_file_url, created_at FROM newsletters ORDER BY created_at DESC LIMIT 10",
+const rows = await newsletterDb(c).prepare(
+      "SELECT id, title, description, image_url, source_file_url, slug, created_at FROM newsletters ORDER BY created_at DESC LIMIT 10",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
   } catch (e: any) {
@@ -3328,11 +3350,11 @@ app.get("/api/newsletter/:id", async (c) => {
         { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
         429,
       );
-    const id = c.req.param("id");
+const id = c.req.param("id");
     const row = await newsletterDb(c).prepare(
-      "SELECT id, title, description, content, image_url, source_file_url, created_at, sent_at FROM newsletters WHERE id = ?",
+      "SELECT id, title, description, content, image_url, source_file_url, slug, created_at, sent_at FROM newsletters WHERE id = ? OR slug = ?",
     )
-      .bind(id)
+      .bind(id, id)
       .first();
     if (!row) return c.json({ error: "Newsletter not found" }, 404);
     return c.json({
@@ -3344,6 +3366,7 @@ app.get("/api/newsletter/:id", async (c) => {
         content: sanitizeBlogHtml(row.content || ""),
         image_url: row.image_url,
         source_file_url: row.source_file_url,
+        slug: row.slug,
         created_at: row.created_at,
         sent_at: row.sent_at,
       },
@@ -3474,9 +3497,10 @@ app.post("/api/newsletter", async (c) => {
           id,
         )
         .run();
-    } else {
+} else {
+      const slug = await nextNewsletterSlug(newsletterDb(c));
       await newsletterDb(c).prepare(
-        "INSERT INTO newsletters (id, title, description, content, source_file_url, image_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO newsletters (id, title, description, content, source_file_url, image_url, created_by, slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       )
         .bind(
           id,
@@ -3486,6 +3510,7 @@ app.post("/api/newsletter", async (c) => {
           sourceFileUrl || null,
           imageUrl || null,
           user.email,
+          slug,
         )
         .run();
     }
@@ -3551,7 +3576,8 @@ app.post("/api/newsletter/send", async (c) => {
     if (recipients.length === 0)
       return c.json({ error: "No active subscribers" }, 400);
 
-    const siteUrl = newsletterCtaUrl(c, newsletterId);
+    const siteUrl = newsletterCtaUrl(c, newsletterId, newsletter.slug);
+
     const attachmentRefs = attachmentRefsFromUrl(
       newsletter.source_file_url,
       "newsletter.pdf",
@@ -3572,7 +3598,7 @@ app.post("/api/newsletter/send", async (c) => {
       html,
       recipients,
       attachments: attachmentRefs,
-      meta: { newsletter_id: newsletterId },
+      meta: { newsletter_id: newsletterId, slug: newsletter.slug },
       createdBy: user.email,
     });
 
@@ -3830,9 +3856,10 @@ app.post("/api/newsletter-editor/drafts", async (c) => {
       )
         .bind(title, description, emailSubject, sourceFileUrl || null, id)
         .run();
-    } else {
+} else {
+      const slug = await nextNewsletterSlug(newsletterDb(c));
       await newsletterDb(c).prepare(
-        "INSERT INTO newsletters (id, title, description, email_subject, source_file_url, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO newsletters (id, title, description, email_subject, source_file_url, created_by, slug) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
         .bind(
           id,
@@ -3841,6 +3868,7 @@ app.post("/api/newsletter-editor/drafts", async (c) => {
           emailSubject,
           sourceFileUrl || null,
           email,
+          slug,
         )
         .run();
     }
@@ -3943,7 +3971,7 @@ app.post("/api/newsletter-editor/send", async (c) => {
     if (recipients.length === 0)
       return c.json({ error: "No active subscribers" }, 400);
 
-    const siteUrl = newsletterCtaUrl(c, newsletterId);
+    const siteUrl = newsletterCtaUrl(c, newsletterId, newsletter.slug);
 
     const subject = newsletter.email_subject || newsletter.title;
     const attachmentRefs = attachmentRefsFromUrl(
@@ -3966,7 +3994,7 @@ app.post("/api/newsletter-editor/send", async (c) => {
       html,
       recipients,
       attachments: attachmentRefs,
-      meta: { newsletter_id: newsletterId },
+      meta: { newsletter_id: newsletterId, slug: newsletter.slug },
       createdBy: email,
     });
 

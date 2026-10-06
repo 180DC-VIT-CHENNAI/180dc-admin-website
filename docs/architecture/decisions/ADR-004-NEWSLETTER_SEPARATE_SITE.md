@@ -1,6 +1,9 @@
 # ADR-004: Separate newsletter website (Ken-style) in its own repository
 
-- **Status:** decided (API side implemented; separate site repo pending)
+- **Status:** decided, implemented. Site repo `180DC-VIT-CHENNAI/Newsletters` is deployed
+  as a static Worker at `https://180dc-newsletters.technical-vitc.workers.dev` (archive +
+  Ken-style article pages + subscribe/unsubscribe). `NEWSLETTER_SITE_URL` points at it;
+  a custom `newsletter.180dcvitc.org` domain is optional.
 - **Date:** 2026-10-01
 
 ## Context

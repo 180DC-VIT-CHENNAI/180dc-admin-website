@@ -113,7 +113,7 @@ All under `apps/admin-api/index.ts`.
 |----------|----------|---------|
 | `RESEND_API_KEY` | Cloudflare Workers secret + `.dev.vars` | Fallback email sender, used automatically when Spacemail SMTP fails |
 | `VITE_CLERK_PUBLISHABLE_KEY` | `apps/frontend/.env` | Clerk auth for subscriber page |
-| `NEWSLETTER_SITE_URL` | `wrangler.toml` `[vars]` + `.dev.vars` | Base URL of the separate newsletter site (ADR-004). Consumed by bulk templates when non-empty (CTA → `{url}/newsletter/{id}`); kept empty in production until the site is deployed, which falls back to `180dcvitc.org/#newsletter`. |
+| `NEWSLETTER_SITE_URL` | `wrangler.toml` `[vars]` + `.dev.vars` | Base URL of the newsletter site (ADR-004): `https://180dc-newsletters.technical-vitc.workers.dev`. Bulk CTAs render `{url}/newsletter/{slug}`. |
 | `SPACEMAIL_SMTP_USER` / `SPACEMAIL_SMTP_PASS` | Workers secrets + `.dev.vars` | Primary SMTP sender: authenticated mailbox `technical@180dcvitc.org` + password. All From addresses use this mailbox, so Spacemail's sender-ownership check passes. |
 | `NEWSLETTER_DB` | D1 binding (`wrangler.toml`) | Separate `newsletter-db` database holding all newsletter tables. |
 

@@ -45,11 +45,12 @@ A Vite + React + TypeScript SPA with React Router.
   `GET /api/newsletter` (list), `GET /api/newsletter/:id` (detail), subscribe, and
   unsubscribe.
 - CORS/CSRF allowlist (`ALLOWED_ORIGINS` in `apps/admin-api/index.ts`) includes
-  `https://newsletter.180dcvitc.org`.
-- `NEWSLETTER_SITE_URL` is declared in `wrangler.toml` `[vars]` and `.dev.vars`.
-  Bulk email CTAs consume it when non-empty (`{site}/newsletter/{id}`); it is
-  intentionally set to `""` until the separate newsletter site is deployed, which keeps
-  CTAs on `https://180dcvitc.org/#newsletter`.
+  `https://newsletter.180dcvitc.org` and `https://180dc-newsletters.technical-vitc.workers.dev`.
+- The newsletter site (repo `180DC-VIT-CHENNAI/Newsletters`) is live as a static
+  Cloudflare Worker at `https://180dc-newsletters.technical-vitc.workers.dev`: archive at
+  `/newsletters`, Ken-style article pages at `/newsletter/{slug|id}`, server-side-free
+  (Vite SPA) with client-side fetches to the public API. `NEWSLETTER_SITE_URL` is set to
+  it, so bulk email CTAs link to `{site}/newsletter/{slug}`.
 
 ### D1 data
 
@@ -134,7 +135,7 @@ The following bindings and secrets are used by `admin-api`:
 | `RESEND_API_KEY` | Secret | Fallback email sender (used when Spacemail SMTP fails). |
 | `CLERK_SECRET_KEY` | Secret | Clerk JWT verification. |
 | `ENVIRONMENT` | Var | Set to `production` on the deployed worker. |
-| `NEWSLETTER_SITE_URL` | Var | Base URL of the separate newsletter site (ADR-004). Consumed by bulk email templates when non-empty; set to `""` in production until the site is deployed. |
+| `NEWSLETTER_SITE_URL` | Var | Base URL of the newsletter site (ADR-004): `https://180dc-newsletters.technical-vitc.workers.dev`. Bulk email CTAs link to `{site}/newsletter/{slug}`. |
 | `SPACEMAIL_SMTP_USER` | Secret | Authenticated SMTP mailbox (`technical@180dcvitc.org`), also the From address. Set in production. |
 | `SPACEMAIL_SMTP_PASS` | Secret | Mailbox password for SMTP AUTH. Set in production. |
 | `SPACEMAIL_HOURLY_LIMIT` | Secret | Optional pacing cap for the mailbox messages/hour. Removed after upgrading to a paid plan; absent = default `500`. |
@@ -175,24 +176,23 @@ Ordered by dependency. `[done]` items are live in production (verified 2026-10-0
    added. Mailbox `technical@180dcvitc.org` exists and SMTP AUTH works; all From addresses
    use this mailbox, so Spacemail's sender-ownership check passes without an alias. The old
    `mail.180dcvitc.org` MX/SPF records are gone.
-3. **Separate newsletter repo:** pending. Build the newsletter site (Cloudflare Pages or
-   Worker at `newsletter.180dcvitc.org`) that fetches `GET /api/newsletter`,
-   `GET /api/newsletter/:id`, `POST /api/newsletter/subscribe`, and
-   `GET /api/newsletter/unsubscribe`. Include the unsubscribe page with an email-entry form
-   (BCC batches can't carry per-recipient links).
-4. **DNS:** pending. Add CNAME `newsletter` → the Pages/Worker host.
-5. **Deploy admin-api:** `[done]` public `GET /api/newsletter/:id`, CORS origin, SMTP email
-   layer, bulk `email_queue` + cron, and the `NEWSLETTER_DB` split are deployed.
+3. **Separate newsletter repo:** `[done]` the newsletter site lives in repo
+   `180DC-VIT-CHENNAI/Newsletters` (static Vite SPA Worker) at
+   `https://180dc-newsletters.technical-vitc.workers.dev`, fetching
+   `GET /api/newsletter` (archive) and `GET /api/newsletter/{slug|id}` (article). CTA to a
+   `newsletter.180dcvitc.org` custom domain is optional.
+4. **DNS:** optional. Add CNAME `newsletter` → the Worker host if a custom domain is wanted.
+5. **Deploy admin-api:** `[done]` public `GET /api/newsletter/:id`, CORS origins, SMTP email
+   layer, bulk `email_queue` + cron, slugs, and the `NEWSLETTER_DB` split are deployed.
 6. **Secrets:** `[done]` `SPACEMAIL_SMTP_USER=technical@180dcvitc.org` /
    `SPACEMAIL_SMTP_PASS` set via `wrangler secret put`; SMTP AUTH and sender acceptance
    verified live, plus a production queue drain test.
 7. **SMTP migration:** `[done]` `sendEmail()` choke-point (SMTP via `cloudflare:sockets`,
    BCC batches of 50, MIME + attachments, 500/hour accounting, Resend fallback) replaces all
    16 Resend call sites. Bulk sends now enqueue to `email_queue` and drain via cron.
-8. **Email templates:** `[done]` bulk CTAs consume `NEWSLETTER_SITE_URL` with a safe
-   `180dcvitc.org/#newsletter` fallback. The var is intentionally `""` in `wrangler.toml`
-   until the newsletter site is live; set it to `https://newsletter.180dcvitc.org` then.
-   Welcome/re-subscribe templates redesigned.
+8. **Email templates:** `[done]` bulk CTAs link to `NEWSLETTER_SITE_URL/newsletter/{slug}`
+   (now live); fallback remains `180dcvitc.org/#newsletter`. Welcome/re-subscribe templates
+   redesigned.
 9. **Verify:** `[done]` test sends `From: technical@180dcvitc.org` went through SMTP (no
    Resend fallback). Keep DMARC `p=none` for a week after switch, then consider
    `p=quarantine`.
