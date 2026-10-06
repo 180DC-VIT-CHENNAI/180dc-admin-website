@@ -136,6 +136,9 @@ All sending goes through `sendEmail()` in `apps/admin-api/index.ts`:
 > **Authoring:** newsletter drafts store `content` as plain text or basic HTML
 > (paragraphs are auto-wrapped and sanitized on save). The PDF/DOCX upload was removed for
 > newsletters; the Event Mail tab keeps its poster/source uploads.
+> Issues authored in the site repo (`public/data/{slug}.json`) are rendered into the mail
+> as the full site layout (`issueToEmailHtml`); a seeded editorial-sync Issue 01 is shown
+> in the editor drafts list via `scripts/sync-newsletter-content.mjs`.
 
 All outgoing emails include an unsubscribe footer. Bulk sends share one body across BCC batches, so the footer links to the public page without a per-recipient parameter:
 ```
@@ -146,7 +149,7 @@ Single-recipient emails (welcome / welcome-back) may keep `?email={subscriber_em
 
 ### Newsletter Email (`newsletterEmailHtml`)
 - Ken-style design matching the newsletter site: cream background, ink border + hard shadow card, Anton display type, "The Scope" masthead, issue bar
-- "New Newsletter" label, title, description
+- **Structured render:** when the site exposes `{site}/data/{slug}.json` for an issue, the mail embeds the **full site article layout** (`issueToEmailHtml`): masthead, issue bar, cover image, section kickers/titles, paragraphs, green quote boxes, stat cards, numbered lists, notes, plus the "Read it on the web" button and URL. Otherwise it falls back to the teaser + embedded `content` template.
 - **Embeds the full article content** (sanitized) after the teaser, then the "Read on the web" CTA button plus the visible issue URL
 - Unsubscribe footer
 - CTA target: `{NEWSLETTER_SITE_URL}/newsletter/{id}` when the var is set, otherwise `https://180dcvitc.org/#newsletter`

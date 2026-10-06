@@ -3049,6 +3049,198 @@ ${
 </table></td></tr></table>
 </body></html>`;
 }
+type EmailIssueBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "heading"; text: string }
+  | { type: "lead"; text: string }
+  | { type: "quote"; text: string; by?: string }
+  | { type: "stats"; items: { value: string; label: string }[] }
+  | { type: "image"; src: string; alt?: string; caption?: string; fit?: string }
+  | { type: "list"; items: string[] }
+  | { type: "note"; title: string; text: string };
+
+type EmailIssueSection = {
+  kicker: string;
+  title: string;
+  blocks: EmailIssueBlock[];
+};
+
+type EmailIssue = {
+  id: string;
+  slug?: string;
+  title: string;
+  category?: string;
+  date?: string;
+  readTime?: string;
+  editors?: string;
+  dek?: string;
+  cover?: string;
+  sections: EmailIssueSection[];
+};
+
+function formatEmailIssueDate(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(+d)) return "";
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function issueBlockRows(block: EmailIssueBlock): string {
+  switch (block.type) {
+    case "lead":
+      return `<tr><td style="padding:6px 0"><p style="font-family:'Inter',sans-serif;font-size:17px;line-height:1.6;color:#2b2b2b;margin:0;font-weight:600">${escapeHtml(block.text)}</p></td></tr>`;
+    case "paragraph":
+      return `<tr><td style="padding:6px 0"><p style="font-family:'Inter',sans-serif;font-size:15px;line-height:1.75;color:#2b2b2b;margin:0">${escapeHtml(block.text)}</p></td></tr>`;
+    case "heading":
+      return `<tr><td style="padding:22px 0 4px"><p style="font-family:'Anton','Impact',sans-serif;font-size:22px;line-height:1.1;color:#2b2b2b;margin:0;letter-spacing:-0.01em">${escapeHtml(block.text)}</p></td></tr>`;
+    case "quote":
+      return `<tr><td style="padding:16px 0"><table width="100%" cellpadding="0" cellspacing="0" style="background:#00854a;border:2px solid #2b2b2b;border-radius:14px;box-shadow:3px 3px 0 #2b2b2b"><tr><td style="padding:24px 26px"><p style="font-family:'Anton','Impact',sans-serif;font-size:20px;line-height:1.3;color:#ffffff;margin:0">${escapeHtml(block.text)}</p>${block.by ? `<p style="font-family:'Inter',sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:#ffffff;margin:14px 0 0;opacity:0.85">— ${escapeHtml(block.by)}</p>` : ""}</td></tr></table></td></tr>`;
+    case "stats": {
+      const cells = block.items
+        .map(
+          (s) => `<td width="50%" style="padding:8px;vertical-align:top"><table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:2px solid #2b2b2b;border-radius:12px;box-shadow:2px 2px 0 #2b2b2b"><tr><td style="padding:16px 18px"><div style="font-family:'Anton','Impact',sans-serif;font-size:24px;line-height:1;color:#00854a">${escapeHtml(s.value)}</div><p style="font-family:'Inter',sans-serif;font-size:12px;line-height:1.45;color:#2b2b2b;margin:8px 0 0;opacity:0.75">${escapeHtml(s.label)}</p></td></tr></table></td>`,
+        )
+        .join("");
+      return `<tr><td style="padding:16px 0"><table width="100%" cellpadding="0" cellspacing="0">${block.items
+        .reduce<string[]>((acc, _, i) => {
+          const idx = Math.floor(i / 2);
+          if (!acc[idx]) acc[idx] = "";
+          acc[idx] += cells[i];
+          return acc;
+        }, [])
+        .map((pair) => `<tr>${pair}</tr>`)
+        .join("")}</table></td></tr>`;
+    }
+    case "image":
+      return `<tr><td style="padding:12px 0"><table width="100%" cellpadding="0" cellspacing="0"><tr><td><img src="${block.src}" alt="${escapeHtml(block.alt || "")}" width="100%" style="width:100%;height:auto;display:block;border:2px solid #2b2b2b;border-radius:12px;background:#ffffff" />${block.caption ? `<p style="font-family:'Inter',sans-serif;font-size:12px;line-height:1.5;color:#2b2b2b;margin:10px 0 0;opacity:0.65">${escapeHtml(block.caption)}</p>` : ""}</td></tr></table></td></tr>`;
+    case "list": {
+      const items = block.items
+        .map(
+          (item, i) => `<tr><td style="padding:7px 0;vertical-align:top"><table cellpadding="0" cellspacing="0"><tr><td width="34" style="vertical-align:top"><table width="30" cellpadding="0" cellspacing="0" style="border:2px solid #2b2b2b;border-radius:50%;background:#ffffff"><tr><td height="26" align="center" style="font-family:'Anton','Impact',sans-serif;font-size:13px;color:#00854a">${String(i + 1).padStart(2, "0")}</td></tr></table></td><td style="padding-left:12px"><p style="font-family:'Inter',sans-serif;font-size:14px;line-height:1.6;color:#2b2b2b;margin:0">${escapeHtml(item)}</p></td></tr></table></td></tr>`,
+        )
+        .join("");
+      return `<tr><td style="padding:8px 0"><table width="100%" cellpadding="0" cellspacing="0">${items}</table></td></tr>`;
+    }
+    case "note":
+      return `<tr><td style="padding:16px 0"><table width="100%" cellpadding="0" cellspacing="0" style="border:2px dashed #00854a;border-radius:12px;background:#f9f5f1"><tr><td style="padding:20px 24px"><p style="font-family:'Anton','Impact',sans-serif;font-size:15px;text-transform:uppercase;letter-spacing:0.04em;color:#00854a;margin:0 0 8px">${escapeHtml(block.title)}</p><p style="font-family:'Inter',sans-serif;font-size:14px;line-height:1.65;color:#2b2b2b;margin:0">${escapeHtml(block.text)}</p></td></tr></table></td></tr>`;
+  }
+}
+
+function issueToEmailHtml(
+  issue: EmailIssue,
+  articleUrl: string,
+  subscriberEmail?: string,
+): string {
+  const issueLabel = "ISSUE " + String(issue.issue || 1).padStart(2, "0");
+  const dateText = formatEmailIssueDate(issue.date);
+  const unsubUrl = subscriberEmail
+    ? "https://180dcvitc.org/unsubscribe?email=" + encodeURIComponent(subscriberEmail)
+    : "https://180dcvitc.org/unsubscribe";
+  const sectionRows = issue.sections
+    .map((s) => {
+      const blockRows = s.blocks.map((b) => issueBlockRows(b)).join("");
+      return `<tr><td style="padding:26px 0 0"><p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.28em;color:#00854a;margin:0 0 8px">${escapeHtml(s.kicker)}</p><p style="font-family:'Anton','Impact',sans-serif;font-size:30px;line-height:1;color:#2b2b2b;margin:0 0 14px;letter-spacing:-0.01em">${escapeHtml(s.title)}</p><table width="100%" cellpadding="0" cellspacing="0">${blockRows}</table></td></tr>`;
+    })
+    .join("");
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background-color:#f3ede8;font-family:'Inter',-apple-system,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3ede8;padding:24px 12px">
+<tr><td align="center">
+<table width="620" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:18px;border:2px solid #2b2b2b;box-shadow:3px 3px 0 #2b2b2b">
+
+<!-- MASTHEAD -->
+<tr><td style="padding:36px 32px 0;text-align:center">
+<p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.28em;color:#2b2b2b;margin:0 0 16px;opacity:0.65">180° Consulting · VIT Chennai presents</p>
+<div style="font-family:'Anton','Impact',sans-serif;font-weight:400;font-size:60px;line-height:0.9;color:#2b2b2b;letter-spacing:-0.01em;margin:0 0 8px">The Scope</div>
+<p style="font-family:'Inter',sans-serif;font-size:12px;line-height:1.6;color:#2b2b2b;margin:0;opacity:0.65">One story with the numbers left in, one playbook you can copy, and three things worth reading.</p>
+<div style="height:2px;background:#2b2b2b;margin:22px 0 0"></div>
+</td></tr>
+
+<!-- ISSUE BAR -->
+<tr><td style="padding:14px 32px 0;text-align:center">
+<p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.18em;color:#00854a;margin:0">${issueLabel}${dateText ? " · " + dateText : ""}${issue.readTime ? " · " + escapeHtml(issue.readTime.toUpperCase()) : ""}</p>
+</td></tr>
+
+<!-- HEAD -->
+<tr><td style="padding:26px 32px 0">
+${issue.cover ? `<img src="${issue.cover}" alt="" width="100%" style="width:100%;height:auto;display:block;border:2px solid #2b2b2b;border-radius:14px;background:#ffffff;margin-bottom:22px" />` : ""}
+<p style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#00854a;margin:0 0 12px">${escapeHtml(issue.category || "The Scope")}</p>
+<p style="font-family:'Anton','Impact',sans-serif;font-size:42px;line-height:1;color:#2b2b2b;margin:0 0 16px;letter-spacing:-0.01em">${escapeHtml(issue.title)}</p>
+${issue.dek ? `<p style="font-family:'Inter',sans-serif;font-size:16px;line-height:1.6;color:#2b2b2b;margin:0 0 16px;opacity:0.8">${escapeHtml(issue.dek)}</p>` : ""}
+${issue.editors ? `<p style="font-family:'Inter',sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:0.14em;color:#2b2b2b;margin:0;opacity:0.6">BY ${escapeHtml(issue.editors.toUpperCase())}</p>` : ""}
+<div style="height:2px;background:#2b2b2b;margin:22px 0 0"></div>
+</td></tr>
+
+<!-- SECTIONS -->
+<tr><td style="padding:0 32px 0"><table width="100%" cellpadding="0" cellspacing="0">${sectionRows}</table></td></tr>
+
+<!-- CTA -->
+<tr><td style="padding:30px 32px;text-align:center">
+<a href="${escapeHtml(articleUrl)}" style="display:inline-block;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#ffffff;background:#00854a;border:2px solid #2b2b2b;border-radius:999px;padding:13px 30px;text-decoration:none;box-shadow:3px 3px 0 #2b2b2b">Read it on the web →</a>
+<p style="font-family:'Inter',sans-serif;font-size:11px;color:#2b2b2b;margin:16px 0 0;opacity:0.5;word-break:break-all">${escapeHtml(articleUrl)}</p>
+</td></tr>
+
+<!-- FOOTER -->
+<tr><td style="background:#ffffff;border-top:2px solid #2b2b2b;border-radius:0 0 16px 16px;padding:20px 32px;text-align:center">
+<p style="font-family:'Inter',sans-serif;font-size:12px;font-weight:700;color:#2b2b2b;margin:0 0 4px">180 Degrees Consulting — VIT Chennai</p>
+<p style="font-family:'Inter',sans-serif;font-size:11px;color:#2b2b2b;margin:0 0 12px;opacity:0.6">You received this because you subscribed to our newsletter.</p>
+<p style="font-family:'Inter',sans-serif;font-size:11px;margin:0">
+<a href="https://www.instagram.com/180dc.vitc/" style="color:#00854a;text-decoration:none;font-weight:700">Instagram</a>
+&nbsp;·&nbsp;
+<a href="https://www.linkedin.com/company/180-degrees-consulting-vit-chennai/" style="color:#00854a;text-decoration:none;font-weight:700">LinkedIn</a>
+&nbsp;·&nbsp;
+<a href="${unsubUrl}" style="color:#2b2b2b;text-decoration:underline">Unsubscribe</a>
+</p>
+</td></tr>
+
+</table></td></tr></table>
+</body>
+</html>`;
+}
+
+async function buildNewsletterEmailHtml(
+  c: any,
+  newsletter: any,
+  siteUrl: string,
+  hasPdf: boolean,
+  subscriberEmail?: string,
+): Promise<string> {
+  const base = newsletterSiteBase(c);
+  if (base && newsletter.slug) {
+    try {
+      const res = await fetch(
+        base + "/data/" + encodeURIComponent(newsletter.slug) + ".json",
+        { headers: { accept: "application/json" } },
+      );
+      if (res.ok) {
+        const issue: EmailIssue = await res.json();
+        if (issue && Array.isArray(issue.sections)) {
+          return issueToEmailHtml(issue, siteUrl, subscriberEmail);
+        }
+      }
+    } catch {
+      console.warn(
+        "[email] structured issue fetch failed for " + newsletter.slug,
+      );
+    }
+  }
+  return newsletterEmailHtml(
+    newsletter.title,
+    newsletter.description || "",
+    siteUrl,
+    subscriberEmail,
+    hasPdf,
+    sanitizeBlogHtml(newsletter.content || ""),
+  );
+}
+
 function welcomeEmailHtml(
   email: string,
   variant: "new" | "back",
@@ -3553,13 +3745,11 @@ app.post("/api/newsletter/send", async (c) => {
       "newsletter.pdf",
     );
 
-    const html = newsletterEmailHtml(
-      newsletter.title,
-      newsletter.description || "",
+    const html = await buildNewsletterEmailHtml(
+      c,
+      newsletter,
       siteUrl,
-      undefined,
       attachmentRefs.length > 0,
-      sanitizeBlogHtml(newsletter.content || ""),
     );
 
     const campaign = await enqueueEmailCampaign(c, {
@@ -3789,10 +3979,10 @@ app.get("/api/newsletter-editor/me", async (c) => {
 // Draft: List
 app.get("/api/newsletter-editor/drafts", async (c) => {
   try {
-    const email = await verifyNewsletterSession(c);
+const email = await verifyNewsletterSession(c);
     if (!email) return c.json({ error: "Not authenticated" }, 401);
     const rows = await newsletterDb(c).prepare(
-      "SELECT * FROM newsletters WHERE created_by = ? ORDER BY created_at DESC",
+      "SELECT * FROM newsletters WHERE created_by = ? OR created_by = 'editorial-sync' ORDER BY created_at DESC",
     )
       .bind(email)
       .all();
@@ -3965,13 +4155,11 @@ app.post("/api/newsletter-editor/send", async (c) => {
       "newsletter.pdf",
     );
 
-    const html = newsletterEmailHtml(
-      newsletter.title,
-      newsletter.description || "",
+    const html = await buildNewsletterEmailHtml(
+      c,
+      newsletter,
       siteUrl,
-      undefined,
       attachmentRefs.length > 0,
-      sanitizeBlogHtml(newsletter.content || ""),
     );
 
     const campaign = await enqueueEmailCampaign(c, {
