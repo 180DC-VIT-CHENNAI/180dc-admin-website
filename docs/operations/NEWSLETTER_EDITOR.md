@@ -150,6 +150,9 @@ Single-recipient emails (welcome / welcome-back) may keep `?email={subscriber_em
 - **Embeds the full article content** (sanitized) after the teaser, then the "Read on the web" CTA button
 - Unsubscribe footer
 - CTA target: `{NEWSLETTER_SITE_URL}/newsletter/{id}` when the var is set, otherwise `https://180dcvitc.org/#newsletter`
+- **Planned enhancement (skip while only one issue exists):** a "Check out our other issues"
+  footer listing up to 3 other published issues as rectangular boxes linking to
+  `{site}/newsletter/{slug}`; template param `otherIssues` was designed for it.
 
 ### Event Mail (`eventMailEmailHtml`)
 - Dark header with green accent text

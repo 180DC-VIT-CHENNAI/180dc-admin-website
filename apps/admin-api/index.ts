@@ -188,7 +188,15 @@ function decodeEntities(str: string): string {
 function textToParagraphHtml(text: string): string {
   return text
     .split(/\n{2,}/)
-    .map((p) => p.replace(/\n/g, "<br>").trim())
+    .map((p) =>
+      p
+        .replace(/\n/g, "<br>")
+        .replace(
+          /(https?:\/\/[^\s<>"']+)/g,
+          '<a href="$1" style="color:#8dc63f;font-weight:600">$1</a>',
+        )
+        .trim(),
+    )
     .filter(Boolean)
     .map((p) => "<p>" + p + "</p>")
     .join("");
