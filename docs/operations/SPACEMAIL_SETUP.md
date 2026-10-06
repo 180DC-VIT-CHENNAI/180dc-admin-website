@@ -1,15 +1,12 @@
 # Spacemail Setup for 180DC
 
-> **Status:** Backend implemented; DNS configured; credentials pending. The `sendEmail()`
-> choke-point and all Resend call-site replacements are in `apps/admin-api/index.ts`
-> (Spacemail SMTP primary via `cloudflare:sockets`, automatic Resend fallback, BCC batches
-> of 50, `email_hour_count` / `resend_daily_count` accounting). The root Cloudflare DNS
-> records are in place (MX, SPF, `spacemail._domainkey` DKIM — verified live). The
-> `spacemail._domainkey` / `_autodiscover._tcp` / `spf.spacemail.com` checks all pass.
-> `SPACEMAIL_SMTP_USER` / `SPACEMAIL_SMTP_PASS` are not set in production yet, so until
-> then the code continues to send through Resend. Local `.dev.vars` has them configured
-> (mailbox `technical@180dcvitc.org`). `NEWSLETTER_SITE_URL` is intentionally empty until
-> the separate newsletter site (ADR-004) is deployed. Ordered checklist:
+> **Status:** Live. The `sendEmail()` choke-point, all Resend call-site replacements, the
+> `email_queue` + cron drain, and the `NEWSLETTER_DB` split are deployed. Root Cloudflare
+> DNS records (MX, SPF, `spacemail._domainkey` DKIM) are in place and verified, and the
+> production secrets use the `technical@180dcvitc.org` mailbox. Test sends went through
+> SMTP with no Resend fallback, and a production queue drain test completed.
+> `NEWSLETTER_SITE_URL` is intentionally empty until the separate newsletter site
+> (ADR-004) is deployed. Ordered checklist:
 > `docs/execution/current-state.md` → "Next steps — newsletter system".
 
 ## Why this document exists
@@ -104,6 +101,23 @@ Inactive records → Spacemail DNS records**: copy the TXT that starts with
 > automatically, but this domain uses Cloudflare DNS, so it must be added manually.
 > Optional: an SRV `_autodiscover._tcp` → `autoconfig.spacemail.com` (port 443) record
 > is only for mail-client autoconfiguration, not for sending.
+
+> **Key rotation hazard (hit once, 2026-10-05):** Spaceship cannot rotate DKIM
+> automatically for external DNS. Spacemail rotated the `spacemail._domainkey` key and
+> outgoing mail failed `dkim=fail ("headers rsa verify failed")` until the new value from
+> Spaceship → Advanced DNS → Inactive records → Spacemail was published in Cloudflare.
+> If external recipients (especially `@vitstudent.ac.in` / Gmail) stop receiving, check
+> this record first. Verify by sending a test and reading `Authentication-Results:
+> dkim=pass` in the delivered headers.
+
+> **Outbound spam-filter format hazard (hit once, 2026-10-05):** Spacemail's Jellyfish
+> filter (error `JFE040000`, codes documented by Namecheap KB 10664) rejects messages that
+> are HTML-only with base64 bodies and no plain-text part (`JFE040031`, `JFE040012`,
+> `JFE040014`). `buildMimeMessage()` therefore emits `multipart/alternative` with
+> quoted-printable text/plain + text/html parts; attachments wrap it in
+> `multipart/mixed`. Do not revert to a single base64 HTML part — outbound mail will be
+> bounced at DATA with `550 5.7.1 Rejected due to high probability of spam`. Bounces are
+> delivered to the `technical@` mailbox.
 
 ### 4. Clean up the subdomain records (optional)
 

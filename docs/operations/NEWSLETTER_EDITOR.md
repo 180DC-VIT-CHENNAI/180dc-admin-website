@@ -27,14 +27,17 @@ Newsletter panel (power >= 100):          OTP login → editor:
 4. User enters OTP → verified → 24h session token created
 5. Session stored in `localStorage` as `nl_editor_session`
 
-## Database Tables (D1)
+## Database Tables (`NEWSLETTER_DB`, `newsletter-db`)
+
+These tables live in the separate `newsletter-db` D1 database (binding `NEWSLETTER_DB`).
+The copies in `180dc-db` are frozen legacy backups. `ensureNewsletterTables` creates them.
 
 ```sql
 newsletter_authorized_emails (email TEXT PRIMARY KEY, added_by TEXT, created_at DATETIME)
 newsletter_otp_codes (id TEXT, email TEXT, code TEXT, expires_at DATETIME, used INTEGER)
 newsletter_sessions (id TEXT, email TEXT, expires_at DATETIME)
-newsletter_subscribers (id TEXT, email TEXT UNIQUE, active INTEGER)  -- existing
-newsletters (id TEXT, title TEXT, description TEXT, content TEXT, source_file_url TEXT, sent_at DATETIME)  -- existing
+newsletter_subscribers (id TEXT, email TEXT UNIQUE, active INTEGER)
+newsletters (id TEXT, title TEXT, description TEXT, content TEXT, source_file_url TEXT, image_url TEXT, email_subject TEXT, sent_at DATETIME, recipient_count INTEGER)
 ```
 
 ## Backend Endpoints
@@ -112,17 +115,21 @@ All under `apps/admin-api/index.ts`.
 | `VITE_CLERK_PUBLISHABLE_KEY` | `apps/frontend/.env` | Clerk auth for subscriber page |
 | `NEWSLETTER_SITE_URL` | `wrangler.toml` `[vars]` + `.dev.vars` | Base URL of the separate newsletter site (ADR-004). Consumed by bulk templates when non-empty (CTA → `{url}/newsletter/{id}`); kept empty in production until the site is deployed, which falls back to `180dcvitc.org/#newsletter`. |
 | `SPACEMAIL_SMTP_USER` / `SPACEMAIL_SMTP_PASS` | Workers secrets + `.dev.vars` | Primary SMTP sender: authenticated mailbox `technical@180dcvitc.org` + password. All From addresses use this mailbox, so Spacemail's sender-ownership check passes. |
+| `NEWSLETTER_DB` | D1 binding (`wrangler.toml`) | Separate `newsletter-db` database holding all newsletter tables. |
 
 ## Email Delivery
 
 All sending goes through `sendEmail()` in `apps/admin-api/index.ts`:
 
 - **Primary:** Spacemail SMTP at `mail.spacemail.com:465` (implicit TLS) via `cloudflare:sockets`, AUTH with the mailbox address + password.
-- **Batching:** recipients are chunked into BCC groups of up to 50 per message.
+- **Batching:** bulk queue campaigns (newsletter, event, meet) chunk recipients into BCC groups of up to 50 per message; all other sends (Send Mail, project/role notices, OTPs, letters, tokens) are one recipient per message (`batchRecipients: false`).
 - **Quota:** 500 SMTP messages/hour tracked in `email_hour_count`; Resend fallback capped at 100 recipients/day in `resend_daily_count`.
-- **Fallback:** if SMTP fails (auth, connectivity, timeout), the same content is sent per-recipient through Resend (`RESEND_API_KEY`) so BCC privacy is preserved.
+- **Bulk queue:** newsletter, event, meet, and Send Mail lists over 10 recipients insert one `email_queue` campaign and return immediately with `queued`/`total`. The `* * * * *` cron drains it with adaptive pacing (up to 15 messages/minute, capped at 500/hour), retries failed campaigns up to 5 times, and writes `sent_at`/`recipient_count` back to the newsletter row.
+- **Provider switch:** `EMAIL_PRIMARY` (secret) forces Resend-first when set to `resend`; default is Spacemail-first. Used as an incident lever (e.g., Spacemail DKIM outage).
+- **Fallback:** if SMTP fails (auth, connectivity, timeout, or sender rejection), the same content is sent per-recipient through Resend (`RESEND_API_KEY`) so BCC privacy is preserved.
 - **From addresses:** all `technical@180dcvitc.org` — `180DC Newsletter <...>`, `180DC Events <...>`, `180DC Admin <...>`, `180DC Consulting <...>`, `180DC Letter Studio <...>`.
-- **PDF attachments:** built into a multipart MIME message; Resend fallback uses the Resend `attachments` payload.
+- **PDF attachments:** referenced from R2 by the queue and built into a multipart MIME message at send time; Resend fallback uses the Resend `attachments` payload.
+- **Visibility:** `GET /api/admin/email-queue` (board token) returns hourly usage and recent campaigns.
 
 ## Email Templates
 

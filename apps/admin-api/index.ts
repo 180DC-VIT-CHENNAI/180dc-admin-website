@@ -6,6 +6,7 @@ import { connect } from "cloudflare:sockets";
 
 type Bindings = {
   DB: any;
+  NEWSLETTER_DB: any;
   CLUB_FILES: R2Bucket;
   BLOG_IMAGES: R2Bucket;
   CASE_STUDIES: R2Bucket;
@@ -18,6 +19,7 @@ type Bindings = {
   GROQ_API_KEY?: string;
   SPACEMAIL_SMTP_USER?: string;
   SPACEMAIL_SMTP_PASS?: string;
+  EMAIL_PRIMARY?: string;
   NEWSLETTER_SITE_URL?: string;
 };
 
@@ -521,6 +523,8 @@ type SendEmailOptions = {
   subject: string;
   html: string;
   attachments?: EmailAttachment[];
+  batchRecipients?: boolean;
+  extraHeaders?: Record<string, string>;
 };
 
 type SendEmailResult = {
@@ -568,14 +572,100 @@ function attachmentContentType(filename: string): string {
   return "application/octet-stream";
 }
 
+function decodeHtmlEntities(input: string): string {
+  return input
+    .replace(/&#x([0-9a-f]+);/gi, (_m, hex) => {
+      try {
+        return String.fromCodePoint(parseInt(hex, 16));
+      } catch {
+        return "";
+      }
+    })
+    .replace(/&#(\d+);/g, (_m, dec) => {
+      try {
+        return String.fromCodePoint(parseInt(dec, 10));
+      } catch {
+        return "";
+      }
+    })
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#x27;|&apos;/gi, "'");
+}
+
+function htmlToPlainText(html: string): string {
+  return decodeHtmlEntities(
+    html
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<head[\s\S]*?<\/head>/gi, "")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|tr|h[1-6]|li|table)>/gi, "\n")
+      .replace(
+        /<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi,
+        (_m, href, label) => {
+          const text = decodeHtmlEntities(
+            String(label).replace(/<[^>]+>/g, ""),
+          ).trim();
+          return text ? text + " (" + href + ")" : href;
+        },
+      )
+      .replace(/<[^>]+>/g, ""),
+  )
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .filter((line, index, all) => !(line === "" && all[index - 1] === ""))
+    .join("\n")
+    .trim();
+}
+
+function toQuotedPrintable(input: string): string {
+  const bytes = new TextEncoder().encode(input.replace(/\r\n/g, "\n"));
+  let out = "";
+  let lineLength = 0;
+  for (const byte of bytes) {
+    if (byte === 0x0a) {
+      out += "\r\n";
+      lineLength = 0;
+      continue;
+    }
+    let token: string;
+    if (byte === 0x3d) token = "=3D";
+    else if (byte >= 0x20 && byte <= 0x7e) token = String.fromCharCode(byte);
+    else token = "=" + byte.toString(16).toUpperCase().padStart(2, "0");
+    if (lineLength + token.length > 75) {
+      out += "=\r\n";
+      lineLength = 0;
+    }
+    out += token;
+    lineLength += token.length;
+  }
+  return out
+    .split("\r\n")
+    .map((line) =>
+      line.replace(/[ \t]+$/, (m) =>
+        m
+          .split("")
+          .map((char) => (char === " " ? "=20" : "=09"))
+          .join(""),
+      ),
+    )
+    .join("\r\n");
+}
+
 function buildMimeMessage(message: {
   from: string;
   to: string[];
   subject: string;
   html: string;
   attachments?: EmailAttachment[];
+  extraHeaders?: Record<string, string>;
 }): string {
-  const boundary = "180dc-" + crypto.randomUUID().replace(/-/g, "");
+  const altBoundary = "180dc-alt-" + crypto.randomUUID().replace(/-/g, "");
+  const mixedBoundary = "180dc-mix-" + crypto.randomUUID().replace(/-/g, "");
   const headers = [
     "From: " + sanitizeHeaderValue(message.from),
     "To: " +
@@ -585,20 +675,48 @@ function buildMimeMessage(message: {
     "Message-ID: <" + crypto.randomUUID() + "@180dcvitc.org>",
     "MIME-Version: 1.0",
   ];
-  const htmlPart = wrapBase64(utf8ToBase64(message.html));
-  if (!message.attachments || message.attachments.length === 0) {
-    headers.push('Content-Type: text/html; charset="UTF-8"');
-    headers.push("Content-Transfer-Encoding: base64");
-    return headers.join("\r\n") + "\r\n\r\n" + htmlPart + "\r\n";
+  if (message.extraHeaders) {
+    for (const [key, value] of Object.entries(message.extraHeaders)) {
+      const name = sanitizeHeaderValue(key).replace(/[^A-Za-z0-9-]/g, "");
+      const headerValue = sanitizeHeaderValue(value);
+      if (name && headerValue) headers.push(name + ": " + headerValue);
+    }
   }
-  headers.push('Content-Type: multipart/mixed; boundary="' + boundary + '"');
+  const textPart = toQuotedPrintable(htmlToPlainText(message.html));
+  const htmlPart = toQuotedPrintable(message.html);
+  const alternative =
+    "--" +
+    altBoundary +
+    '\r\nContent-Type: text/plain; charset="UTF-8"\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n' +
+    textPart +
+    "\r\n" +
+    "--" +
+    altBoundary +
+    '\r\nContent-Type: text/html; charset="UTF-8"\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n' +
+    htmlPart +
+    "\r\n" +
+    "--" +
+    altBoundary +
+    "--\r\n";
+
+  if (!message.attachments || message.attachments.length === 0) {
+    headers.push(
+      'Content-Type: multipart/alternative; boundary="' + altBoundary + '"',
+    );
+    return headers.join("\r\n") + "\r\n\r\n" + alternative;
+  }
+
+  headers.push(
+    'Content-Type: multipart/mixed; boundary="' + mixedBoundary + '"',
+  );
   const parts: string[] = [];
   parts.push(
     "--" +
-      boundary +
-      '\r\nContent-Type: text/html; charset="UTF-8"\r\nContent-Transfer-Encoding: base64\r\n\r\n' +
-      htmlPart +
-      "\r\n",
+      mixedBoundary +
+      '\r\nContent-Type: multipart/alternative; boundary="' +
+      altBoundary +
+      '"\r\n\r\n' +
+      alternative,
   );
   for (const attachment of message.attachments) {
     const filename = sanitizeHeaderValue(attachment.filename).replace(/"/g, "");
@@ -606,7 +724,7 @@ function buildMimeMessage(message: {
       attachment.contentType || attachmentContentType(filename);
     parts.push(
       "--" +
-        boundary +
+        mixedBoundary +
         "\r\nContent-Type: " +
         contentType +
         '; name="' +
@@ -618,7 +736,7 @@ function buildMimeMessage(message: {
         "\r\n",
     );
   }
-  parts.push("--" + boundary + "--\r\n");
+  parts.push("--" + mixedBoundary + "--\r\n");
   return headers.join("\r\n") + "\r\n\r\n" + parts.join("");
 }
 
@@ -688,6 +806,7 @@ async function smtpSendMessage(
     subject: string;
     html: string;
     attachments?: EmailAttachment[];
+    extraHeaders?: Record<string, string>;
   },
 ): Promise<{
   ok: boolean;
@@ -776,6 +895,7 @@ async function smtpSendMessage(
         subject: message.subject,
         html: message.html,
         attachments: message.attachments,
+        extraHeaders: message.extraHeaders,
       });
       const dotStuffed = mime
         .split("\r\n")
@@ -872,6 +992,7 @@ async function sendViaResend(
     subject: string;
     html: string;
     attachments?: EmailAttachment[];
+    extraHeaders?: Record<string, string>;
   },
 ): Promise<boolean> {
   try {
@@ -881,6 +1002,12 @@ async function sendViaResend(
       subject: message.subject,
       html: message.html,
     };
+    if (
+      message.extraHeaders &&
+      Object.keys(message.extraHeaders).length > 0
+    ) {
+      payload.headers = message.extraHeaders;
+    }
     if (message.attachments && message.attachments.length > 0) {
       payload.attachments = message.attachments.map((attachment) => ({
         filename: attachment.filename,
@@ -933,6 +1060,9 @@ async function sendEmail(
   let resendSent = 0;
   let smtpMessagesSent = 0;
   let stopped = false;
+  const preferResend =
+    String(c.env.EMAIL_PRIMARY || "").trim().toLowerCase() === "resend";
+  const chunkSize = options.batchRecipients ? SMTP_BATCH_SIZE : 1;
 
   const sendBatchViaResend = async (batchRecipients: string[]) => {
     for (const recipient of batchRecipients) {
@@ -950,6 +1080,7 @@ async function sendEmail(
         subject: options.subject,
         html: options.html,
         attachments: options.attachments,
+        extraHeaders: options.extraHeaders,
       });
       if (ok) {
         resendSent++;
@@ -961,8 +1092,14 @@ async function sendEmail(
     }
   };
 
-  for (let index = 0; index < recipients.length; index += SMTP_BATCH_SIZE) {
-    const batch = recipients.slice(index, index + SMTP_BATCH_SIZE);
+  for (let index = 0; index < recipients.length; index += chunkSize) {
+    const batch = recipients.slice(index, index + chunkSize);
+
+    if (preferResend && resendKey) {
+      await sendBatchViaResend(batch);
+      if (stopped) break;
+      continue;
+    }
 
     if (smtpUsable) {
       const hourly = await getHourlyEmailCount(c.env.DB);
@@ -973,6 +1110,7 @@ async function sendEmail(
           subject: options.subject,
           html: options.html,
           attachments: options.attachments,
+          extraHeaders: options.extraHeaders,
         });
         if (smtp.ok) {
           smtpMessagesSent++;
@@ -1019,6 +1157,311 @@ async function sendEmail(
     recipients.length - result.sent - result.failed,
   );
   return result;
+}
+
+const QUEUE_MESSAGES_PER_RUN = 15;
+const QUEUE_MAX_ATTEMPTS = 5;
+const QUEUE_STALE_MINUTES = 10;
+
+type QueueAttachmentRef = {
+  filename: string;
+  key: string;
+  contentType?: string;
+};
+
+function normalizeRecipientList(to: string | string[]): string[] {
+  return (Array.isArray(to) ? to : [to])
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => value.length > 0)
+    .filter((value, index, all) => all.indexOf(value) === index);
+}
+
+function attachmentRefsFromUrl(
+  sourceFileUrl: string | null | undefined,
+  fallbackName: string,
+): QueueAttachmentRef[] {
+  if (!sourceFileUrl) return [];
+  const key = sourceFileUrl.replace(/^\/api\/case-studies\/images\//, "");
+  if (!key || key === sourceFileUrl) return [];
+  const rawName = key.split("/").pop() || fallbackName;
+  const filename = rawName.replace(/[^a-zA-Z0-9._-]/g, "-");
+  return [{ filename, key, contentType: attachmentContentType(filename) }];
+}
+
+async function enqueueEmailCampaign(
+  c: any,
+  options: {
+    kind: string;
+    from: string;
+    subject: string;
+    html: string;
+    recipients: string[];
+    attachments?: QueueAttachmentRef[];
+    meta?: Record<string, unknown>;
+    createdBy?: string;
+  },
+): Promise<{ queued: number; id: string | null }> {
+  const recipients = normalizeRecipientList(options.recipients);
+  if (recipients.length === 0) return { queued: 0, id: null };
+  const id = crypto.randomUUID();
+  await c.env.DB.prepare(
+    "INSERT INTO email_queue (id, kind, from_address, subject, html, attachments, recipients, total, meta, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  )
+    .bind(
+      id,
+      options.kind,
+      options.from,
+      options.subject,
+      options.html,
+      JSON.stringify(options.attachments || []),
+      JSON.stringify(recipients),
+      recipients.length,
+      options.meta ? JSON.stringify(options.meta) : null,
+      options.createdBy || null,
+    )
+    .run();
+  return { queued: recipients.length, id };
+}
+
+async function materializeQueueAttachments(
+  env: any,
+  refs: QueueAttachmentRef[],
+): Promise<EmailAttachment[]> {
+  const attachments: EmailAttachment[] = [];
+  for (const ref of refs) {
+    try {
+      const obj = await env.CASE_STUDIES.get(ref.key);
+      if (!obj) {
+        console.error("[email-queue] attachment missing: " + ref.key);
+        continue;
+      }
+      const buf = await obj.arrayBuffer();
+      attachments.push({
+        filename: ref.filename,
+        content: arrayBufferToBase64(buf),
+        contentType: ref.contentType || attachmentContentType(ref.filename),
+      });
+    } catch (e: any) {
+      console.error(
+        "[email-queue] attachment error " + ref.key + ": " + e.message,
+      );
+    }
+  }
+  return attachments;
+}
+
+async function migrateLegacyPendingEmails(env: any) {
+  try {
+    const rows: any = await env.DB.prepare(
+      "SELECT * FROM pending_emails ORDER BY created_at ASC LIMIT 500",
+    ).all();
+    const pending = rows.results || [];
+    if (pending.length === 0) return;
+    const groups = new Map<string, any[]>();
+    for (const row of pending) {
+      const key = row.meet_id || row.id;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(row);
+    }
+    for (const group of groups.values()) {
+      const first = group[0];
+      await enqueueEmailCampaign(
+        { env },
+        {
+          kind: "meet",
+          from: "180DC Admin <technical@180dcvitc.org>",
+          subject: "New Meet: " + first.meet_title,
+          html: meetEmailHtml(
+            first.meet_title,
+            first.meet_description,
+            first.meet_link,
+            first.scheduled_at,
+            first.meet_type,
+          ),
+          recipients: group.map((r: any) => r.recipient_email),
+          meta: { meet_id: first.meet_id, meet_type: first.meet_type },
+          createdBy: "legacy-migration",
+        },
+      );
+      const ids = group.map((r: any) => r.id);
+      const placeholders = ids.map(() => "?").join(",");
+      await env.DB.prepare(
+        `DELETE FROM pending_emails WHERE id IN (${placeholders})`,
+      )
+        .bind(...ids)
+        .run();
+    }
+    console.log(
+      `[email-queue] migrated ${pending.length} legacy pending email(s)`,
+    );
+  } catch (e: any) {
+    console.error("[email-queue] legacy migration failed: " + e.message);
+  }
+}
+
+async function finalizeQueuedCampaign(
+  env: any,
+  campaign: any,
+  sent: number,
+  failed: number,
+) {
+  try {
+    const meta = campaign.meta ? JSON.parse(campaign.meta) : null;
+    if (!meta) return;
+    if (meta.newsletter_id) {
+      const db = env.NEWSLETTER_DB || env.DB;
+      await db
+        .prepare(
+          "UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?",
+        )
+        .bind(sent, meta.newsletter_id)
+        .run();
+    }
+    if (meta.meet_id) {
+      await env.DB.prepare(
+        "INSERT INTO audit_log (id, action, actor_email, target_type, target_id, details) VALUES (lower(hex(randomblob(16))), 'meet_emails_sent', ?, 'meet', ?, ?)",
+      )
+        .bind(
+          campaign.created_by || "system",
+          meta.meet_id,
+          `sent=${sent}, failed=${failed}`,
+        )
+        .run();
+    }
+  } catch (e: any) {
+    console.error("[email-queue] finalize failed: " + e.message);
+  }
+}
+
+async function drainEmailQueue(env: any): Promise<{
+  sent: number;
+  failed: number;
+  campaignId?: string;
+  done?: boolean;
+  skippedByQuota?: boolean;
+}> {
+  await ensureDbReady(env.DB, env);
+  await migrateLegacyPendingEmails(env);
+  await env.DB.prepare(
+    "UPDATE email_queue SET status='failed', last_error='max attempts reached', updated_at=CURRENT_TIMESTAMP, finished_at=CURRENT_TIMESTAMP WHERE status IN ('pending','processing') AND attempts >= ?",
+  )
+    .bind(QUEUE_MAX_ATTEMPTS)
+    .run();
+
+  const hourly = await getHourlyEmailCount(env.DB);
+  const remaining = Math.max(0, SMTP_MAX_PER_HOUR - hourly);
+  if (remaining <= 0) return { sent: 0, failed: 0, skippedByQuota: true };
+  const minutesLeft = Math.max(1, 60 - new Date().getUTCMinutes());
+  let budget = Math.min(
+    QUEUE_MESSAGES_PER_RUN,
+    Math.max(1, Math.ceil(remaining / minutesLeft)),
+  );
+
+  const staleIso = new Date(Date.now() - QUEUE_STALE_MINUTES * 60000)
+    .toISOString()
+    .replace("T", " ")
+    .slice(0, 19);
+  let campaign: any = null;
+  for (let attempt = 0; attempt < 5 && !campaign; attempt++) {
+    const next: any = await env.DB.prepare(
+      "SELECT id FROM email_queue WHERE (status = 'pending' OR (status = 'processing' AND updated_at < ?)) ORDER BY created_at ASC LIMIT 1",
+    )
+      .bind(staleIso)
+      .first();
+    if (!next) break;
+    const claimed = await env.DB.prepare(
+      "UPDATE email_queue SET status='processing', attempts = attempts + 1, updated_at=CURRENT_TIMESTAMP WHERE id = ? AND (status = 'pending' OR (status = 'processing' AND updated_at < ?))",
+    )
+      .bind(next.id, staleIso)
+      .run();
+    if (claimed.meta && claimed.meta.changes > 0) {
+      campaign = await env.DB.prepare(
+        "SELECT * FROM email_queue WHERE id = ?",
+      )
+        .bind(next.id)
+        .first();
+    }
+  }
+  if (!campaign) return { sent: 0, failed: 0 };
+
+  const recipients: string[] = JSON.parse(campaign.recipients || "[]");
+  const refs: QueueAttachmentRef[] = JSON.parse(campaign.attachments || "[]");
+  const attachments =
+    refs.length > 0
+      ? await materializeQueueAttachments(env, refs)
+      : undefined;
+
+  let cursor = campaign.cursor || 0;
+  let sent = campaign.sent || 0;
+  let failed = campaign.failed || 0;
+  let lastError = campaign.last_error || null;
+  let stoppedByQuota = false;
+
+  while (budget > 0 && cursor < recipients.length) {
+    const batch = recipients.slice(cursor, cursor + SMTP_BATCH_SIZE);
+    const result = await sendEmail(
+      { env },
+      {
+        from: campaign.from_address,
+        to: batch,
+        subject: campaign.subject,
+        html: campaign.html,
+        attachments,
+        batchRecipients:
+          campaign.kind === "newsletter" ||
+          campaign.kind === "event" ||
+          campaign.kind === "meet",
+        extraHeaders:
+          campaign.kind === "newsletter" || campaign.kind === "event"
+            ? {
+                "List-Unsubscribe": "<https://180dcvitc.org/unsubscribe>",
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+              }
+            : undefined,
+      },
+    );
+    sent += result.sent;
+    failed += result.failed;
+    if (result.error) lastError = result.error;
+    const processed = result.sent + result.failed;
+    cursor += processed;
+    budget--;
+    if (result.skipped > 0) {
+      stoppedByQuota = true;
+      break;
+    }
+    if (processed === 0) break;
+  }
+
+  const done = cursor >= recipients.length;
+  await env.DB.prepare(
+    "UPDATE email_queue SET cursor=?, sent=?, failed=?, status=?, last_error=?, updated_at=CURRENT_TIMESTAMP, finished_at=? WHERE id=?",
+  )
+    .bind(
+      cursor,
+      sent,
+      failed,
+      done ? "done" : "pending",
+      lastError,
+      done ? new Date().toISOString().replace("T", " ").slice(0, 19) : null,
+      campaign.id,
+    )
+    .run();
+
+  if (done) {
+    console.log(
+      `[email-queue] campaign ${campaign.id} (${campaign.kind}) done: sent=${sent}, failed=${failed}`,
+    );
+    await finalizeQueuedCampaign(env, campaign, sent, failed);
+  }
+
+  return {
+    sent,
+    failed,
+    campaignId: campaign.id,
+    done,
+    skippedByQuota: stoppedByQuota,
+  };
 }
 
 async function sendMeetEmail(
@@ -1073,9 +1516,9 @@ async function queueOrSendMeetEmails(
   }
   if (recipients.length === 0) return { sent: 0, queued: 0, failed: 0 };
 
-  const result = await sendEmail(c, {
+  const campaign = await enqueueEmailCampaign(c, {
+    kind: "meet",
     from: "180DC Admin <technical@180dcvitc.org>",
-    to: recipients.map((r) => r.email),
     subject: "New Meet: " + title,
     html: meetEmailHtml(
       title,
@@ -1084,30 +1527,15 @@ async function queueOrSendMeetEmails(
       scheduledAt,
       meetType,
     ),
+    recipients: recipients.map((r) => r.email),
+    meta: { meet_id: meetId, meet_type: meetType },
+    createdBy: c.get ? c.get("user")?.email : null,
   });
 
-  const attempted = result.sent + result.failed;
-  const overflow = recipients.slice(attempted);
-  for (const r of overflow) {
-    await c.env.DB.prepare(
-      "INSERT INTO pending_emails (id, meet_id, meet_type, recipient_email, recipient_name, meet_title, meet_description, meet_link, scheduled_at) VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-      .bind(
-        meetId,
-        meetType,
-        r.email,
-        r.name,
-        title,
-        description,
-        meetLink,
-        scheduledAt,
-      )
-      .run();
-  }
   console.log(
-    `[email] Meet emails: sent=${result.sent}, queued=${overflow.length}, failed=${result.failed}, total_recipients=${recipients.length}`,
+    `[email] Meet emails queued: queued=${campaign.queued}, total_recipients=${recipients.length}`,
   );
-  return { sent: result.sent, queued: overflow.length, failed: result.failed };
+  return { sent: 0, queued: campaign.queued, failed: 0 };
 }
 
 async function getMeetRecipients(
@@ -1347,6 +1775,33 @@ function ensureDbReady(db: any, env?: any): Promise<void> {
   return dbReadyPromise;
 }
 
+function newsletterDb(c: any): any {
+  return c.env.NEWSLETTER_DB || c.env.DB;
+}
+
+let newsletterDbReadyPromise: Promise<void> | null = null;
+function ensureNewsletterReady(c: any): Promise<void> {
+  if (!newsletterDbReadyPromise) {
+    newsletterDbReadyPromise = ensureNewsletterTables(newsletterDb(c)).catch(
+      (e: any) => {
+        newsletterDbReadyPromise = null;
+        throw e;
+      },
+    );
+  }
+  return newsletterDbReadyPromise;
+}
+
+async function ensureNewsletterTables(db: any) {
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS newsletters (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '', content TEXT DEFAULT '', source_file_url TEXT, image_url TEXT, sent_at DATETIME, recipient_count INTEGER DEFAULT 0, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, email_subject TEXT);
+    CREATE TABLE IF NOT EXISTS newsletter_subscribers (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, active INTEGER DEFAULT 1, subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP, unsubscribed_at DATETIME);
+    CREATE TABLE IF NOT EXISTS newsletter_authorized_emails (email TEXT PRIMARY KEY, added_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS newsletter_otp_codes (id TEXT PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, expires_at DATETIME NOT NULL, used INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS newsletter_sessions (id TEXT PRIMARY KEY, email TEXT NOT NULL, expires_at DATETIME NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    `);
+}
+
 async function ensureTables(db: any) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS departments (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT);
@@ -1383,6 +1838,7 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS email_hour_count (hour TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS resend_daily_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS pending_emails (id TEXT PRIMARY KEY, meet_id TEXT NOT NULL, meet_type TEXT NOT NULL, recipient_email TEXT NOT NULL, recipient_name TEXT NOT NULL, meet_title TEXT NOT NULL, meet_description TEXT, meet_link TEXT, scheduled_at TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS email_queue (id TEXT PRIMARY KEY, kind TEXT NOT NULL, from_address TEXT NOT NULL, subject TEXT NOT NULL, html TEXT NOT NULL, attachments TEXT, recipients TEXT NOT NULL, cursor INTEGER DEFAULT 0, total INTEGER NOT NULL, sent INTEGER DEFAULT 0, failed INTEGER DEFAULT 0, attempts INTEGER DEFAULT 0, status TEXT DEFAULT 'pending', last_error TEXT, meta TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, finished_at DATETIME);
     CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
     CREATE TABLE IF NOT EXISTS maintenance_mode (id INTEGER PRIMARY KEY DEFAULT 1, enabled INTEGER DEFAULT 0, message TEXT DEFAULT 'Site is under maintenance. Please check back later.', updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
@@ -2134,6 +2590,14 @@ app.use(
 app.use("*", async (c, next) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
+    const initPath = new URL(c.req.url).pathname;
+    if (
+      initPath === "/api/newsletter" ||
+      initPath.startsWith("/api/newsletter/") ||
+      initPath.startsWith("/api/newsletter-editor/")
+    ) {
+      await ensureNewsletterReady(c);
+    }
   } catch (e: any) {
     logError("DB init failed", e, c);
     return c.json({ error: "Database initialization failed" }, 500);
@@ -2576,8 +3040,24 @@ ${
 </table></td></tr></table>
 </body></html>`;
 }
-async function sendWelcomeEmail(c: any, email: string) {
-  const html = `<!DOCTYPE html>
+function welcomeEmailHtml(
+  email: string,
+  variant: "new" | "back",
+  siteUrl: string,
+): string {
+  const isNew = variant === "new";
+  const heading = isNew
+    ? "Welcome aboard! &#x1F389;"
+    : "Welcome back! &#x1F44B;";
+  const sub = isNew
+    ? "You're now part of the 180DC family."
+    : "Good to have you again.";
+  const body = isNew
+    ? '<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.7">Thanks for subscribing to the 180DC newsletter. Our latest updates, case-study insights, and event announcements will land straight in your inbox.</p>'
+    : '<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.7">You\'ve been re-subscribed to the 180DC newsletter. Expect our latest updates and insights in your inbox again.</p>';
+  const unsubUrl =
+    "https://180dcvitc.org/unsubscribe?email=" + encodeURIComponent(email);
+  return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -2592,22 +3072,34 @@ async function sendWelcomeEmail(c: any, email: string) {
 <p style="color:#1a1a1a;font-size:12px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
 </td></tr>
 
-<!-- CONTENT -->
+<!-- GREETING -->
 <tr><td style="padding:28px 32px 0">
-<p style="font-size:15px;color:#1a1a1a;margin:0 0 4px;font-weight:700">Welcome aboard! &#x1F389;</p>
-<p style="font-size:13px;color:#777777;margin:0 0 20px;line-height:1.5">You're now part of the 180DC family.</p>
+<p style="font-size:16px;color:#1a1a1a;margin:0 0 4px;font-weight:800">${heading}</p>
+<p style="font-size:13px;color:#777777;margin:0 0 20px;line-height:1.5">${sub}</p>
 </td></tr>
 
+<!-- BODY -->
 <tr><td style="padding:0 32px">
-<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.7">Thank you for subscribing to the 180DC newsletter. You'll now receive our latest updates, insights, and event announcements directly in your inbox.</p>
-<p style="font-size:14px;color:#555555;margin:0 0 24px;line-height:1.7">Stay tuned for our upcoming newsletters packed with case studies, industry insights, and opportunities to grow.</p>
+${body}
+</td></tr>
+
+<!-- WHAT TO EXPECT -->
+<tr><td style="padding:0 32px">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f8f5;border:2px solid #e8e6e1;border-radius:12px;margin:0 0 24px">
+<tr><td style="padding:16px 20px">
+<p style="font-size:12px;color:#1a1a1a;margin:0 0 10px;font-weight:800;text-transform:uppercase;letter-spacing:1px">What to expect</p>
+<p style="font-size:13px;color:#555555;margin:0 0 6px;line-height:1.6">&#x1F4F0;&nbsp; Newsletters and case-study insights</p>
+<p style="font-size:13px;color:#555555;margin:0 0 6px;line-height:1.6">&#x1F4C5;&nbsp; Event and workshop announcements</p>
+<p style="font-size:13px;color:#555555;margin:0;line-height:1.6">&#x1F513;&nbsp; One-click unsubscribe, anytime</p>
+</td></tr>
+</table>
 </td></tr>
 
 <!-- CTA BUTTON -->
 <tr><td style="padding:0 32px 28px;text-align:center">
 <table cellpadding="0" cellspacing="0" style="background:#8dc63f;border-radius:50px;border:3px solid #1a1a1a;box-shadow:3px 3px 0 #1a1a1a;margin:0 auto">
 <tr><td style="padding:12px 32px;text-align:center">
-<a href="https://180dcvitc.org" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Visit Our Website</a>
+<a href="${siteUrl}" style="color:#1a1a1a;text-decoration:none;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Visit Our Website</a>
 </td></tr>
 </table>
 </td></tr>
@@ -2650,72 +3142,43 @@ async function sendWelcomeEmail(c: any, email: string) {
 <p style="font-size:11px;color:#777777;margin:0 0 12px;line-height:1.5">You received this because you subscribed to our newsletter.</p>
 <table cellpadding="0" cellspacing="0" style="margin:0 auto">
 <tr><td style="border:1.5px solid #d0cec8;border-radius:50px;padding:6px 16px">
-<a href="https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(email)}" style="color:#888888;text-decoration:none;font-size:11px;font-weight:600">Unsubscribe</a>
+<a href="${unsubUrl}" style="color:#888888;text-decoration:none;font-size:11px;font-weight:600">Unsubscribe</a>
 </td></tr>
 </table>
 </td></tr>
 
 </table></td></tr></table>
 </body></html>`;
-  await sendEmail(c, {
+}
+
+async function sendWelcomeEmail(c: any, email: string) {
+  const siteUrl = newsletterSiteBase(c) || "https://180dcvitc.org";
+  const result = await sendEmail(c, {
     from: "180DC Newsletter <technical@180dcvitc.org>",
     to: email,
     subject: "Welcome to the 180DC Newsletter!",
-    html,
+    html: welcomeEmailHtml(email, "new", siteUrl),
   });
+  if (result.sent > 0) {
+    console.log("[newsletter] Welcome email sent to=" + email);
+  } else {
+    console.error("[newsletter] Welcome email FAILED to=" + email);
+  }
 }
 
 async function sendWelcomeBackEmail(c: any, email: string) {
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
-</head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f3ee;padding:32px 12px">
-<tr><td align="center">
-<table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:3px solid #1a1a1a;box-shadow:5px 5px 0 #1a1a1a">
-<tr><td style="background:#8dc63f;padding:28px 24px 20px;text-align:center;border-bottom:3px solid #1a1a1a">
-<img src="https://180dcvitc.org/images/180DC.png" alt="180DC" width="52" style="margin-bottom:6px">
-<h1 style="font-family:'Caveat',cursive;color:#ffffff;font-size:26px;margin:0;font-weight:600;text-shadow:2px 2px 0 rgba(0,0,0,0.12)">180 Degrees Consulting</h1>
-<p style="color:#1a1a1a;font-size:12px;margin:4px 0 0;font-weight:700;text-transform:uppercase;letter-spacing:2px">VIT Chennai</p>
-</td></tr>
-<tr><td style="padding:28px 32px 0">
-<p style="font-size:15px;color:#1a1a1a;margin:0 0 4px;font-weight:700">Welcome back! &#x1F44B;</p>
-<p style="font-size:13px;color:#777777;margin:0 0 20px;line-height:1.5">Good to have you again.</p>
-</td></tr>
-<tr><td style="padding:0 32px">
-<p style="font-size:14px;color:#555555;margin:0 0 24px;line-height:1.7">You've been re-subscribed to the 180DC newsletter. You'll continue receiving our latest updates and insights in your inbox.</p>
-</td></tr>
-<tr><td style="padding:0 32px">
-<table width="100%" cellpadding="0" cellspacing="0"><tr>
-<td style="border-bottom:2px solid #e8e6e1"></td>
-</tr></table>
-</td></tr>
-<tr><td style="padding:24px 32px 0;text-align:center">
-<p style="font-size:11px;color:#777777;margin:0 0 12px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px">Follow Us</p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto">
-<tr>
-<td style="padding:0 8px"><a href="https://www.instagram.com/180dc.vitc/" style="text-decoration:none"><table cellpadding="0" cellspacing="0"><tr><td style="background:#1a1a1a;border-radius:8px;padding:8px 14px;text-align:center"><span style="font-size:11px;color:#ffffff;font-weight:700">Instagram</span></td></tr></table></a></td>
-<td style="padding:0 8px"><a href="https://www.linkedin.com/company/180-degrees-consulting-vit-chennai/" style="text-decoration:none"><table cellpadding="0" cellspacing="0"><tr><td style="background:#1a1a1a;border-radius:8px;padding:8px 14px;text-align:center"><span style="font-size:11px;color:#ffffff;font-weight:700">LinkedIn</span></td></tr></table></a></td>
-</tr>
-</table>
-</td></tr>
-<tr><td style="background:#f9f8f5;border-top:3px solid #1a1a1a;border-radius:0 0 13px 13px;padding:20px 32px;text-align:center">
-<p style="font-size:12px;color:#1a1a1a;margin:0 0 4px;font-weight:700">180 Degrees Consulting &#x2014; VIT Chennai</p>
-<p style="font-size:11px;color:#777777;margin:0 0 12px;line-height:1.5">You received this because you subscribed to our newsletter.</p>
-<table cellpadding="0" cellspacing="0" style="margin:0 auto">
-<tr><td style="border:1.5px solid #d0cec8;border-radius:50px;padding:6px 16px">
-<a href="https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(email)}" style="color:#888888;text-decoration:none;font-size:11px;font-weight:600">Unsubscribe</a>
-</td></tr>
-</table>
-</td></tr>
-</table></td></tr></table>
-</body></html>`;
-  await sendEmail(c, {
+  const siteUrl = newsletterSiteBase(c) || "https://180dcvitc.org";
+  const result = await sendEmail(c, {
     from: "180DC Newsletter <technical@180dcvitc.org>",
     to: email,
     subject: "Welcome back to the 180DC Newsletter!",
-    html,
+    html: welcomeEmailHtml(email, "back", siteUrl),
   });
+  if (result.sent > 0) {
+    console.log("[newsletter] Welcome-back email sent to=" + email);
+  } else {
+    console.error("[newsletter] Welcome-back email FAILED to=" + email);
+  }
 }
 
 // Public: Subscribe to newsletter (called from /subscriber after the email is
@@ -2736,7 +3199,7 @@ app.post("/api/newsletter/subscribe", async (c) => {
     const email = validateEmail(body?.email);
     if (!email) return c.json({ error: "Valid email address required" }, 400);
 
-    const existing = await c.env.DB.prepare(
+    const existing = await newsletterDb(c).prepare(
       "SELECT id, active FROM newsletter_subscribers WHERE email = ?",
     )
       .bind(email)
@@ -2747,7 +3210,7 @@ app.post("/api/newsletter/subscribe", async (c) => {
           success: true,
           message: "You are already subscribed!",
         });
-      await c.env.DB.prepare(
+      await newsletterDb(c).prepare(
         "UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL WHERE id = ?",
       )
         .bind(existing.id)
@@ -2759,7 +3222,7 @@ app.post("/api/newsletter/subscribe", async (c) => {
       });
     }
 
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "INSERT INTO newsletter_subscribers (id, email, active) VALUES (?, ?, 1)",
     )
       .bind(crypto.randomUUID(), email)
@@ -2784,7 +3247,7 @@ app.get("/api/newsletter/unsubscribe", async (c) => {
     if (!email || !validateEmail(email))
       return c.json({ error: "Invalid email address." }, 400);
 
-    const sub = await c.env.DB.prepare(
+    const sub = await newsletterDb(c).prepare(
       "SELECT id, active FROM newsletter_subscribers WHERE email = ?",
     )
       .bind(email)
@@ -2804,7 +3267,7 @@ app.get("/api/newsletter/unsubscribe", async (c) => {
       });
     }
 
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "UPDATE newsletter_subscribers SET active = 0, unsubscribed_at = CURRENT_TIMESTAMP WHERE id = ?",
     )
       .bind(sub.id)
@@ -2829,7 +3292,7 @@ app.get("/api/newsletter", async (c) => {
         { error: "Rate limit exceeded", retryAfter: rl.retryAfter },
         429,
       );
-    const rows = await c.env.DB.prepare(
+    const rows = await newsletterDb(c).prepare(
       "SELECT id, title, description, image_url, source_file_url, created_at FROM newsletters ORDER BY created_at DESC LIMIT 10",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
@@ -2849,7 +3312,7 @@ app.get("/api/newsletter/:id", async (c) => {
         429,
       );
     const id = c.req.param("id");
-    const row = await c.env.DB.prepare(
+    const row = await newsletterDb(c).prepare(
       "SELECT id, title, description, content, image_url, source_file_url, created_at, sent_at FROM newsletters WHERE id = ?",
     )
       .bind(id)
@@ -2877,7 +3340,7 @@ app.get("/api/newsletter/:id", async (c) => {
 app.get("/api/newsletter/subscribers/count", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
-    const row = await c.env.DB.prepare(
+    const row = await newsletterDb(c).prepare(
       "SELECT COUNT(*) as count FROM newsletter_subscribers WHERE active = 1",
     ).first();
     return c.json({ success: true, count: row?.count || 0 });
@@ -2891,7 +3354,7 @@ app.get("/api/newsletter/admin", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
-    const rows = await c.env.DB.prepare(
+    const rows = await newsletterDb(c).prepare(
       "SELECT * FROM newsletters ORDER BY created_at DESC",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
@@ -2905,7 +3368,7 @@ app.get("/api/newsletter/admin/subscribers", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
     requireBoard(c);
-    const rows = await c.env.DB.prepare(
+    const rows = await newsletterDb(c).prepare(
       "SELECT id, email, active, subscribed_at, unsubscribed_at FROM newsletter_subscribers ORDER BY subscribed_at DESC",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
@@ -2976,13 +3439,13 @@ app.post("/api/newsletter", async (c) => {
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
     const imageUrl = sanitizeStr(body.imageUrl);
 
-    const existing = await c.env.DB.prepare(
+    const existing = await newsletterDb(c).prepare(
       "SELECT id FROM newsletters WHERE id = ?",
     )
       .bind(id)
       .first();
     if (existing) {
-      await c.env.DB.prepare(
+      await newsletterDb(c).prepare(
         "UPDATE newsletters SET title = ?, description = ?, content = ?, source_file_url = COALESCE(?, source_file_url), image_url = COALESCE(?, image_url) WHERE id = ?",
       )
         .bind(
@@ -2995,7 +3458,7 @@ app.post("/api/newsletter", async (c) => {
         )
         .run();
     } else {
-      await c.env.DB.prepare(
+      await newsletterDb(c).prepare(
         "INSERT INTO newsletters (id, title, description, content, source_file_url, image_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
         .bind(
@@ -3024,7 +3487,7 @@ app.delete("/api/newsletter/:id", async (c) => {
     if (!user || user.power_level < 100)
       return c.json({ error: "Forbidden: Board only" }, 403);
     const id = c.req.param("id");
-    await c.env.DB.prepare("DELETE FROM newsletters WHERE id = ?")
+    await newsletterDb(c).prepare("DELETE FROM newsletters WHERE id = ?")
       .bind(id)
       .run();
     return c.json({ success: true });
@@ -3057,14 +3520,14 @@ app.post("/api/newsletter/send", async (c) => {
     const newsletterId = body.newsletterId;
     if (!newsletterId) return c.json({ error: "newsletterId required" }, 400);
 
-    const newsletter = await c.env.DB.prepare(
+    const newsletter = await newsletterDb(c).prepare(
       "SELECT * FROM newsletters WHERE id = ?",
     )
       .bind(newsletterId)
       .first();
     if (!newsletter) return c.json({ error: "Newsletter not found" }, 404);
 
-    const subscribers = await c.env.DB.prepare(
+    const subscribers = await newsletterDb(c).prepare(
       "SELECT email FROM newsletter_subscribers WHERE active = 1",
     ).all();
     const recipients = (subscribers.results || []).map((s: any) => s.email);
@@ -3072,53 +3535,37 @@ app.post("/api/newsletter/send", async (c) => {
       return c.json({ error: "No active subscribers" }, 400);
 
     const siteUrl = newsletterCtaUrl(c, newsletterId);
-
-    let pdfAttachment: any = null;
-    if (newsletter.source_file_url) {
-      const r2Key = newsletter.source_file_url.replace(
-        /^\/api\/case-studies\/images\//,
-        "",
-      );
-      const r2Obj = await c.env.CASE_STUDIES.get(r2Key);
-      if (r2Obj) {
-        const buf = await r2Obj.arrayBuffer();
-        const b64 = arrayBufferToBase64(buf);
-        pdfAttachment = {
-          filename: r2Key.split("/").pop() || "newsletter.pdf",
-          content: b64,
-          contentType: "application/pdf",
-        };
-      }
-    }
+    const attachmentRefs = attachmentRefsFromUrl(
+      newsletter.source_file_url,
+      "newsletter.pdf",
+    );
 
     const html = newsletterEmailHtml(
       newsletter.title,
       newsletter.description || "",
       siteUrl,
       undefined,
-      !!pdfAttachment,
+      attachmentRefs.length > 0,
     );
 
-    const result = await sendEmail(c, {
+    const campaign = await enqueueEmailCampaign(c, {
+      kind: "newsletter",
       from: "180DC Newsletter <technical@180dcvitc.org>",
-      to: recipients,
       subject: newsletter.title,
       html,
-      attachments: pdfAttachment ? [pdfAttachment] : undefined,
+      recipients,
+      attachments: attachmentRefs,
+      meta: { newsletter_id: newsletterId },
+      createdBy: user.email,
     });
-
-    await c.env.DB.prepare(
-      "UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?",
-    )
-      .bind(result.sent, newsletterId)
-      .run();
 
     return c.json({
       success: true,
-      sentCount: result.sent,
-      failed: result.failed,
-      queued: result.skipped,
+      queued: campaign.queued,
+      sentCount: 0,
+      failed: 0,
       total: recipients.length,
+      campaignId: campaign.id,
     });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -3167,14 +3614,14 @@ async function verifyNewsletterSession(c: any): Promise<string | null> {
   const authHeader = c.req.header("Authorization");
   if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
   const token = authHeader.slice(7);
-  const row = await c.env.DB.prepare(
+  const row = await newsletterDb(c).prepare(
     "SELECT email, expires_at FROM newsletter_sessions WHERE id = ?",
   )
     .bind(token)
     .first();
   if (!row) return null;
   if (new Date(row.expires_at as string) < new Date()) {
-    await c.env.DB.prepare("DELETE FROM newsletter_sessions WHERE id = ?")
+    await newsletterDb(c).prepare("DELETE FROM newsletter_sessions WHERE id = ?")
       .bind(token)
       .run();
     return null;
@@ -3200,7 +3647,7 @@ app.post("/api/newsletter-editor/otp/send", async (c) => {
         429,
       );
 
-    const authorized = await c.env.DB.prepare(
+    const authorized = await newsletterDb(c).prepare(
       "SELECT email FROM newsletter_authorized_emails WHERE email = ?",
     )
       .bind(email)
@@ -3222,7 +3669,7 @@ app.post("/api/newsletter-editor/otp/send", async (c) => {
     const id = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "INSERT INTO newsletter_otp_codes (id, email, code, expires_at) VALUES (?, ?, ?, ?)",
     )
       .bind(id, email, code, expiresAt)
@@ -3265,7 +3712,7 @@ app.post("/api/newsletter-editor/otp/verify", async (c) => {
         429,
       );
 
-    const row = await c.env.DB.prepare(
+    const row = await newsletterDb(c).prepare(
       "SELECT id, code, expires_at, used FROM newsletter_otp_codes WHERE email = ? ORDER BY created_at DESC LIMIT 1",
     )
       .bind(email)
@@ -3277,7 +3724,7 @@ app.post("/api/newsletter-editor/otp/verify", async (c) => {
       return c.json({ error: "OTP expired. Request a new one." }, 400);
     if (row.code !== code) return c.json({ error: "Invalid OTP" }, 400);
 
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "UPDATE newsletter_otp_codes SET used = 1 WHERE id = ?",
     )
       .bind(row.id)
@@ -3287,7 +3734,7 @@ app.post("/api/newsletter-editor/otp/verify", async (c) => {
     const sessionExpires = new Date(
       Date.now() + 24 * 60 * 60 * 1000,
     ).toISOString();
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "INSERT INTO newsletter_sessions (id, email, expires_at) VALUES (?, ?, ?)",
     )
       .bind(sessionId, email, sessionExpires)
@@ -3304,7 +3751,7 @@ app.post("/api/newsletter-editor/logout", async (c) => {
   try {
     const authHeader = c.req.header("Authorization");
     if (authHeader?.startsWith("Bearer ")) {
-      await c.env.DB.prepare("DELETE FROM newsletter_sessions WHERE id = ?")
+      await newsletterDb(c).prepare("DELETE FROM newsletter_sessions WHERE id = ?")
         .bind(authHeader.slice(7))
         .run();
     }
@@ -3330,7 +3777,7 @@ app.get("/api/newsletter-editor/drafts", async (c) => {
   try {
     const email = await verifyNewsletterSession(c);
     if (!email) return c.json({ error: "Not authenticated" }, 401);
-    const rows = await c.env.DB.prepare(
+    const rows = await newsletterDb(c).prepare(
       "SELECT * FROM newsletters WHERE created_by = ? ORDER BY created_at DESC",
     )
       .bind(email)
@@ -3355,19 +3802,19 @@ app.post("/api/newsletter-editor/drafts", async (c) => {
     const emailSubject = sanitizeStr(body.emailSubject, 200) || title;
     const sourceFileUrl = sanitizeStr(body.sourceFileUrl);
 
-    const existing = await c.env.DB.prepare(
+    const existing = await newsletterDb(c).prepare(
       "SELECT id FROM newsletters WHERE id = ?",
     )
       .bind(id)
       .first();
     if (existing) {
-      await c.env.DB.prepare(
+      await newsletterDb(c).prepare(
         "UPDATE newsletters SET title = ?, description = ?, email_subject = ?, source_file_url = COALESCE(?, source_file_url) WHERE id = ?",
       )
         .bind(title, description, emailSubject, sourceFileUrl || null, id)
         .run();
     } else {
-      await c.env.DB.prepare(
+      await newsletterDb(c).prepare(
         "INSERT INTO newsletters (id, title, description, email_subject, source_file_url, created_by) VALUES (?, ?, ?, ?, ?, ?)",
       )
         .bind(
@@ -3392,7 +3839,7 @@ app.delete("/api/newsletter-editor/drafts/:id", async (c) => {
     const email = await verifyNewsletterSession(c);
     if (!email) return c.json({ error: "Not authenticated" }, 401);
     const id = c.req.param("id");
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "DELETE FROM newsletters WHERE id = ? AND created_by = ?",
     )
       .bind(id, email)
@@ -3465,14 +3912,14 @@ app.post("/api/newsletter-editor/send", async (c) => {
     const newsletterId = body.newsletterId;
     if (!newsletterId) return c.json({ error: "newsletterId required" }, 400);
 
-    const newsletter = await c.env.DB.prepare(
+    const newsletter = await newsletterDb(c).prepare(
       "SELECT * FROM newsletters WHERE id = ?",
     )
       .bind(newsletterId)
       .first();
     if (!newsletter) return c.json({ error: "Newsletter not found" }, 404);
 
-    const subscribers = await c.env.DB.prepare(
+    const subscribers = await newsletterDb(c).prepare(
       "SELECT email FROM newsletter_subscribers WHERE active = 1",
     ).all();
     const recipients = (subscribers.results || []).map((s: any) => s.email);
@@ -3482,53 +3929,37 @@ app.post("/api/newsletter-editor/send", async (c) => {
     const siteUrl = newsletterCtaUrl(c, newsletterId);
 
     const subject = newsletter.email_subject || newsletter.title;
-
-    let pdfAttachment: any = null;
-    if (newsletter.source_file_url) {
-      const r2Key = newsletter.source_file_url.replace(
-        /^\/api\/case-studies\/images\//,
-        "",
-      );
-      const r2Obj = await c.env.CASE_STUDIES.get(r2Key);
-      if (r2Obj) {
-        const buf = await r2Obj.arrayBuffer();
-        const b64 = arrayBufferToBase64(buf);
-        pdfAttachment = {
-          filename: r2Key.split("/").pop() || "newsletter.pdf",
-          content: b64,
-          contentType: "application/pdf",
-        };
-      }
-    }
+    const attachmentRefs = attachmentRefsFromUrl(
+      newsletter.source_file_url,
+      "newsletter.pdf",
+    );
 
     const html = newsletterEmailHtml(
       newsletter.title,
       newsletter.description || "",
       siteUrl,
       undefined,
-      !!pdfAttachment,
+      attachmentRefs.length > 0,
     );
 
-    const result = await sendEmail(c, {
+    const campaign = await enqueueEmailCampaign(c, {
+      kind: "newsletter",
       from: "180DC Newsletter <technical@180dcvitc.org>",
-      to: recipients,
       subject,
       html,
-      attachments: pdfAttachment ? [pdfAttachment] : undefined,
+      recipients,
+      attachments: attachmentRefs,
+      meta: { newsletter_id: newsletterId },
+      createdBy: email,
     });
-
-    await c.env.DB.prepare(
-      "UPDATE newsletters SET sent_at = CURRENT_TIMESTAMP, recipient_count = ? WHERE id = ?",
-    )
-      .bind(result.sent, newsletterId)
-      .run();
 
     return c.json({
       success: true,
-      sentCount: result.sent,
-      failed: result.failed,
-      queued: result.skipped,
+      queued: campaign.queued,
+      sentCount: 0,
+      failed: 0,
       total: recipients.length,
+      campaignId: campaign.id,
     });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -3561,7 +3992,7 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
     if (!subject || !subject.trim())
       return c.json({ error: "Subject is required" }, 400);
 
-    const subscribers = await c.env.DB.prepare(
+    const subscribers = await newsletterDb(c).prepare(
       "SELECT email FROM newsletter_subscribers WHERE active = 1",
     ).all();
     const recipients = (subscribers.results || []).map((s: any) => s.email);
@@ -3570,47 +4001,34 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
 
     const siteUrl =
       newsletterSiteBase(c) || "https://180dcvitc.org/#newsletter";
-
-    let pdfAttachment: any = null;
-    if (sourceFileUrl) {
-      const r2Key = sourceFileUrl.replace(/^\/api\/case-studies\/images\//, "");
-      const r2Obj = await c.env.CASE_STUDIES.get(r2Key);
-      if (r2Obj) {
-        const buf = await r2Obj.arrayBuffer();
-        const b64 = arrayBufferToBase64(buf);
-        pdfAttachment = {
-          filename: r2Key.split("/").pop() || "event.pdf",
-          content: b64,
-          contentType: attachmentContentType(
-            r2Key.split("/").pop() || "event.pdf",
-          ),
-        };
-      }
-    }
+    const attachmentRefs = attachmentRefsFromUrl(sourceFileUrl, "event.pdf");
 
     const html = eventMailEmailHtml(
       subject,
       description || "",
       siteUrl,
       undefined,
-      !!pdfAttachment,
+      attachmentRefs.length > 0,
       imageUrl || undefined,
     );
 
-    const result = await sendEmail(c, {
+    const campaign = await enqueueEmailCampaign(c, {
+      kind: "event",
       from: "180DC Events <technical@180dcvitc.org>",
-      to: recipients,
       subject,
       html,
-      attachments: pdfAttachment ? [pdfAttachment] : undefined,
+      recipients,
+      attachments: attachmentRefs,
+      createdBy: email,
     });
 
     return c.json({
       success: true,
-      sentCount: result.sent,
-      failed: result.failed,
-      queued: result.skipped,
+      queued: campaign.queued,
+      sentCount: 0,
+      failed: 0,
       total: recipients.length,
+      campaignId: campaign.id,
     });
   } catch (e: any) {
     return errorResponse(c, e.message, 500);
@@ -3620,7 +4038,7 @@ app.post("/api/newsletter-editor/send-event", async (c) => {
 app.get("/api/newsletter-editor/admin/authorized-emails", async (c) => {
   try {
     requireBoard(c);
-    const rows = await c.env.DB.prepare(
+    const rows = await newsletterDb(c).prepare(
       "SELECT * FROM newsletter_authorized_emails ORDER BY created_at DESC",
     ).all();
     return c.json({ success: true, data: rows.results || [] });
@@ -3638,14 +4056,14 @@ app.post("/api/newsletter-editor/admin/authorized-emails", async (c) => {
     const email = validateEmail(body.email);
     if (!email) return c.json({ error: "Valid email required" }, 400);
 
-    const existing = await c.env.DB.prepare(
+    const existing = await newsletterDb(c).prepare(
       "SELECT email FROM newsletter_authorized_emails WHERE email = ?",
     )
       .bind(email)
       .first();
     if (existing) return c.json({ error: "Email already authorized" }, 409);
 
-    await c.env.DB.prepare(
+    await newsletterDb(c).prepare(
       "INSERT INTO newsletter_authorized_emails (email, added_by) VALUES (?, ?)",
     )
       .bind(email, user.email)
@@ -3664,7 +4082,7 @@ app.delete(
       if (!user || user.power_level < 100)
         return c.json({ error: "Forbidden: Board only" }, 403);
       const email = c.req.param("email");
-      await c.env.DB.prepare(
+      await newsletterDb(c).prepare(
         "DELETE FROM newsletter_authorized_emails WHERE email = ?",
       )
         .bind(email)
@@ -10121,7 +10539,7 @@ app.post("/api/send-email", async (c) => {
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
     }
-    const to = sanitizeStr(body.to, MAX_MSG_LEN);
+    const to = sanitizeStr(body.to, 20000);
     const subject = sanitizeStr(body.subject);
     const htmlBody = sanitizeStr(body.body, MAX_MSG_LEN * 2);
 
@@ -10174,11 +10592,7 @@ app.post("/api/send-email", async (c) => {
       return c.json({ error: "No valid email addresses provided" }, 400);
     }
 
-    const result = await sendEmail(c, {
-      from: "180DC Admin <technical@180dcvitc.org>",
-      to: validRecipients,
-      subject,
-      html: `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
 </head><body style="margin:0;padding:0;background-color:#f5f3ee;font-family:'Nunito',-apple-system,sans-serif">
@@ -10196,13 +10610,37 @@ app.post("/api/send-email", async (c) => {
 <p style="font-size:11px;color:#555555;margin:0;line-height:1.5;font-weight:600">180 Degrees Consulting @ VIT Chennai</p>
 </td></tr>
 </table></td></tr></table>
-</body></html>`,
+</body></html>`;
+
+    const SYNC_SEND_LIMIT = 10;
+    if (validRecipients.length > SYNC_SEND_LIMIT) {
+      const campaign = await enqueueEmailCampaign(c, {
+        kind: "custom",
+        from: "180DC Admin <technical@180dcvitc.org>",
+        subject,
+        html,
+        recipients: validRecipients,
+        createdBy: user.email,
+      });
+      return c.json({
+        success: true,
+        message: `Email queued for ${campaign.queued} recipient(s) — delivering in the background.`,
+        queued: campaign.queued,
+        total: validRecipients.length,
+      });
+    }
+
+    const result = await sendEmail(c, {
+      from: "180DC Admin <technical@180dcvitc.org>",
+      to: validRecipients,
+      subject,
+      html,
     });
 
     return c.json(
       {
         success: true,
-        message: `Email sent to ${result.sent} recipient(s)`,
+        message: `Email sent to ${result.sent} recipient(s)${result.failed ? `, ${result.failed} failed` : ""}${result.skipped ? `, ${result.skipped} queued` : ""}`,
         failed: result.failed,
         queued: result.skipped,
       },
@@ -10555,8 +10993,34 @@ app.get("/api/gallery-cdn/*", async (c) => {
   }
 });
 
+app.get("/api/admin/email-queue", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    requireBoard(c);
+    const counts: any = await c.env.DB.prepare(
+      "SELECT status, COUNT(*) as campaigns, SUM(total) as recipients, SUM(sent) as sent, SUM(failed) as failed FROM email_queue GROUP BY status",
+    ).all();
+    const recent: any = await c.env.DB.prepare(
+      "SELECT id, kind, subject, total, sent, failed, cursor, status, attempts, last_error, created_at, finished_at FROM email_queue ORDER BY created_at DESC LIMIT 10",
+    ).all();
+    const hourly = await getHourlyEmailCount(c.env.DB);
+    return c.json({
+      success: true,
+      hourlyCount: hourly,
+      hourlyLimit: SMTP_MAX_PER_HOUR,
+      counts: counts.results || [],
+      recent: recent.results || [],
+    });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+});
+
 export default {
   async fetch(request: Request, env: any, ctx: any) {
     return app.fetch(request, env, ctx);
+  },
+  async scheduled(_event: any, env: any, ctx: any) {
+    ctx.waitUntil(drainEmailQueue(env));
   },
 };

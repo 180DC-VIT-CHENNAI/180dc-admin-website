@@ -372,6 +372,10 @@ This table is for the public leadership page, not the `users` table.
 
 ### `pending_emails`
 
+Legacy meet-email overflow table. New sends go to `email_queue`; remaining rows are
+migrated automatically by the cron drain and can also be flushed via
+`POST /api/meets/process-queue`.
+
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | id | TEXT | PRIMARY KEY | |
@@ -384,6 +388,33 @@ This table is for the public leadership page, not the `users` table.
 | meet_link | TEXT | | |
 | scheduled_at | TEXT | | |
 | created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | |
+
+### `email_queue`
+
+Bulk-email campaigns. One row per campaign (newsletter, event, or meet notification);
+the `* * * * *` cron drains it at up to 8 messages/minute, 50 BCC recipients per message.
+
+| Column | Type | Constraints | Notes |
+|--------|------|-------------|-------|
+| id | TEXT | PRIMARY KEY | |
+| kind | TEXT | NOT NULL | `newsletter` / `event` / `meet` / `test` |
+| from_address | TEXT | NOT NULL | From header |
+| subject | TEXT | NOT NULL | |
+| html | TEXT | NOT NULL | Pre-rendered shared body |
+| attachments | TEXT | | JSON `[{filename,key,contentType}]` (R2 references) |
+| recipients | TEXT | NOT NULL | JSON array of addresses |
+| cursor | INTEGER | DEFAULT 0 | Next unsent index in `recipients` |
+| total | INTEGER | NOT NULL | Recipient count |
+| sent | INTEGER | DEFAULT 0 | Delivered count |
+| failed | INTEGER | DEFAULT 0 | Failed count |
+| attempts | INTEGER | DEFAULT 0 | Claim attempts (max 5) |
+| status | TEXT | DEFAULT 'pending' | `pending` / `processing` / `done` / `failed` |
+| last_error | TEXT | | Last delivery error |
+| meta | TEXT | | JSON, e.g. `{"newsletter_id":"..."}` or `{"meet_id":"..."}` |
+| created_by | TEXT | | |
+| created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | |
+| updated_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | Claim/stale detection |
+| finished_at | DATETIME | | Set when done/failed |
 
 ### `consulting_requests`
 
@@ -418,6 +449,12 @@ This table is for the public leadership page, not the `users` table.
 | message | TEXT | DEFAULT 'Site is under maintenance...' | |
 | updated_by | TEXT | | |
 | updated_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | |
+
+> **Database split:** `newsletter_subscribers`, `newsletters`,
+> `newsletter_authorized_emails`, `newsletter_otp_codes`, and `newsletter_sessions` live in
+> the separate `newsletter-db` D1 database (`NEWSLETTER_DB` binding). The copies in
+> `180dc-db` are frozen legacy backups — never write to them. Schemas are identical and
+> created by `ensureNewsletterTables`.
 
 ### `newsletter_subscribers`
 

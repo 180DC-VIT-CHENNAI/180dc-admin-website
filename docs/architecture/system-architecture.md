@@ -43,7 +43,8 @@ External: Spacemail SMTP, Resend, Clerk, Google Fonts/CDN
 
 - **Runtime:** Cloudflare Worker using `hono`.
 - **Entry point:** `index.ts` (single 5000+ line file).
-- **Database:** D1 (`DB` binding).
+- **Database:** D1 (`DB` binding) for members/projects/meets/email infra; separate D1 `NEWSLETTER_DB` (`newsletter-db`) for newsletter data.
+- **Cron:** `* * * * *` trigger drains the `email_queue` at up to 8 messages/minute (≤50 BCC recipients each, under the 500/hour Spacemail cap).
 - **Storage:** R2 buckets `CLUB_FILES`, `BLOG_IMAGES`, `CASE_STUDIES`.
 - **Cache/session:** KV `AUTH_SESSIONS` (bound but not used in `main`).
 - **Queue:** `QUEUE` producer binding (bound but not used in `main`).
@@ -136,8 +137,10 @@ External: Spacemail SMTP, Resend, Clerk, Google Fonts/CDN
 ### Newsletter sends
 
 - Admin or newsletter editor calls `POST /api/newsletter/send` or `POST /api/newsletter-editor/send`.
-- Subscribers are chunked into BCC batches of up to 50 and sent through the `sendEmail()` path (Spacemail SMTP primary, Resend fallback), respecting the 500-messages/hour cap.
-- It updates `newsletters.sent_at` and `recipient_count` with the delivered count and reports `failed`/`queued`.
+- The handler renders the shared email once and inserts an `email_queue` campaign (recipients JSON, R2 attachment references, `meta.newsletter_id`); it returns immediately with `queued`/`total`.
+- The `* * * * *` cron drains the queue: up to 8 messages/minute × 50 BCC recipients, Spacemail SMTP primary with Resend fallback.
+- On completion the cron writes `sent_at`/`recipient_count` back to the newsletter row in `NEWSLETTER_DB` (via the campaign meta).
+- Event mail and meet notifications use the same queue (`kind: event` / `kind: meet`).
 
 ### File uploads
 

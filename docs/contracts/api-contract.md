@@ -13,7 +13,7 @@ This document describes the public and authenticated surface of `admin-api.techn
   - `newsletter` — requires a valid newsletter editor session token (OTP based).
 - **Response shape:** `{ success: true, ... }` on success; `{ error: "..." }` on failure.
 - **Rate limiting:** Most endpoints have per-IP rate limits. See `checkRateLimit` in `apps/admin-api/index.ts`.
-- **Email delivery:** All email goes through the `sendEmail()` choke-point: Spacemail SMTP (`mail.spacemail.com:465`, implicit TLS) is primary, with Resend as an automatic fallback. Recipients are batched into BCC groups of up to 50 per message; SMTP is capped at 500 messages/hour (`email_hour_count`) and the Resend fallback at 100 recipients/day (`resend_daily_count`). Send endpoints report `sentCount`, `failed`, and `queued`.
+- **Email delivery:** All email goes through the `sendEmail()` choke-point: Spacemail SMTP (`mail.spacemail.com:465`, implicit TLS) is primary, with Resend as an automatic fallback. Bulk queue campaigns (newsletter, event, meet) batch recipients into BCC groups of up to 50 per message; all other sends (Send Mail, project/role notices, OTPs, letters, tokens) are one recipient per message. SMTP is capped at 500 messages/hour (`email_hour_count`) and the Resend fallback at 100 recipients/day (`resend_daily_count`). Bulk sends insert an `email_queue` campaign and return `queued`/`total`; the `* * * * *` cron delivers it at up to 8 messages/minute. Newsletter tables live in `NEWSLETTER_DB`.
 
 ## Public routes
 
@@ -228,7 +228,7 @@ This document describes the public and authenticated surface of `admin-api.techn
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/send-email` | director | Send arbitrary email to members; directors limited to own department. |
+| POST | `/api/send-email` | director | Send arbitrary email to members; directors limited to own department. Up to 10 recipients send synchronously (one message each); larger lists enqueue a `custom` campaign delivered by the queue. |
 
 ## Club files
 
@@ -255,6 +255,7 @@ This document describes the public and authenticated surface of `admin-api.techn
 |--------|------|------|-------------|
 | GET | `/api/admin/maintenance` | public | Get maintenance status. |
 | POST | `/api/admin/maintenance` | board | Toggle maintenance mode. |
+| GET | `/api/admin/email-queue` | board | Email queue stats: hourly usage and recent campaigns. |
 
 ## Newsletter editor (OTP session)
 
@@ -266,8 +267,8 @@ This document describes the public and authenticated surface of `admin-api.techn
 | POST | `/api/newsletter-editor/drafts` | newsletter | Create or update a draft. |
 | DELETE | `/api/newsletter-editor/drafts/:id` | newsletter | Delete own draft. |
 | POST | `/api/newsletter-editor/upload-source` | newsletter | Upload source file. |
-| POST | `/api/newsletter-editor/send` | newsletter | Send a draft to active subscribers. |
-| POST | `/api/newsletter-editor/send-event` | newsletter | Send event mail to active subscribers. |
+| POST | `/api/newsletter-editor/send` | newsletter | Enqueue a draft for active subscribers (returns `queued`/`total`). |
+| POST | `/api/newsletter-editor/send-event` | newsletter | Enqueue event mail for active subscribers. |
 | GET | `/api/newsletter-editor/admin/authorized-emails` | board | List authorized emails. |
 | POST | `/api/newsletter-editor/admin/authorized-emails` | board | Add authorized email. |
 | DELETE | `/api/newsletter-editor/admin/authorized-emails/:email` | board | Remove authorized email. |
@@ -280,7 +281,7 @@ This document describes the public and authenticated surface of `admin-api.techn
 | GET | `/api/newsletter/admin/subscribers` | board | List subscribers. |
 | POST | `/api/newsletter` | board | Create or update a newsletter. |
 | DELETE | `/api/newsletter/:id` | board | Delete a newsletter. |
-| POST | `/api/newsletter/send` | board | Send newsletter to subscribers. |
+| POST | `/api/newsletter/send` | board | Enqueue newsletter to subscribers (returns `queued`/`total`). |
 | POST | `/api/newsletter/upload-source` | board | Upload newsletter source file. |
 
 ## Letter Studio (OTP session)

@@ -328,7 +328,7 @@ export default function NewsletterEditorPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setSuccess(`Event mail sent to ${data.sentCount} of ${data.total} subscribers!${data.queued ? ` ${data.queued} queued.` : ""}`);
+        setSuccess(`Event mail queued for ${data.queued ?? data.total} of ${data.total} subscribers — sending in the background.`);
         resetEventForm();
       } else {
         setError(data.error || "Failed to send");
@@ -397,7 +397,7 @@ export default function NewsletterEditorPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setSuccess(`Sent to ${data.sentCount} of ${data.total} subscribers!${data.queued ? ` ${data.queued} queued.` : ""}`);
+        setSuccess(`Newsletter queued for ${data.queued ?? data.total} of ${data.total} subscribers — sending in the background.`);
         loadDrafts();
       } else {
         setError(data.error || "Failed to send");

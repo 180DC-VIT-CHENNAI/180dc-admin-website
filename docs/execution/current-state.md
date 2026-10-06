@@ -19,6 +19,8 @@ This single file is the entire production backend. It is a Hono Worker with:
 - Queue producer binding (`QUEUE`) configured but unused.
 - Unified email delivery: `sendEmail()` sends through Spacemail SMTP (primary, BCC batches of 50, `cloudflare:sockets`) with automatic per-recipient Resend fallback.
 - Hourly/daily email accounting in D1 (`email_hour_count`, `resend_daily_count`, `daily_email_count`).
+- Bulk email queue (`email_queue`) drained by the `* * * * *` cron at up to 8 messages/minute (≤50 BCC recipients each): newsletter, event, and meet notifications enqueue and return immediately; failed campaigns retry up to 5 times; completion writes `recipient_count` back to the newsletter row.
+- Newsletter data lives in a separate D1 database (`NEWSLETTER_DB`, `newsletter-db`); the old tables in `180dc-db` are frozen backups.
 - Rate limiting in D1.
 - HTML sanitization (`sanitizeBlogHtml`).
 - Password hashing (PBKDF2) but no password login flow currently used.
@@ -52,6 +54,8 @@ A Vite + React + TypeScript SPA with React Router.
 ### D1 data
 
 Live data is in the `180dc-db` D1 database. Schema creation and migrations are run by the Worker on first request via `ensureDbReady`.
+
+Newsletter data (`newsletters`, `newsletter_subscribers`, `newsletter_authorized_emails`, `newsletter_otp_codes`, `newsletter_sessions`) lives in the separate `newsletter-db` database (`NEWSLETTER_DB` binding), initialized by `ensureNewsletterReady`. The copies in `180dc-db` are frozen legacy backups.
 
 ### Cloudflare Pages
 
@@ -99,11 +103,13 @@ Public DNS 180dcvitc.org
 
 admin-api Worker
   → Deployed from apps/admin-api/index.ts
-  → D1 database 180dc-db
+  → D1 database 180dc-db (members, projects, meets, email_queue, counters)
+  → D1 database newsletter-db via NEWSLETTER_DB (newsletter tables)
   → R2 buckets CLUB_FILES, BLOG_IMAGES, CASE_STUDIES
   → KV namespace AUTH_SESSIONS
   → Queue binding QUEUE (unused)
-  → Resend API for email
+  → Cron trigger * * * * * drains email_queue
+  → Spacemail SMTP for email (Resend fallback)
 
 job-processor Worker
   → Queue consumer for jobs-queue (no producers)
@@ -118,18 +124,19 @@ The following bindings and secrets are used by `admin-api`:
 
 | Name | Type | Purpose |
 |------|------|---------|
-| `DB` | D1 database | Main application database. |
+| `DB` | D1 database | Main application database (`180dc-db`). |
+| `NEWSLETTER_DB` | D1 database | Newsletter database (`newsletter-db`): newsletters, subscribers, editor auth. |
 | `CLUB_FILES` | R2 bucket | File manager uploads. |
 | `BLOG_IMAGES` | R2 bucket | Static completed projects JSON and case-study source files. |
 | `CASE_STUDIES` | R2 bucket | Case study images and newsletter source files. |
 | `AUTH_SESSIONS` | KV namespace | Bound but not actively used in `main`. |
-| `QUEUE` | Queue producer | Bound but not used in `main`. |
+| `QUEUE` | Queue producer | Bound but not used in `main`; bulk email uses `email_queue` + cron. |
 | `RESEND_API_KEY` | Secret | Fallback email sender (used when Spacemail SMTP fails). |
 | `CLERK_SECRET_KEY` | Secret | Clerk JWT verification. |
 | `ENVIRONMENT` | Var | Set to `production` on the deployed worker. |
 | `NEWSLETTER_SITE_URL` | Var | Base URL of the separate newsletter site (ADR-004). Consumed by bulk email templates when non-empty; set to `""` in production until the site is deployed. |
-| `SPACEMAIL_SMTP_USER` | Secret | Authenticated SMTP mailbox (`technical@180dcvitc.org`). Not set in production yet; when absent, all email uses the Resend fallback. |
-| `SPACEMAIL_SMTP_PASS` | Secret | Mailbox password for SMTP AUTH. Not set in production yet. |
+| `SPACEMAIL_SMTP_USER` | Secret | Authenticated SMTP mailbox (`technical@180dcvitc.org`), also the From address. Set in production. |
+| `SPACEMAIL_SMTP_PASS` | Secret | Mailbox password for SMTP AUTH. Set in production. |
 
 The following are used by the frontend:
 
@@ -142,7 +149,7 @@ The following are used by the frontend:
 
 - All API routes are served by `admin-api`. The frontend relies on this.
 - Token auth uses the `admin_tokens` table. Tokens are created by board members and emailed.
-- Rate limits and daily email cap are enforced.
+- Rate limits and email caps are enforced (`email_hour_count`, `resend_daily_count`).
 - Meet link visibility is hidden after the scheduled time.
 - `runMigrations` is idempotent and drops legacy recruitment tables.
 - `ensureTables` creates tables only if they do not exist.
@@ -157,9 +164,7 @@ The following are used by the frontend:
 
 ## Next steps — newsletter system (Spacemail + separate newsletter site)
 
-Ordered by dependency. `[done]` items are merged in code on this branch but must not be
-deployed until the Spacemail secrets are set (email otherwise silently stays on Resend,
-which still works).
+Ordered by dependency. `[done]` items are live in production (verified 2026-10-05/06).
 
 1. **Cloudflare DNS:** `[done]` root `180dcvitc.org` has MX `mx1/mx2.spacemail.com`
    (priority 0), SPF `v=spf1 include:spf.spacemail.com ~all`, and DKIM at
@@ -167,26 +172,31 @@ which still works).
    authenticating via its own `resend._domainkey` DKIM, so no root SPF include is needed.
 2. **Spacemail Manager:** `[done]` domain verified (`fbf0abfa...` TXT present); DKIM TXT
    added. Mailbox `technical@180dcvitc.org` exists and SMTP AUTH works; all From addresses
-   were switched to this mailbox, so Spacemail's sender-ownership check passes without an
-   alias. The old `mail.180dcvitc.org` MX/SPF records are gone.
-3. **Separate newsletter repo:** build the newsletter site (Cloudflare Pages or Worker at
-   `newsletter.180dcvitc.org`) that fetches `GET /api/newsletter`, `GET /api/newsletter/:id`,
-   `POST /api/newsletter/subscribe`, and `GET /api/newsletter/unsubscribe`. Include the
-   unsubscribe page with an email-entry form (BCC batches can't carry per-recipient links).
-4. **DNS:** add CNAME `newsletter` → the Pages/Worker host.
-5. **Deploy admin-api:** `[done]` public `GET /api/newsletter/:id`, CORS origin, and the
-   SMTP email layer are in `apps/admin-api/index.ts`; deploy after secret setup.
-6. **Secrets:** set `SPACEMAIL_SMTP_USER=technical@180dcvitc.org` / `SPACEMAIL_SMTP_PASS`
-   via `wrangler secret put` and `.dev.vars`; SMTP AUTH and sender acceptance are already
-   verified live.
+   use this mailbox, so Spacemail's sender-ownership check passes without an alias. The old
+   `mail.180dcvitc.org` MX/SPF records are gone.
+3. **Separate newsletter repo:** pending. Build the newsletter site (Cloudflare Pages or
+   Worker at `newsletter.180dcvitc.org`) that fetches `GET /api/newsletter`,
+   `GET /api/newsletter/:id`, `POST /api/newsletter/subscribe`, and
+   `GET /api/newsletter/unsubscribe`. Include the unsubscribe page with an email-entry form
+   (BCC batches can't carry per-recipient links).
+4. **DNS:** pending. Add CNAME `newsletter` → the Pages/Worker host.
+5. **Deploy admin-api:** `[done]` public `GET /api/newsletter/:id`, CORS origin, SMTP email
+   layer, bulk `email_queue` + cron, and the `NEWSLETTER_DB` split are deployed.
+6. **Secrets:** `[done]` `SPACEMAIL_SMTP_USER=technical@180dcvitc.org` /
+   `SPACEMAIL_SMTP_PASS` set via `wrangler secret put`; SMTP AUTH and sender acceptance
+   verified live, plus a production queue drain test.
 7. **SMTP migration:** `[done]` `sendEmail()` choke-point (SMTP via `cloudflare:sockets`,
    BCC batches of 50, MIME + attachments, 500/hour accounting, Resend fallback) replaces all
-   16 Resend call sites. Until the secrets exist it transparently uses the Resend fallback.
+   16 Resend call sites. Bulk sends now enqueue to `email_queue` and drain via cron.
 8. **Email templates:** `[done]` bulk CTAs consume `NEWSLETTER_SITE_URL` with a safe
    `180dcvitc.org/#newsletter` fallback. The var is intentionally `""` in `wrangler.toml`
    until the newsletter site is live; set it to `https://newsletter.180dcvitc.org` then.
-9. **Verify:** test send `From: technical@180dcvitc.org`, confirm SPF/DKIM pass; keep DMARC
-   `p=none` for a week after switch, then consider `p=quarantine`.
-10. **Docs cleanup:** `[done]` for `NEWSLETTER_EDITOR.md`, `api-contract.md`,
-    `business-logic.md`, `invariants.md`, `deployment.md`. Still pending: mark the SES
-    decision as superseded when the newsletter site is deployed.
+   Welcome/re-subscribe templates redesigned.
+9. **Verify:** `[done]` test sends `From: technical@180dcvitc.org` went through SMTP (no
+   Resend fallback). Keep DMARC `p=none` for a week after switch, then consider
+   `p=quarantine`.
+10. **Newsletter D1 split:** `[done]` newsletter tables migrated to `newsletter-db`
+    (`NEWSLETTER_DB`); old copies in `180dc-db` remain as frozen backups.
+11. **Docs cleanup:** `[done]` for `NEWSLETTER_EDITOR.md`, `api-contract.md`,
+    `business-logic.md`, `invariants.md`, `deployment.md`, data model, architecture, and
+    `AGENTS.md`.
