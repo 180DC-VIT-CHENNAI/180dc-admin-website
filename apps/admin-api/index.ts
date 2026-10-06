@@ -1372,6 +1372,9 @@ async function drainEmailQueue(env: any): Promise<{
   await ensureDbReady(env.DB, env);
   await migrateLegacyPendingEmails(env);
   await env.DB.prepare(
+    "DELETE FROM email_queue WHERE status IN ('done','failed') AND finished_at < datetime('now', '-30 days')",
+  ).run();
+  await env.DB.prepare(
     "UPDATE email_queue SET status='failed', last_error='max attempts reached', updated_at=CURRENT_TIMESTAMP, finished_at=CURRENT_TIMESTAMP WHERE status IN ('pending','processing') AND attempts >= ?",
   )
     .bind(QUEUE_MAX_ATTEMPTS)

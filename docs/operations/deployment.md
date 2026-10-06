@@ -141,7 +141,7 @@ NEWSLETTER_SITE_URL = ""
 
 > SMTP note: `sendEmail()` speaks SMTP directly from the Worker using `cloudflare:sockets` to `mail.spacemail.com:465` (implicit TLS). Workers cannot use port 25. Set the mailbox password with `npx wrangler secret put SPACEMAIL_SMTP_PASS` — never commit it.
 
-> Queue note: bulk sends (newsletter/event/meet) are inserted into `email_queue` and delivered by the cron trigger. Local dev does not run crons unless you use `wrangler dev --test-scheduled` and hit `/__scheduled?cron=*+*+*+*+*`. Inspect queue state via `GET /api/admin/email-queue` (board token).
+> Queue note: bulk sends (newsletter/event/meet) are inserted into `email_queue` and delivered by the cron trigger. Finished (`done`/`failed`) campaigns are purged automatically after 30 days. Local dev does not run crons unless you use `wrangler dev --test-scheduled` and hit `/__scheduled?cron=*+*+*+*+*`. Inspect queue state via `GET /api/admin/email-queue` (board token).
 
 The actual `database_id` and KV IDs are stored in `wrangler.toml` and should not be committed if they are sensitive. The repository currently has them in the file; this is a known configuration pattern but should be reviewed.
 
