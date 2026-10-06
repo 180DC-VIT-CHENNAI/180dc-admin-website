@@ -327,6 +327,87 @@ export const LETTERHEAD_CSS = String.raw`
     position: relative;
     overflow: hidden;
   }
+  .appointment-page {
+    padding: 12mm 14mm 11mm;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 8.2pt;
+    line-height: 1.28;
+  }
+  .appointment-page::before,
+  .appointment-page::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    width: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .appointment-page::before {
+    top: 0;
+    height: 25mm;
+    background:
+      linear-gradient(14deg, transparent 0 41%, rgba(112, 232, 53, .95) 42% 72%, transparent 73%),
+      linear-gradient(8deg, transparent 0 58%, #00df20 59% 100%);
+    clip-path: polygon(0 0, 100% 0, 100% 58%, 74% 49%, 45% 70%, 20% 54%, 0 62%);
+  }
+  .appointment-page::after {
+    bottom: 0;
+    height: 34mm;
+    background:
+      linear-gradient(165deg, transparent 0 39%, #a7f65f 40% 60%, transparent 61%),
+      linear-gradient(172deg, transparent 0 51%, #65ed38 52% 75%, transparent 76%),
+      #00df20;
+    clip-path: polygon(0 43%, 19% 55%, 42% 40%, 65% 59%, 83% 42%, 100% 17%, 100% 100%, 0 100%);
+  }
+  .appointment-page .watermark { display: none; }
+  .appointment-page .pagecontent { min-height: calc(297mm - 23mm); }
+  .appointment-page .letterhead {
+    min-height: 17mm;
+    align-items: flex-start;
+    position: relative;
+  }
+  .appointment-page .appointment-dc-logo {
+    width: 40mm;
+    height: auto;
+  }
+  .appointment-page .appointment-date {
+    padding-top: 1mm;
+    color: #30352f;
+    font-size: 6.5pt;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .appointment-page .hr1 {
+    border-top: .6pt solid #333;
+    margin: 2pt 0 4pt;
+  }
+  .appointment-page .lettertitle { margin-bottom: 3pt; }
+  .appointment-page .lettertitle .main {
+    font-size: 10pt;
+    letter-spacing: .01em;
+  }
+  .appointment-page .lettertitle .sub { display: none; }
+  .appointment-page .hr2 { display: none; }
+  .appointment-page .datebar { display: none; }
+  .appointment-page .body p { margin: 0 0 4.5pt; text-align: left; }
+  .appointment-page table.particulars {
+    font-size: 8.2pt;
+    margin: 4pt 0 6pt;
+  }
+  .appointment-page table.particulars td { padding: 1pt 0; }
+  .appointment-page table.particulars td.k { padding-right: 8pt; }
+  .appointment-page table.particulars td.sep { padding-right: 6pt; }
+  .appointment-page .sig {
+    padding-top: 8pt;
+    font-size: 7.2pt;
+  }
+  .appointment-page .sig .name { min-height: 1.8em; }
+  .appointment-page .digisig { font-size: 6.5pt; }
+  .appointment-page .footer {
+    margin-top: 5pt;
+    padding-top: 4pt;
+    font-size: 6.5pt;
+  }
   .watermark {
     position: absolute;
     top: -50%;

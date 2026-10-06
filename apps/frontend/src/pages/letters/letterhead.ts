@@ -193,6 +193,7 @@ export function buildLetterHTML(d: LetterData): string {
   const isAnnouncement = type === "announcement";
   const isDepartmentReport = type === "department-report";
   const isLDI = type === "ldi";
+  const isAppointment = type === "appointment";
   const title = isLDI
     ? "LDI FORM"
     : isDepartmentReport
@@ -436,10 +437,10 @@ export function buildLetterHTML(d: LetterData): string {
     <div class="pagecontent">
     <div class="letterhead">
       <div class="logo-col left">
-        ${isMOU ? (d.mouLogo ? `<img class="logoimg mou-party-logo" src="${h(d.mouLogo)}" alt="Other Party logo">` : "") : `<img class="logoimg vit-logo" src="${LETTER_VIT_LOGO}" alt="VIT logo">`}
+        ${isMOU ? (d.mouLogo ? `<img class="logoimg mou-party-logo" src="${h(d.mouLogo)}" alt="Other Party logo">` : "") : isAppointment ? `<img class="logoimg appointment-dc-logo" src="${LETTER_DC_LOGO}" alt="180 Degrees Consulting logo">` : `<img class="logoimg vit-logo" src="${LETTER_VIT_LOGO}" alt="VIT logo">`}
       </div>
       <div class="logo-col right">
-        <img class="logoimg dc-logo" src="${LETTER_DC_LOGO}" alt="180DC logo">
+        ${isAppointment ? `<div class="appointment-date">${h(d.dateStr)}</div>` : `<img class="logoimg dc-logo" src="${LETTER_DC_LOGO}" alt="180DC logo">`}
       </div>
     </div>
     <hr class="hr1">
@@ -627,7 +628,7 @@ export function buildPagesHTML(d: LetterData): string {
   if (d.type === "mou") return buildMouPagesHTML(d);
   if (d.type === "department-report") return buildDepartmentReportPagesHTML(d);
   if (d.type === "ldi") return buildLDIPagesHTML(d);
-  return `<div class="page">${buildLetterHTML(d)}</div>`;
+  return `<div class="page${d.type === "appointment" ? " appointment-page" : ""}">${buildLetterHTML(d)}</div>`;
 }
 
 function fnv1a32(str: string): number {
