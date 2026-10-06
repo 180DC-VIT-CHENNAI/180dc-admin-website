@@ -178,85 +178,9 @@ const ANNOUNCEMENT_TONE_COPY: Record<string, { intro: string; end: string }> = {
   happy: { intro: "We are delighted to share the following update with you.", end: "We look forward to your participation and continued support." },
 };
 
-function buildAppointmentLetterHTML(d: LetterData): string {
-  const h = escapeHTML;
-  const particulars = `
-        <tr><td class="k">Name</td><td class="sep">:</td><td>${h(d.name)}</td></tr>
-        <tr><td class="k">Registration Number</td><td class="sep">:</td><td>${h(d.reg)}</td></tr>
-        <tr><td class="k">Department</td><td class="sep">:</td><td>${h(d.team)}</td></tr>
-        ${d.team === "Technical" && d.techTrack && d.techTrack !== "General" ? `<tr><td class="k">Technical Track</td><td class="sep">:</td><td>${h(d.techTrack)}</td></tr>` : ""}
-        <tr><td class="k">Position</td><td class="sep">:</td><td>${h(d.position)}</td></tr>`;
-  const body = `
-      <p class="ap-greet"><strong>Dear ${h(d.name)},</strong></p>
-      <p class="ap-p">This Letter of Appointment (&ldquo;<strong>Letter</strong>&rdquo;) is issued by 180 Degrees Consulting, VIT Chennai Chapter (the &ldquo;<strong>Organisation</strong>&rdquo;) in favour of the appointee named herein, for the tenure 2026-27.</p>
-      <p class="ap-p">The particulars of this appointment are recorded below for reference:</p>
-      <table class="ap-table">${particulars}</table>
-      <p class="ap-p"><strong>Appointment.</strong> The appointee is appointed as <strong>${h(d.position)}</strong> of the Organisation for the 2026-27 tenure, effective from the date of this Letter.</p>
-      <p class="ap-p"><strong>Duties.</strong> The appointee shall discharge the duties of ${h(d.position)} in the ${h(d.team)} department, as directed by the Board.</p>
-      <p class="ap-p"><strong>Conduct.</strong> The appointee shall maintain professional and confidential standards, and follow the Board's directives.</p>
-      <p class="ap-p"><strong>Termination.</strong> This appointment may be reviewed, modified, or withdrawn by the Board at its discretion, subject to the appointee's good standing and conduct.</p>
-      <p class="ap-p">We look forward to your contribution. Congratulations on your appointment.</p>
-      <p class="ap-witness"><em>In witness whereof, this Letter is issued and authenticated by the undersigned on behalf of the Organisation.</em></p>
-      <p class="ap-p"><strong>Warm regards,</strong></p>`;
-  const sig = (name: string, role: string) => `
-        <td class="ap-sigcol"><span class="ap-sname">${h(name)}</span><span class="ap-srole">${h(role)}</span><span class="ap-sdigi">Digitally Signed</span></td>`;
-  return `
-    <style>
-      .ap-page { background: #ffffff; color: #1a1a1a; font-family: 'Segoe UI', Arial, sans-serif; padding: 46px 54px 42px; }
-      .ap-accent { border-top: 8px solid #00a651; margin: 0 0 26px; }
-      .ap-head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a1a1a; padding-bottom: 18px; }
-      .ap-wordmark { font-family: 'Segoe UI', Arial, sans-serif; font-size: 34px; font-weight: 800; letter-spacing: -1px; color: #00a651; line-height: 1; }
-      .ap-org { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; color: #1a1a1a; margin-top: 6px; }
-      .ap-chapter { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; color: #4b5563; margin-top: 3px; }
-      .ap-side { text-align: right; font-size: 11px; font-weight: 600; color: #4b5563; line-height: 1.6; }
-      .ap-titlebox { margin: 30px 0 6px; }
-      .ap-title { font-size: 24px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #1a1a1a; }
-      .ap-titlesub { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #00a651; margin-top: 8px; }
-      .ap-meta { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: #4b5563; margin-bottom: 26px; }
-      .ap-greet { font-size: 14px; margin: 0 0 14px; color: #1a1a1a; }
-      .ap-p { font-size: 13.5px; line-height: 1.75; color: #1a1a1a; margin: 0 0 12px; }
-      .ap-witness { font-size: 13px; line-height: 1.75; color: #1a1a1a; margin: 0 0 12px; }
-      .ap-table { width: 100%; border-collapse: collapse; margin: 6px 0 20px; }
-      .ap-table td { padding: 9px 12px; font-size: 13px; color: #1a1a1a; border-bottom: 1px solid #e4e4e4; }
-      .ap-table td.k { width: 42%; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; font-size: 11px; color: #00a651; }
-      .ap-table td.sep { width: 3%; color: #9ca3af; }
-      .ap-sig { width: 100%; border-collapse: collapse; margin-top: 34px; }
-      .ap-sigcol { width: 25%; padding: 18px 10px 0; vertical-align: top; }
-      .ap-sname { display: block; font-size: 13px; font-weight: 800; color: #1a1a1a; }
-      .ap-srole { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #4b5563; margin-top: 4px; }
-      .ap-sdigi { display: inline-block; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: #00a651; background: #eefaf3; padding: 4px 10px; border-radius: 4px; margin-top: 10px; }
-      .ap-footer { margin-top: 34px; padding-top: 14px; border-top: 2px solid #00a651; font-size: 10px; font-weight: 600; color: #4b5563; text-align: center; letter-spacing: 1px; }
-    </style>
-    <div class="pagecontent ap-page">
-      <div class="ap-accent"></div>
-      <div class="ap-head">
-        <div>
-          <div class="ap-wordmark">180DC</div>
-          <div class="ap-org">180 Degrees Consulting</div>
-          <div class="ap-chapter">VIT Chennai Chapter</div>
-        </div>
-        <div class="ap-side">Document Reference<br>${h(d.docnum)}<br>${h(d.dateStr)}</div>
-      </div>
-      <div class="ap-titlebox">
-        <div class="ap-title">Letter of Appointment</div>
-        <div class="ap-titlesub">Tenure 2026-27</div>
-      </div>
-      <div class="ap-meta"><span>Ref. No. ${h(d.docnum)}</span><span>Date: ${h(d.dateStr)}</span></div>
-      <div class="ap-body body">${body}</div>
-      <table class="ap-sig"><tr>
-        ${sig("Sharan K", "Chairperson")}
-        ${sig("Sanjana Chejeti", "Vice Chairperson")}
-        ${sig("Sonakshi Agarwal", "Gen Secretary")}
-        ${sig("Sanjay Sivakumar", "Secretary")}
-      </tr></table>
-      <div class="ap-footer">180 Degrees Consulting &mdash; VIT Chennai &nbsp;·&nbsp; vitc-180dc.org &nbsp;·&nbsp; events.vitc@180dc.org</div>
-    </div>`;
-}
-
 export function buildLetterHTML(d: LetterData): string {
   const h = escapeHTML;
   const type = d.type;
-  if (type === "appointment") return buildAppointmentLetterHTML(d);
   const isPromotion = type === "promotion";
   const isTermination = type === "termination";
   const isTransfer = type === "transfer";
@@ -309,7 +233,6 @@ export function buildLetterHTML(d: LetterData): string {
         <tr><td class="k">Name</td><td class="sep">:</td><td>${h(d.name)}</td></tr>
         <tr><td class="k">Registration Number</td><td class="sep">:</td><td>${h(d.reg)}</td></tr>
         <tr><td class="k">Department</td><td class="sep">:</td><td>${h(isTransfer ? d.teamFrom : d.team)}</td></tr>
-        <tr><td class="k">FFCS Status</td><td class="sep">:</td><td>${h(d.ffcs)}</td></tr>
         ${d.team === "Technical" && d.techTrack && d.techTrack !== "General" ? `<tr><td class="k">Technical Track</td><td class="sep">:</td><td>${h(d.techTrack)}</td></tr>` : ""}
         <tr><td class="k">Position</td><td class="sep">:</td><td>${h(isPromotion ? d.positionTo : d.position)}</td></tr>`;
   const announcementTone =
