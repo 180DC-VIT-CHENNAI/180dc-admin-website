@@ -165,6 +165,10 @@ well inside the hourly cap. Because the body is shared across a BCC batch, the
 per-recipient unsubscribe link must become a link to the unsubscribe page
 (`https://180dcvitc.org/unsubscribe`) where the user enters their email.
 
+Meet notifications are intentionally different: each recipient gets a separate
+SMTP message rather than a shared BCC batch. This keeps meet delivery one-person-
+per-email while still using the email queue and its hourly limit.
+
 ## Backend migration plan: Resend → Spacemail SMTP
 
 ### Sending architecture

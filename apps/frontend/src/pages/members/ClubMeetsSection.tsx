@@ -60,7 +60,7 @@ export default function ClubMeetsSection({ authToken, powerLevel }: { authToken:
                   setSendingEmail(null);
                   if (data.success) {
                     const count = (data.emailsSent || 0) + (data.emailsQueued || 0);
-                    alert(count > 0 ? `Notifications sent to ${data.emailsSent || 0} member(s)` : "No members found to notify.");
+                    alert(count > 0 ? `Notifications queued or sent to ${count} member(s)` : "No members found to notify.");
                   } else alert(data.error);
                 }} disabled={sendingEmail === m.id}>
                   <span className="material-symbols-outlined" style={{ fontSize: 20 }}>mail</span>
@@ -93,7 +93,7 @@ export default function ClubMeetsSection({ authToken, powerLevel }: { authToken:
               try {
                 const res = await fetch(apiUrl("/api/club-meets"), { method: "POST", headers, body: JSON.stringify({ title, meetLink: link, scheduledAt: when }) });
                 const data = await res.json();
-                if (data.success) { setTitle(""); setLink(""); setWhen(""); load(); const emailCount = (data.emailsSent || 0) + (data.emailsQueued || 0); alert(emailCount > 0 ? `Meet scheduled. ${data.emailsSent || 0} notification(s) sent.` : "Meet scheduled. No emails sent."); } else alert(data.error);
+                if (data.success) { setTitle(""); setLink(""); setWhen(""); load(); const emailCount = (data.emailsSent || 0) + (data.emailsQueued || 0); alert(emailCount > 0 ? `Meet scheduled. ${emailCount} notification(s) queued or sent.` : "Meet scheduled. No emails sent."); } else alert(data.error);
               } finally { setScheduling(false); }
             }}>Schedule</button>
           </div>

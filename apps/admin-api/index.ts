@@ -1465,8 +1465,7 @@ async function drainEmailQueue(env: any): Promise<{
 
   const batchMode =
     campaign.kind === "newsletter" ||
-    campaign.kind === "event" ||
-    campaign.kind === "meet";
+    campaign.kind === "event";
   const campaignBatchSize = batchMode ? SMTP_BATCH_SIZE : 1;
 
   while (budget > 0 && cursor < recipients.length) {
