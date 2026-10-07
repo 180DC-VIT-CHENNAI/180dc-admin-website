@@ -64,6 +64,11 @@ function isPublicRoute(pathname: string, method: string): boolean {
   if (pathname === "/api/admin/maintenance" && method === "GET") return true;
   if (pathname === "/api/newsletter" && method === "GET") return true;
   if (
+    method === "POST" &&
+    /^\/api\/newsletter\/unsubscribe\/[a-f0-9]+$/.test(pathname)
+  )
+    return true;
+  if (
     method === "GET" &&
     /^\/api\/newsletter\/[^/]+$/.test(pathname) &&
     !pathname.startsWith("/api/newsletter/admin")
@@ -1224,6 +1229,38 @@ async function sendEmail(
 const QUEUE_MESSAGES_PER_RUN = 15;
 const QUEUE_MAX_ATTEMPTS = 5;
 const QUEUE_STALE_MINUTES = 10;
+// Pause between single-recipient sends so the mailbox never bursts.
+const QUEUE_SEND_DELAY_MS = 1500;
+
+// Subscriber-facing templates render this marker instead of an unsubscribe
+// URL; the queue swaps in each recipient's tokenized link at send time.
+const UNSUBSCRIBE_URL_PLACEHOLDER = "%%UNSUBSCRIBE_URL%%";
+const UNSUBSCRIBE_PAGE_URL = "https://180dcvitc.org/unsubscribe";
+
+function newUnsubscribeToken(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function unsubscribePageUrl(token?: string | null): string {
+  return token ? UNSUBSCRIBE_PAGE_URL + "/" + token : UNSUBSCRIBE_PAGE_URL;
+}
+
+function unsubscribeHeaders(token?: string | null): Record<string, string> {
+  if (!token) return { "List-Unsubscribe": "<" + UNSUBSCRIBE_PAGE_URL + ">" };
+  return {
+    "List-Unsubscribe":
+      "<https://180dcvitc.org/api/newsletter/unsubscribe/" + token + ">",
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
+}
+
+function personalizeUnsubscribe(html: string, token?: string | null): string {
+  return html.split(UNSUBSCRIBE_URL_PLACEHOLDER).join(unsubscribePageUrl(token));
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 type QueueAttachmentRef = {
   filename: string;
@@ -1396,6 +1433,53 @@ async function finalizeQueuedCampaign(
   }
 }
 
+async function loadSettledRecipients(
+  db: any,
+  campaignId: string,
+): Promise<Set<string>> {
+  const rows: any = await db
+    .prepare(
+      "SELECT recipient FROM email_deliveries WHERE campaign_id = ? AND status IN ('sent','skipped')",
+    )
+    .bind(campaignId)
+    .all();
+  return new Set((rows.results || []).map((r: any) => r.recipient));
+}
+
+async function loadSubscriberTokens(
+  env: any,
+): Promise<Map<string, { token: string | null; active: boolean }>> {
+  await ensureNewsletterReady({ env });
+  const rows: any = await newsletterDb({ env })
+    .prepare(
+      "SELECT email, active, unsubscribe_token FROM newsletter_subscribers",
+    )
+    .all();
+  const map = new Map<string, { token: string | null; active: boolean }>();
+  for (const row of rows.results || []) {
+    map.set(String(row.email).toLowerCase(), {
+      token: row.unsubscribe_token || null,
+      active: row.active === 1,
+    });
+  }
+  return map;
+}
+
+async function recordDelivery(
+  db: any,
+  campaignId: string,
+  recipient: string,
+  status: "sent" | "failed" | "skipped",
+  error: string | null,
+) {
+  await db
+    .prepare(
+      "INSERT INTO email_deliveries (campaign_id, recipient, status, error, attempts, sent_at, updated_at) VALUES (?, ?, ?, ?, 1, CASE WHEN ? = 'sent' THEN CURRENT_TIMESTAMP END, CURRENT_TIMESTAMP) ON CONFLICT(campaign_id, recipient) DO UPDATE SET status = excluded.status, error = excluded.error, attempts = email_deliveries.attempts + 1, sent_at = COALESCE(excluded.sent_at, email_deliveries.sent_at), updated_at = CURRENT_TIMESTAMP",
+    )
+    .bind(campaignId, recipient, status, error, status)
+    .run();
+}
+
 async function drainEmailQueue(env: any): Promise<{
   sent: number;
   failed: number;
@@ -1407,6 +1491,9 @@ async function drainEmailQueue(env: any): Promise<{
   await migrateLegacyPendingEmails(env);
   await env.DB.prepare(
     "DELETE FROM email_queue WHERE status IN ('done','failed') AND finished_at < datetime('now', '-30 days')",
+  ).run();
+  await env.DB.prepare(
+    "DELETE FROM email_deliveries WHERE campaign_id NOT IN (SELECT id FROM email_queue)",
   ).run();
   await env.DB.prepare(
     "UPDATE email_queue SET status='failed', last_error='max attempts reached', updated_at=CURRENT_TIMESTAMP, finished_at=CURRENT_TIMESTAMP WHERE status IN ('pending','processing') AND attempts >= ?",
@@ -1463,49 +1550,116 @@ async function drainEmailQueue(env: any): Promise<{
   let lastError = campaign.last_error || null;
   let stoppedByQuota = false;
 
-  const batchMode =
-    campaign.kind === "newsletter" ||
-    campaign.kind === "event" ||
-    campaign.kind === "meet";
-  const campaignBatchSize = batchMode ? SMTP_BATCH_SIZE : 1;
+  // Meet notices go to members in BCC batches. Every other campaign is sent
+  // one message per recipient and tracked in email_deliveries, so a reclaimed
+  // or retried campaign never sends twice to the same address.
+  const batchMode = campaign.kind === "meet";
+  const toSubscribers =
+    campaign.kind === "newsletter" || campaign.kind === "event";
+  const isTest = (() => {
+    try {
+      return Boolean(campaign.meta && JSON.parse(campaign.meta).test);
+    } catch {
+      return false;
+    }
+  })();
+  const settled = batchMode
+    ? new Set<string>()
+    : await loadSettledRecipients(env.DB, campaign.id);
+  const subscribers = toSubscribers
+    ? await loadSubscriberTokens(env)
+    : new Map<string, { token: string | null; active: boolean }>();
+  let sentThisRun = 0;
 
   while (budget > 0 && cursor < recipients.length) {
-    const batch = recipients.slice(cursor, cursor + campaignBatchSize);
+    if (batchMode) {
+      const batch = recipients.slice(cursor, cursor + SMTP_BATCH_SIZE);
+      const result = await sendEmail(
+        { env },
+        {
+          from: campaign.from_address,
+          to: batch,
+          subject: campaign.subject,
+          html: campaign.html,
+          attachments,
+          batchRecipients: true,
+        },
+      );
+      sent += result.sent;
+      if (result.error && /subrequest/i.test(result.error)) {
+        lastError = result.error;
+        cursor += result.sent;
+        stoppedByQuota = true;
+        break;
+      }
+      failed += result.failed;
+      if (result.error) lastError = result.error;
+      const processed = result.sent + result.failed;
+      cursor += processed;
+      budget--;
+      if (result.skipped > 0) {
+        stoppedByQuota = true;
+        break;
+      }
+      if (processed === 0) break;
+      continue;
+    }
+
+    const recipient = recipients[cursor];
+    if (settled.has(recipient)) {
+      cursor++;
+      continue;
+    }
+    let html = campaign.html;
+    let extraHeaders: Record<string, string> | undefined;
+    if (toSubscribers) {
+      const sub = subscribers.get(recipient.toLowerCase());
+      if (sub && !sub.active && !isTest) {
+        await recordDelivery(env.DB, campaign.id, recipient, "skipped", "unsubscribed");
+        cursor++;
+        continue;
+      }
+      html = personalizeUnsubscribe(html, sub?.token);
+      extraHeaders = unsubscribeHeaders(sub?.token);
+    }
+    if (sentThisRun > 0) await sleep(QUEUE_SEND_DELAY_MS);
     const result = await sendEmail(
       { env },
       {
         from: campaign.from_address,
-        to: batch,
+        to: recipient,
         subject: campaign.subject,
-        html: campaign.html,
+        html,
         attachments,
-        batchRecipients: batchMode,
-        extraHeaders:
-          campaign.kind === "newsletter" || campaign.kind === "event"
-            ? {
-                "List-Unsubscribe": "<https://180dcvitc.org/unsubscribe>",
-                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-              }
-            : undefined,
+        extraHeaders,
       },
     );
-    sent += result.sent;
-    if (result.error && /subrequest/i.test(result.error)) {
-      lastError = result.error;
-      cursor += result.sent;
-      stoppedByQuota = true;
-      break;
-    }
-    failed += result.failed;
-    if (result.error) lastError = result.error;
-    const processed = result.sent + result.failed;
-    cursor += processed;
+    sentThisRun++;
     budget--;
-    if (result.skipped > 0) {
+    if (result.sent > 0) {
+      sent++;
+      await recordDelivery(env.DB, campaign.id, recipient, "sent", null);
+      cursor++;
+      continue;
+    }
+    if (result.error) lastError = result.error;
+    if (result.skipped > 0 || (result.error && /subrequest/i.test(result.error))) {
       stoppedByQuota = true;
       break;
     }
-    if (processed === 0) break;
+    if (result.failed > 0) {
+      failed++;
+      await recordDelivery(
+        env.DB,
+        campaign.id,
+        recipient,
+        "failed",
+        result.error || "send failed",
+      );
+      cursor++;
+      continue;
+    }
+    break;
   }
 
   const done = cursor >= recipients.length;
@@ -1880,6 +2034,26 @@ async function ensureNewsletterTables(db: any) {
   } catch {
     console.warn("Migration: newsletters.slug may already exist");
   }
+  try {
+    await db.exec("ALTER TABLE newsletter_subscribers ADD COLUMN name TEXT");
+  } catch {
+    console.warn("Migration: newsletter_subscribers.name may already exist");
+  }
+  try {
+    await db.exec(
+      "ALTER TABLE newsletter_subscribers ADD COLUMN unsubscribe_token TEXT",
+    );
+  } catch {
+    console.warn(
+      "Migration: newsletter_subscribers.unsubscribe_token may already exist",
+    );
+  }
+  await db.exec(
+    "UPDATE newsletter_subscribers SET unsubscribe_token = lower(hex(randomblob(24))) WHERE unsubscribe_token IS NULL",
+  );
+  await db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletter_subscribers_unsub_token ON newsletter_subscribers(unsubscribe_token)",
+  );
 }
 
 async function nextNewsletterSlug(db: any): Promise<string> {
@@ -1931,6 +2105,7 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS resend_daily_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS pending_emails (id TEXT PRIMARY KEY, meet_id TEXT NOT NULL, meet_type TEXT NOT NULL, recipient_email TEXT NOT NULL, recipient_name TEXT NOT NULL, meet_title TEXT NOT NULL, meet_description TEXT, meet_link TEXT, scheduled_at TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS email_queue (id TEXT PRIMARY KEY, kind TEXT NOT NULL, from_address TEXT NOT NULL, subject TEXT NOT NULL, html TEXT NOT NULL, attachments TEXT, recipients TEXT NOT NULL, cursor INTEGER DEFAULT 0, total INTEGER NOT NULL, sent INTEGER DEFAULT 0, failed INTEGER DEFAULT 0, attempts INTEGER DEFAULT 0, status TEXT DEFAULT 'pending', last_error TEXT, meta TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, finished_at DATETIME);
+    CREATE TABLE IF NOT EXISTS email_deliveries (campaign_id TEXT NOT NULL, recipient TEXT NOT NULL, status TEXT NOT NULL, error TEXT, attempts INTEGER DEFAULT 0, sent_at DATETIME, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (campaign_id, recipient));
     CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
     CREATE TABLE IF NOT EXISTS maintenance_mode (id INTEGER PRIMARY KEY DEFAULT 1, enabled INTEGER DEFAULT 0, message TEXT DEFAULT 'Site is under maintenance. Please check back later.', updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
@@ -2662,21 +2837,26 @@ app.use(
   }),
 );
 
-app.use(
-  "*",
-  csrf({
-    origin: (origin, c) => {
-      if (
-        c.req.method === "GET" ||
-        c.req.method === "HEAD" ||
-        c.req.method === "OPTIONS"
-      )
-        return true;
-      if (!origin) return false;
-      if (isDevOrigin(origin) || ALLOWED_ORIGINS.includes(origin)) return true;
-      return false;
-    },
-  }),
+const csrfGuard = csrf({
+  origin: (origin, c) => {
+    if (
+      c.req.method === "GET" ||
+      c.req.method === "HEAD" ||
+      c.req.method === "OPTIONS"
+    )
+      return true;
+    if (!origin) return false;
+    if (isDevOrigin(origin) || ALLOWED_ORIGINS.includes(origin)) return true;
+    return false;
+  },
+});
+
+// One-click unsubscribe POSTs (RFC 8058) come from mail providers with no
+// Origin header; the unguessable token in the path is the credential.
+app.use("*", (c, next) =>
+  c.req.method === "POST" && c.req.path.startsWith("/api/newsletter/unsubscribe/")
+    ? next()
+    : csrfGuard(c, next),
 );
 
 // Auth middleware
@@ -2883,7 +3063,7 @@ function newsletterEmailHtml(
   const safeDesc = escapeHtml(description);
   const unsubUrl = subscriberEmail
     ? "https://180dcvitc.org/unsubscribe?email=" + encodeURIComponent(subscriberEmail)
-    : "https://180dcvitc.org/unsubscribe";
+    : UNSUBSCRIBE_URL_PLACEHOLDER;
   const showLink = siteUrl.startsWith("http");
   const issueLabel = showLink
     ? siteUrl.slice(siteUrl.lastIndexOf("/") + 1).toUpperCase()
@@ -2962,7 +3142,7 @@ function eventMailEmailHtml(
   const safeDesc = escapeHtml(description);
   const unsubUrl = subscriberEmail
     ? `https://180dcvitc.org/unsubscribe?email=${encodeURIComponent(subscriberEmail)}`
-    : "https://180dcvitc.org/unsubscribe";
+    : UNSUBSCRIBE_URL_PLACEHOLDER;
   const fullImageUrl = imageUrl ? `https://180dcvitc.org${imageUrl}` : "";
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
@@ -3177,7 +3357,7 @@ function issueToEmailHtml(
   const dateText = formatEmailIssueDate(issue.date);
   const unsubUrl = subscriberEmail
     ? "https://180dcvitc.org/unsubscribe?email=" + encodeURIComponent(subscriberEmail)
-    : "https://180dcvitc.org/unsubscribe";
+    : UNSUBSCRIBE_URL_PLACEHOLDER;
   const blk = (b: EmailIssueBlock): string => {
     switch (b.type) {
       case "lead":
@@ -3357,7 +3537,7 @@ async function buildNewsletterEmailHtml(
 }
 
 function welcomeEmailHtml(
-  email: string,
+  unsubUrl: string,
   variant: "new" | "back",
   siteUrl: string,
 ): string {
@@ -3371,8 +3551,6 @@ function welcomeEmailHtml(
   const body = isNew
     ? '<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.7">Thanks for subscribing to the 180DC newsletter. Our latest updates, case-study insights, and event announcements will land straight in your inbox.</p>'
     : '<p style="font-size:14px;color:#555555;margin:0 0 16px;line-height:1.7">You\'ve been re-subscribed to the 180DC newsletter. Expect our latest updates and insights in your inbox again.</p>';
-  const unsubUrl =
-    "https://180dcvitc.org/unsubscribe?email=" + encodeURIComponent(email);
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet">
@@ -3467,13 +3645,14 @@ ${body}
 </body></html>`;
 }
 
-async function sendWelcomeEmail(c: any, email: string) {
+async function sendWelcomeEmail(c: any, email: string, token: string) {
   const siteUrl = newsletterSiteBase(c) || "https://180dcvitc.org";
   const result = await sendEmail(c, {
     from: "180DC Newsletter <technical@180dcvitc.org>",
     to: email,
     subject: "Welcome to the 180DC Newsletter!",
-    html: welcomeEmailHtml(email, "new", siteUrl),
+    html: welcomeEmailHtml(unsubscribePageUrl(token), "new", siteUrl),
+    extraHeaders: unsubscribeHeaders(token),
   });
   if (result.sent > 0) {
     console.log("[newsletter] Welcome email sent to=" + email);
@@ -3482,13 +3661,14 @@ async function sendWelcomeEmail(c: any, email: string) {
   }
 }
 
-async function sendWelcomeBackEmail(c: any, email: string) {
+async function sendWelcomeBackEmail(c: any, email: string, token: string) {
   const siteUrl = newsletterSiteBase(c) || "https://180dcvitc.org";
   const result = await sendEmail(c, {
     from: "180DC Newsletter <technical@180dcvitc.org>",
     to: email,
     subject: "Welcome back to the 180DC Newsletter!",
-    html: welcomeEmailHtml(email, "back", siteUrl),
+    html: welcomeEmailHtml(unsubscribePageUrl(token), "back", siteUrl),
+    extraHeaders: unsubscribeHeaders(token),
   });
   if (result.sent > 0) {
     console.log("[newsletter] Welcome-back email sent to=" + email);
@@ -3514,9 +3694,10 @@ app.post("/api/newsletter/subscribe", async (c) => {
     const body = await c.req.json();
     const email = validateEmail(body?.email);
     if (!email) return c.json({ error: "Valid email address required" }, 400);
+    const name = sanitizeStr(body?.name, 120);
 
     const existing = await newsletterDb(c).prepare(
-      "SELECT id, active FROM newsletter_subscribers WHERE email = ?",
+      "SELECT id, active, unsubscribe_token FROM newsletter_subscribers WHERE email = ?",
     )
       .bind(email)
       .first();
@@ -3526,25 +3707,27 @@ app.post("/api/newsletter/subscribe", async (c) => {
           success: true,
           message: "You are already subscribed!",
         });
+      const token = existing.unsubscribe_token || newUnsubscribeToken();
       await newsletterDb(c).prepare(
-        "UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL WHERE id = ?",
+        "UPDATE newsletter_subscribers SET active = 1, subscribed_at = CURRENT_TIMESTAMP, unsubscribed_at = NULL, unsubscribe_token = ?, name = COALESCE(?, name) WHERE id = ?",
       )
-        .bind(existing.id)
+        .bind(token, name, existing.id)
         .run();
-      await sendWelcomeBackEmail(c, email);
+      await sendWelcomeBackEmail(c, email, token);
       return c.json({
         success: true,
         message: "Welcome back! You have been re-subscribed.",
       });
     }
 
+    const token = newUnsubscribeToken();
     await newsletterDb(c).prepare(
-      "INSERT INTO newsletter_subscribers (id, email, active) VALUES (?, ?, 1)",
+      "INSERT INTO newsletter_subscribers (id, email, name, active, unsubscribe_token) VALUES (?, ?, ?, 1, ?)",
     )
-      .bind(crypto.randomUUID(), email)
+      .bind(crypto.randomUUID(), email, name, token)
       .run();
 
-    await sendWelcomeEmail(c, email);
+    await sendWelcomeEmail(c, email, token);
 
     return c.json({
       success: true,
@@ -3599,6 +3782,51 @@ app.get("/api/newsletter/unsubscribe", async (c) => {
 });
 
 // Public: List published newsletters (landing page)
+// Public: Token unsubscribe. Called by the /unsubscribe/:token page and by
+// mail clients honouring the List-Unsubscribe-Post one-click header (RFC 8058),
+// so it is POST-only (link scanners that prefetch GETs cannot trigger it) and
+// exempt from the CSRF origin check. The token itself is the credential.
+app.post("/api/newsletter/unsubscribe/:token", async (c) => {
+  try {
+    const token = c.req.param("token");
+    if (!/^[a-f0-9]{48}$/.test(token))
+      return c.json({ error: "Invalid unsubscribe link." }, 400);
+    const sub: any = await newsletterDb(c).prepare(
+      "SELECT id, email, active FROM newsletter_subscribers WHERE unsubscribe_token = ?",
+    )
+      .bind(token)
+      .first();
+    if (!sub) {
+      return c.json({
+        success: true,
+        status: "not_found",
+        message: "This unsubscribe link is not valid.",
+      });
+    }
+    if (sub.active === 0) {
+      return c.json({
+        success: true,
+        status: "already",
+        email: sub.email,
+        message: "You have already unsubscribed from the 180DC newsletter.",
+      });
+    }
+    await newsletterDb(c).prepare(
+      "UPDATE newsletter_subscribers SET active = 0, unsubscribed_at = CURRENT_TIMESTAMP WHERE id = ?",
+    )
+      .bind(sub.id)
+      .run();
+    return c.json({
+      success: true,
+      status: "unsubscribed",
+      email: sub.email,
+      message: "You have been unsubscribed from the 180DC newsletter.",
+    });
+  } catch (e: any) {
+    return c.json({ error: "Something went wrong." }, 500);
+  }
+});
+
 app.get("/api/newsletter", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
@@ -11348,6 +11576,84 @@ app.get("/api/admin/email-queue", async (c) => {
     });
   } catch (e: any) {
     return errorResponse(c, e.message, 403);
+  }
+});
+
+app.get("/api/admin/email-queue/:id/deliveries", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    requireBoard(c);
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+  try {
+    const id = c.req.param("id");
+    const campaign: any = await c.env.DB.prepare(
+      "SELECT id, kind, subject, total, sent, failed, cursor, status, last_error, created_at, finished_at FROM email_queue WHERE id = ?",
+    )
+      .bind(id)
+      .first();
+    if (!campaign) return c.json({ error: "Campaign not found" }, 404);
+    const rows: any = await c.env.DB.prepare(
+      "SELECT recipient, status, error, attempts, sent_at, updated_at FROM email_deliveries WHERE campaign_id = ? ORDER BY updated_at DESC",
+    )
+      .bind(id)
+      .all();
+    return c.json({ success: true, campaign, deliveries: rows.results || [] });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// Re-runs a finished campaign: email_deliveries makes the drain skip every
+// recipient already sent (or skipped as unsubscribed), so only failures go
+// out again. BCC-batched meet campaigns have no per-recipient record and
+// cannot be retried this way.
+app.post("/api/admin/email-queue/:id/retry-failed", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    requireBoard(c);
+  } catch (e: any) {
+    return errorResponse(c, e.message, 403);
+  }
+  try {
+    const id = c.req.param("id");
+    const campaign: any = await c.env.DB.prepare(
+      "SELECT id, kind, status, sent FROM email_queue WHERE id = ?",
+    )
+      .bind(id)
+      .first();
+    if (!campaign) return c.json({ error: "Campaign not found" }, 404);
+    if (campaign.kind === "meet")
+      return c.json(
+        { error: "Meet campaigns are BCC batches and cannot be retried" },
+        400,
+      );
+    if (campaign.status !== "done" && campaign.status !== "failed")
+      return c.json({ error: "Campaign is still sending" }, 409);
+    const tracked: any = await c.env.DB.prepare(
+      "SELECT COUNT(*) as n, SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed FROM email_deliveries WHERE campaign_id = ?",
+    )
+      .bind(id)
+      .first();
+    if ((tracked?.n || 0) < (campaign.sent || 0))
+      return c.json(
+        {
+          error:
+            "Campaign predates delivery tracking; retrying would resend to everyone",
+        },
+        400,
+      );
+    if (campaign.status === "done" && !(tracked?.failed > 0))
+      return c.json({ error: "No failed deliveries to retry" }, 400);
+    await c.env.DB.prepare(
+      "UPDATE email_queue SET status = 'pending', cursor = 0, failed = 0, attempts = 0, last_error = NULL, finished_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    )
+      .bind(id)
+      .run();
+    return c.json({ success: true, retrying: tracked?.failed || 0 });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
   }
 });
 
