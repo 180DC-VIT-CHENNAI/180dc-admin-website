@@ -346,10 +346,12 @@ export default function LetterStudioPage() {
       alert("Enter the member name.");
       return false;
     }
-    const reg = (form["f-reg"] || "").trim().toUpperCase();
-    if (!REG_PATTERN.test(reg)) {
-      alert("Registration number format must be 2 digits + B/M + 2 letters + 4 digits, with the 4-digit block starting 1-9. Example: 25BCE1234.");
-      return false;
+    if (type !== "appointment") {
+      const reg = (form["f-reg"] || "").trim().toUpperCase();
+      if (!REG_PATTERN.test(reg)) {
+        alert("Registration number format must be 2 digits + B/M + 2 letters + 4 digits, with the 4-digit block starting 1-9. Example: 25BCE1234.");
+        return false;
+      }
     }
     if (type === "showcause" && !(form["f-sc-incident"] || "").trim()) {
       alert("Please enter the incident / absence details.");
@@ -837,20 +839,24 @@ export default function LetterStudioPage() {
                 <label htmlFor="f-name">Name</label>
                 <input type="text" id="f-name" placeholder="Full name" value={form["f-name"] || ""} onChange={set("f-name")} />
 
-                <label htmlFor="f-reg">Registration number</label>
-                <input
-                  type="text"
-                  id="f-reg"
-                  placeholder="e.g. 25BCE1234"
-                  maxLength={9}
-                  value={form["f-reg"] || ""}
-                  onChange={(e) => set("f-reg")({ ...e, target: { ...e.target, value: e.target.value.toUpperCase().replace(/\s+/g, "").slice(0, 9) } })}
-                  style={form["f-reg"] && !REG_PATTERN.test((form["f-reg"] || "").toUpperCase()) ? { borderColor: "var(--status-error)" } : undefined}
-                />
-                {form["f-reg"] && !REG_PATTERN.test((form["f-reg"] || "").toUpperCase()) && (
-                  <div className="err" style={{ display: "block", color: "var(--status-error)" }}>
-                    Use 2 digits + B/M + 2 letters + 4 digits; the 4-digit block cannot start with 0. Example: 25BCE1234.
-                  </div>
+                {type !== "appointment" && (
+                  <>
+                    <label htmlFor="f-reg">Registration number</label>
+                    <input
+                      type="text"
+                      id="f-reg"
+                      placeholder="e.g. 25BCE1234"
+                      maxLength={9}
+                      value={form["f-reg"] || ""}
+                      onChange={(e) => set("f-reg")({ ...e, target: { ...e.target, value: e.target.value.toUpperCase().replace(/\s+/g, "").slice(0, 9) } })}
+                      style={form["f-reg"] && !REG_PATTERN.test((form["f-reg"] || "").toUpperCase()) ? { borderColor: "var(--status-error)" } : undefined}
+                    />
+                    {form["f-reg"] && !REG_PATTERN.test((form["f-reg"] || "").toUpperCase()) && (
+                      <div className="err" style={{ display: "block", color: "var(--status-error)" }}>
+                        Use 2 digits + B/M + 2 letters + 4 digits; the 4-digit block cannot start with 0. Example: 25BCE1234.
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {vis.positionSingle && (

@@ -352,7 +352,7 @@ export const LETTERHEAD_CSS = String.raw`
   }
   .appointment-page::after {
     bottom: 0;
-    height: 34mm;
+    height: 29mm;
     background:
       linear-gradient(165deg, transparent 0 39%, #a7f65f 40% 60%, transparent 61%),
       linear-gradient(172deg, transparent 0 51%, #65ed38 52% 75%, transparent 76%),
@@ -360,11 +360,43 @@ export const LETTERHEAD_CSS = String.raw`
     clip-path: polygon(0 43%, 19% 55%, 42% 40%, 65% 59%, 83% 42%, 100% 17%, 100% 100%, 0 100%);
   }
   .appointment-page .watermark { display: none; }
-  .appointment-page .pagecontent { min-height: calc(297mm - 23mm); }
+  .appointment-page .pagecontent {
+    min-height: calc(297mm - 23mm);
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+  }
   .appointment-page .letterhead {
-    min-height: 17mm;
+    min-height: 20mm;
     align-items: flex-start;
     position: relative;
+  }
+  .appointment-page .appointment-brand {
+    display: flex;
+    align-items: center;
+    gap: 3.2mm;
+    color: #183b2c;
+  }
+  .appointment-page .appointment-brand img {
+    width: 13mm;
+    height: 13mm;
+    object-fit: contain;
+  }
+  .appointment-page .appointment-brand strong {
+    display: block;
+    font-size: 15pt;
+    line-height: .9;
+    letter-spacing: .12em;
+    color: #0a6f47;
+  }
+  .appointment-page .appointment-brand span {
+    display: block;
+    margin-top: 1.5mm;
+    color: #65766c;
+    font-size: 6.5pt;
+    letter-spacing: .08em;
+    text-transform: uppercase;
   }
   .appointment-page .appointment-dc-logo {
     width: 40mm;
@@ -407,20 +439,54 @@ export const LETTERHEAD_CSS = String.raw`
   .appointment-page table.particulars td.sep { padding-right: 6pt; }
   .appointment-page .sig {
     margin-top: auto;
-    padding-top: 10pt;
-    border-top: .6pt solid #4a4a4a;
+    padding-top: 8pt;
+    border-top: 0;
     font-size: 7.4pt;
+    position: relative;
+    z-index: 2;
   }
-  .appointment-page .sig td { vertical-align: top; padding-right: 8pt; }
+  .appointment-page .sig td {
+    vertical-align: top;
+    padding: 0 14pt 0 0;
+    border-top: .6pt solid rgba(24, 51, 42, .55);
+  }
+  .appointment-page .sig tr.appointment-signatories td { width: 50%; }
   .appointment-page .sig tr.appointment-signatories td:last-child { padding-right: 0; }
-  .appointment-page .sig .name { min-height: 1.8em; }
+  .appointment-page .sig .name {
+    display: block;
+    min-height: 13mm;
+    padding-top: 1mm;
+    font-weight: 700;
+    line-height: 1.15;
+  }
+  .appointment-page .sig .signature-placeholder::after {
+    content: "Authorised signature";
+    color: #9aa9a1;
+    font-size: 6pt;
+    font-weight: 400;
+    letter-spacing: .04em;
+  }
+  .appointment-page .sig .signature-image {
+    display: flex;
+    align-items: flex-end;
+    min-height: 13mm;
+  }
+  .appointment-page .sig .signature-image img {
+    display: block;
+    width: 32mm;
+    height: 11mm;
+    object-fit: contain;
+    object-position: left bottom;
+    filter: brightness(0);
+  }
   .appointment-page .digisig { font-size: 6.5pt; }
   .appointment-page .footer {
     margin-top: 7pt;
-    padding-top: 5pt;
-    border-top: .6pt solid #7c7c7c;
+    padding-top: 3pt;
     font-size: 6.8pt;
     letter-spacing: .02em;
+    position: relative;
+    z-index: 2;
   }
   .watermark {
     position: absolute;
