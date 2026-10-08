@@ -294,7 +294,7 @@ export function buildLetterHTML(d: LetterData): string {
             : `This Letter of Appointment (&ldquo;<strong>Letter</strong>&rdquo;) is issued by 180 Degrees Consulting, VIT Chennai Chapter (the &ldquo;<strong>Organisation</strong>&rdquo;) in favour of the appointee named herein, for the tenure 2026-27.`;
   const particulars = `
         <tr><td class="k">Name</td><td class="sep">:</td><td>${h(d.name)}</td></tr>
-        <tr><td class="k">Registration Number</td><td class="sep">:</td><td>${h(d.reg)}</td></tr>
+        ${isAppointment ? "" : `<tr><td class="k">Registration Number</td><td class="sep">:</td><td>${h(d.reg)}</td></tr>`}
         <tr><td class="k">Department</td><td class="sep">:</td><td>${h(isTransfer ? d.teamFrom : d.team)}</td></tr>
         ${d.team === "Technical" && d.techTrack && d.techTrack !== "General" ? `<tr><td class="k">Technical Track</td><td class="sep">:</td><td>${h(d.techTrack)}</td></tr>` : ""}
         <tr><td class="k">Position</td><td class="sep">:</td><td>${h(isPromotion ? d.positionTo : d.position)}</td></tr>`;
@@ -484,13 +484,13 @@ export function buildLetterHTML(d: LetterData): string {
       <p>Warm regards,</p>`
                           : `
       <p><strong>Dear ${h(d.name)},</strong></p>
-      <p>We are pleased to appoint you as <strong>${h(d.position)}</strong> in the <strong>${h(d.team)}</strong> department of 180 Degrees Consulting, VIT Chennai Chapter for the 2026-27 tenure, effective from <strong>${h(d.dateStr)}</strong>.</p>
-      <p>The particulars of this appointment are recorded below for official reference:</p>
+      <p>We are pleased to confirm your appointment as <strong>${h(d.position)}</strong> in the <strong>${h(d.team)}</strong> department of 180 Degrees Consulting, VIT Chennai Chapter for the 2026-27 tenure, effective from <strong>${h(d.dateStr)}</strong>.</p>
+      <p>Your appointment particulars are recorded below for official reference:</p>
       <table class="particulars">${particulars}</table>
       <p><strong>Role Responsibilities.</strong> In this position, you are expected to:</p>
       ${appointmentResponsibilitiesHTML(d.team)}
-      <p><strong>Professional Conduct.</strong> You are expected to uphold the organisation's values, maintain confidentiality where required, and comply with all applicable directions issued by the Board and departmental leadership.</p>
-      <p><strong>Review and Continuance.</strong> This appointment remains subject to performance, conduct, and organisational requirements, and may be reviewed in accordance with chapter policies.</p>
+      <p><strong>Professional Conduct.</strong> You are expected to uphold the organisation's values, maintain confidentiality where required, and work collaboratively with departmental and chapter leadership.</p>
+      <p><strong>Tenure Review.</strong> This appointment is valid for the stated tenure and will be reviewed in accordance with chapter policies and role expectations.</p>
       <p>We welcome you to this role and look forward to your contribution to the chapter's impact and growth.</p>
       <p><em>This letter is issued and authenticated by the undersigned on behalf of the Organisation.</em></p>
       <p>Warm regards,</p>`;
@@ -499,7 +499,7 @@ export function buildLetterHTML(d: LetterData): string {
     <div class="pagecontent">
     <div class="letterhead">
       <div class="logo-col left">
-        ${isMOU ? (d.mouLogo ? `<img class="logoimg mou-party-logo" src="${h(d.mouLogo)}" alt="Other Party logo">` : "") : isAppointment ? `<img class="logoimg appointment-dc-logo" src="${LETTER_DC_LOGO}" alt="180 Degrees Consulting logo">` : `<img class="logoimg vit-logo" src="${LETTER_VIT_LOGO}" alt="VIT logo">`}
+        ${isMOU ? (d.mouLogo ? `<img class="logoimg mou-party-logo" src="${h(d.mouLogo)}" alt="Other Party logo">` : "") : isAppointment ? `<img class="logoimg appointment-vitc-logo" src="${LETTER_VIT_LOGO}" alt="VIT Chennai logo">` : `<img class="logoimg vit-logo" src="${LETTER_VIT_LOGO}" alt="VIT logo">`}
       </div>
       <div class="logo-col right">
         ${isAppointment ? `<div class="appointment-date">${h(d.dateStr)}</div>` : `<img class="logoimg dc-logo" src="${LETTER_DC_LOGO}" alt="180DC logo">`}
@@ -529,10 +529,10 @@ export function buildLetterHTML(d: LetterData): string {
     </tr><tr>
       <td colspan="4"><span class="name">Dr. Balaji J</span>Faculty Coordinator<br>180 Degrees Consulting, VIT Chennai<div class="digisig">Digitally Signed</div></td>
     </tr>` : `<tr class="four${isAppointment ? " appointment-signatories" : ""}">
-      <td><span class="name">Sharan K</span>Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
-      <td><span class="name">Sanjana Chejeti</span>Vice Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
-      <td><span class="name">Sonakshi Agarwal</span>Gen Secretary<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
-      <td><span class="name">Sanjay Sivakumar</span>Secretary<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
+      <td><span class="name">Sharan K</span>${isAppointment ? "Chairperson, 180 Degrees Consulting" : "Chairperson<br>180 Degrees Consulting"}<div class="digisig">Digitally Signed</div></td>
+      <td><span class="name">Sanjana Chejeti</span>${isAppointment ? "Vice Chairperson, 180 Degrees Consulting" : "Vice Chairperson<br>180 Degrees Consulting"}<div class="digisig">Digitally Signed</div></td>
+      <td><span class="name">Sonakshi Agarwal</span>${isAppointment ? "Gen Secretary, 180 Degrees Consulting" : "Gen Secretary<br>180 Degrees Consulting"}<div class="digisig">Digitally Signed</div></td>
+      <td><span class="name">Sanjay Sivakumar</span>${isAppointment ? "Secretary, 180 Degrees Consulting" : "Secretary<br>180 Degrees Consulting"}<div class="digisig">Digitally Signed</div></td>
     </tr>`}</table>
     <div class="footer"><a href="https://vitc-180dc.org/" target="_blank" rel="noopener">vitc-180dc.org</a><span style="display:inline-block; width:36pt;"></span><a href="mailto:events.vitc@180dc.org">events.vitc@180dc.org</a></div>
     </div>`;

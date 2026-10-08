@@ -344,30 +344,34 @@ export const LETTERHEAD_CSS = String.raw`
   }
   .appointment-page::before {
     top: 0;
-    height: 25mm;
+    height: 27mm;
     background:
-      linear-gradient(14deg, transparent 0 41%, rgba(112, 232, 53, .95) 42% 72%, transparent 73%),
-      linear-gradient(8deg, transparent 0 58%, #00df20 59% 100%);
-    clip-path: polygon(0 0, 100% 0, 100% 58%, 74% 49%, 45% 70%, 20% 54%, 0 62%);
+      linear-gradient(12deg, transparent 0 39%, rgba(120, 236, 62, .92) 40% 67%, transparent 68%),
+      linear-gradient(9deg, transparent 0 55%, #17d832 56% 84%, #0dbc2d 85% 100%);
+    clip-path: polygon(0 0, 100% 0, 100% 56%, 79% 48%, 51% 66%, 23% 52%, 0 61%);
   }
   .appointment-page::after {
     bottom: 0;
-    height: 34mm;
+    height: 30mm;
     background:
-      linear-gradient(165deg, transparent 0 39%, #a7f65f 40% 60%, transparent 61%),
-      linear-gradient(172deg, transparent 0 51%, #65ed38 52% 75%, transparent 76%),
-      #00df20;
-    clip-path: polygon(0 43%, 19% 55%, 42% 40%, 65% 59%, 83% 42%, 100% 17%, 100% 100%, 0 100%);
+      linear-gradient(166deg, transparent 0 36%, #b7fb78 37% 55%, transparent 56%),
+      linear-gradient(173deg, transparent 0 49%, #75ee4b 50% 70%, transparent 71%),
+      linear-gradient(179deg, #1ed63e 0 100%);
+    clip-path: polygon(0 46%, 22% 56%, 44% 43%, 67% 60%, 84% 45%, 100% 23%, 100% 100%, 0 100%);
   }
   .appointment-page .watermark { display: none; }
-  .appointment-page .pagecontent { min-height: calc(297mm - 23mm); }
+  .appointment-page .pagecontent {
+    min-height: calc(297mm - 23mm);
+    box-sizing: border-box;
+    padding-bottom: 7mm;
+  }
   .appointment-page .letterhead {
     min-height: 17mm;
     align-items: flex-start;
     position: relative;
   }
-  .appointment-page .appointment-dc-logo {
-    width: 40mm;
+  .appointment-page .appointment-vitc-logo {
+    width: 44mm;
     height: auto;
   }
   .appointment-page .appointment-date {
@@ -407,9 +411,9 @@ export const LETTERHEAD_CSS = String.raw`
   .appointment-page table.particulars td.sep { padding-right: 6pt; }
   .appointment-page .sig {
     margin-top: auto;
-    padding-top: 10pt;
+    padding-top: 8pt;
     border-top: .6pt solid #4a4a4a;
-    font-size: 7.4pt;
+    font-size: 7.1pt;
   }
   .appointment-page .sig td { vertical-align: top; padding-right: 8pt; }
   .appointment-page .sig tr.appointment-signatories td:last-child { padding-right: 0; }
