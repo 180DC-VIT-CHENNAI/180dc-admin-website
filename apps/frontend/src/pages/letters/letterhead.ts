@@ -498,7 +498,7 @@ export function buildLetterHTML(d: LetterData): string {
     <div class="pagecontent">
     <div class="letterhead">
       <div class="logo-col left">
-        ${isMOU ? (d.mouLogo ? `<img class="logoimg mou-party-logo" src="${h(d.mouLogo)}" alt="Other Party logo">` : "") : isAppointment ? `<div class="appointment-brand"><img src="/images/vitc-mark.png" alt="VITC mark"><div><strong>VITC</strong><span>180 Degrees Consulting</span></div></div>` : `<img class="logoimg vit-logo" src="${LETTER_VIT_LOGO}" alt="VIT logo">`}
+        ${isMOU ? (d.mouLogo ? `<img class="logoimg mou-party-logo" src="${h(d.mouLogo)}" alt="Other Party logo">` : "") : isAppointment ? `<div class="appointment-brand"><img src="${LETTER_DC_LOGO}" alt="180 Degrees Consulting logo"><div><strong>VITC</strong><span>VIT Chennai Chapter</span></div></div>` : `<img class="logoimg vit-logo" src="${LETTER_VIT_LOGO}" alt="VIT logo">`}
       </div>
       <div class="logo-col right">
         ${isAppointment ? `<div class="appointment-date">${h(d.dateStr)}</div>` : `<img class="logoimg dc-logo" src="${LETTER_DC_LOGO}" alt="180DC logo">`}
@@ -527,16 +527,17 @@ export function buildLetterHTML(d: LetterData): string {
       <td><span class="name">Sanjay Sivakumar</span>Secretary<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
     </tr><tr>
       <td colspan="4"><span class="name">Dr. Balaji J</span>Faculty Coordinator<br>180 Degrees Consulting, VIT Chennai<div class="digisig">Digitally Signed</div></td>
-    </tr>` : isAppointment ? `<tr class="appointment-signatories">
-      <td><span class="name signature-placeholder"></span>Sonakshi Agarwal<br>General Secretary<br>180 Degrees Consulting, VIT Chennai</td>
-      <td><span class="name signature-image"><img src="/signatures/sanjay-sivakumar-signature.svg" alt="Sanjay Sivakumar signature"></span>Sanjay Sivakumar<br>Co-Secretary<br>180 Degrees Consulting, VIT Chennai</td>
+    </tr>` : isAppointment ? `<tr class="four appointment-signatories">
+      <td><span class="name signature-placeholder"></span>Sharan K<br>Chairperson<br>180 Degrees Consulting, VIT Chennai</td>
+      <td><span class="name signature-placeholder"></span>Sanjana Chejeti<br>Vice Chairperson<br>180 Degrees Consulting, VIT Chennai</td>
+      <td><span class="name signature-image general-secretary-signature"><img src="/signatures/general-secretary-signature.jpeg" alt="General Secretary signature"></span>Sonakshi Agarwal<br>General Secretary<br>180 Degrees Consulting, VIT Chennai</td>
+      <td><span class="name signature-image"><img src="/signatures/sanjay-signature.png" alt="Sanjay Sivakumar signature"></span>Sanjay Sivakumar<br>Co-Secretary<br>180 Degrees Consulting, VIT Chennai</td>
     </tr>` : `<tr class="four">
       <td><span class="name">Sharan K</span>Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
       <td><span class="name">Sanjana Chejeti</span>Vice Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
       <td><span class="name">Sonakshi Agarwal</span>Gen Secretary<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
       <td><span class="name">Sanjay Sivakumar</span>Secretary<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
     </tr>`}</table>
-    <div class="footer"><a href="https://vitc-180dc.org/" target="_blank" rel="noopener">vitc-180dc.org</a><span style="display:inline-block; width:36pt;"></span><a href="mailto:events.vitc@180dc.org">events.vitc@180dc.org</a></div>
     </div>`;
 }
 

@@ -359,7 +359,19 @@ export const LETTERHEAD_CSS = String.raw`
       #00df20;
     clip-path: polygon(0 43%, 19% 55%, 42% 40%, 65% 59%, 83% 42%, 100% 17%, 100% 100%, 0 100%);
   }
-  .appointment-page .watermark { display: none; }
+  .appointment-page .watermark {
+    display: block;
+    top: 31%;
+    left: 50%;
+    width: 72%;
+    height: 38%;
+    transform: translate(-50%, -50%);
+    background-size: 105mm auto;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: .065;
+    z-index: 0;
+  }
   .appointment-page .pagecontent {
     min-height: calc(297mm - 23mm);
     position: relative;
@@ -375,17 +387,18 @@ export const LETTERHEAD_CSS = String.raw`
   .appointment-page .appointment-brand {
     display: flex;
     align-items: center;
-    gap: 3.2mm;
+    gap: 3mm;
     color: #183b2c;
   }
   .appointment-page .appointment-brand img {
-    width: 13mm;
-    height: 13mm;
+    width: 37mm;
+    height: 14mm;
     object-fit: contain;
+    object-position: left center;
   }
   .appointment-page .appointment-brand strong {
     display: block;
-    font-size: 15pt;
+    font-size: 14pt;
     line-height: .9;
     letter-spacing: .12em;
     color: #0a6f47;
@@ -450,7 +463,7 @@ export const LETTERHEAD_CSS = String.raw`
     padding: 0 14pt 0 0;
     border-top: .6pt solid rgba(24, 51, 42, .55);
   }
-  .appointment-page .sig tr.appointment-signatories td { width: 50%; }
+  .appointment-page .sig tr.appointment-signatories td { width: 25%; }
   .appointment-page .sig tr.appointment-signatories td:last-child { padding-right: 0; }
   .appointment-page .sig .name {
     display: block;
@@ -477,7 +490,12 @@ export const LETTERHEAD_CSS = String.raw`
     height: 11mm;
     object-fit: contain;
     object-position: left bottom;
-    filter: brightness(0);
+    filter: grayscale(1) brightness(.42) contrast(1.6);
+  }
+  .appointment-page .sig .general-secretary-signature img {
+    width: 22mm;
+    height: 12mm;
+    transform: rotate(35deg) scale(1.25);
   }
   .appointment-page .digisig { font-size: 6.5pt; }
   .appointment-page .footer {
