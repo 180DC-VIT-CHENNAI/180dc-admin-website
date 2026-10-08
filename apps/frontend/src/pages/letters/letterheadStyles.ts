@@ -390,6 +390,14 @@ export const LETTERHEAD_CSS = String.raw`
   .appointment-page .hr2 { display: none; }
   .appointment-page .datebar { display: none; }
   .appointment-page .body p { margin: 0 0 4.5pt; text-align: left; }
+  .appointment-page .appointment-responsibilities {
+    margin: 0 0 6pt 14pt;
+    padding: 0;
+  }
+  .appointment-page .appointment-responsibilities li {
+    margin: 0 0 2.6pt;
+    padding-left: 1pt;
+  }
   .appointment-page table.particulars {
     font-size: 8.2pt;
     margin: 4pt 0 6pt;
@@ -398,15 +406,21 @@ export const LETTERHEAD_CSS = String.raw`
   .appointment-page table.particulars td.k { padding-right: 8pt; }
   .appointment-page table.particulars td.sep { padding-right: 6pt; }
   .appointment-page .sig {
-    padding-top: 8pt;
-    font-size: 7.2pt;
+    margin-top: auto;
+    padding-top: 10pt;
+    border-top: .6pt solid #4a4a4a;
+    font-size: 7.4pt;
   }
+  .appointment-page .sig td { vertical-align: top; padding-right: 8pt; }
+  .appointment-page .sig tr.appointment-signatories td:last-child { padding-right: 0; }
   .appointment-page .sig .name { min-height: 1.8em; }
   .appointment-page .digisig { font-size: 6.5pt; }
   .appointment-page .footer {
-    margin-top: 5pt;
-    padding-top: 4pt;
-    font-size: 6.5pt;
+    margin-top: 7pt;
+    padding-top: 5pt;
+    border-top: .6pt solid #7c7c7c;
+    font-size: 6.8pt;
+    letter-spacing: .02em;
   }
   .watermark {
     position: absolute;
