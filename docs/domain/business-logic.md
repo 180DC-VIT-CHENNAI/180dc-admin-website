@@ -25,12 +25,22 @@ This document describes the system from the domain perspective. Each section cov
 
 1. User clicks Google sign-in; Clerk handles OAuth.
 2. Frontend gets a Clerk JWT via `getToken()`.
-3. Frontend posts `POST /api/auth/clerk-login` with the JWT and email.
+3. Frontend posts `POST /api/auth/clerk-login` with the JWT.
 4. Backend verifies the JWT with `CLERK_SECRET_KEY`.
-5. Backend looks up the user by `clerk_user_id` or by email (auto-link if found).
-6. If `oauth_enabled = 0`, login fails.
-7. A token is created or reused in `admin_tokens`.
-8. Frontend uses that token for subsequent requests.
+5. Backend fetches the Clerk user via the Clerk Backend API and accepts only Clerk-verified email addresses. Client-supplied emails are never trusted.
+6. Backend looks up the user by `clerk_user_id` (the stored link must match a verified email on the Clerk account) or, if unlinked, by a Clerk-verified email (auto-link). A Clerk user ID already linked to another member is rejected.
+7. If `oauth_enabled = 0`, login fails.
+8. A token is created or reused in `admin_tokens`.
+9. Frontend uses that token for subsequent requests.
+
+#### Token login (RULE-AUTH-06)
+
+1. Member enters the token received by email on the login page.
+2. Frontend posts `POST /api/auth/token-login` with the token.
+3. Backend validates it against `admin_tokens` (must be unrevoked and unexpired); invalid tokens receive 401.
+4. If no `users` row exists yet, one is created from the token's email/name/role.
+5. The response includes `email`, `name`, `roleId`, `roleName`, `powerLevel`, and `departmentId`.
+6. The legacy `/api/dev-login` route is for development only and returns 403 when `ENVIRONMENT=production`.
 
 #### Token rotation (RULE-AUTH-03)
 
@@ -39,16 +49,17 @@ This document describes the system from the domain perspective. Each section cov
 
 #### Link/unlink Clerk (RULE-AUTH-04)
 
-- Authenticated members can link a Clerk user ID via `POST /api/auth/link-clerk`.
+- Authenticated members can link a Clerk account via `POST /api/auth/link-clerk` by presenting a valid Clerk JWT (`clerkToken`). The server links the JWT's verified `sub`; client-supplied Clerk user IDs are not accepted.
 - They can unlink via `POST /api/auth/unlink-clerk`.
 
 ### Business rules
 
 - RULE-AUTH-01: A token must be unrevoked and unexpired to log in.
-- RULE-AUTH-02: Google login only works if the user has `oauth_enabled = 1`.
+- RULE-AUTH-02: Google login only works if the Clerk JWT is valid, the Clerk account has a verified email matching the member, and the member has `oauth_enabled = 1`.
 - RULE-AUTH-03: Tokens are deleted and regenerated on rotation, not stored hashed.
 - RULE-AUTH-04: The `forgot-token` endpoint always returns success to prevent email enumeration.
 - RULE-AUTH-05: Maintenance mode blocks all members with `power_level < 100`.
+- RULE-AUTH-06: Token login via `/api/auth/token-login` works in production; `dev-login` does not.
 
 ## Roles and permissions
 

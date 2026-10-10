@@ -31,8 +31,9 @@ This document describes the public and authenticated surface of `admin-api.techn
 | POST | `/api/newsletter-editor/otp/verify` | public | Verify OTP and get session token. |
 | POST | `/api/signup-requests` | public | Submit a member account request. |
 | POST | `/api/consulting-request` | public | Submit a consulting request. |
-| POST | `/api/dev-login` | public | Log in with admin token. Creates user if missing. |
-| POST | `/api/auth/clerk-login` | public | Log in with a Clerk JWT (Google OAuth). |
+| POST | `/api/dev-login` | public | Log in with admin token (dev only; 403 when `ENVIRONMENT=production`). Creates user if missing. |
+| POST | `/api/auth/token-login` | public | Production-safe token login. Validates admin token against `admin_tokens`; creates user if missing. |
+| POST | `/api/auth/clerk-login` | public | Log in with a Clerk JWT (Google OAuth). Email is resolved from the Clerk Backend API; request-body email is only used if Clerk-verified. 401 when the JWT is invalid/expired or the account cannot be mapped; 409 when the Clerk user is already linked to another member. |
 | POST | `/api/auth/forgot-token` | public | Email token to member (always returns success). |
 | GET | `/api/departments` | public | Department list (name, description). |
 | GET | `/api/projects/completed` | public | Completed projects (R2 cache, fallback to DB). |
@@ -43,7 +44,7 @@ This document describes the public and authenticated surface of `admin-api.techn
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/auth/link-clerk` | token | Link Clerk user ID to the member. |
+| POST | `/api/auth/link-clerk` | token | Link the Clerk user ID from a verified `clerkToken` JWT to the member. |
 | POST | `/api/auth/unlink-clerk` | token | Unlink Clerk user ID. |
 | POST | `/api/auth/rotate-token` | token | Revoke current token and email a new one. |
 

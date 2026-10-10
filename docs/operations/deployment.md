@@ -130,6 +130,9 @@ ENVIRONMENT = "production"
 # Empty until the ADR-004 newsletter site is deployed; newsletters then link to {url}/newsletter/{id}
 NEWSLETTER_SITE_URL = ""
 
+# Note: ENVIRONMENT now ships via wrangler.toml [vars]. Local dev overrides it
+# back to development: `pnpm dev` runs `wrangler dev --var ENVIRONMENT:development`.
+
 # Secrets must be set via `wrangler secret put`
 # RESEND_API_KEY          (fallback sender — keep while Spacemail is rolled out)
 # CLERK_SECRET_KEY

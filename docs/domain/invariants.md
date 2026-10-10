@@ -24,10 +24,10 @@ Invariants are properties that must never become false while the system is runni
 
 ### INV-AUTH-03: Google login cannot bypass token auth
 
-- **Statement:** Clerk/Google login only provides a token if the user's `oauth_enabled = 1` and the Clerk user is linked to a `users` row.
-- **Reason:** Google OAuth is an alternative login method, not a separate auth boundary.
-- **Where enforced:** `POST /api/auth/clerk-login`.
-- **How verified:** Try logging in with an unlinked Clerk account; confirm 403.
+- **Statement:** Clerk/Google login only provides a token if the Clerk JWT is valid, the Clerk account has a Clerk-verified email matching a `users` row (`clerk_user_id` links must also match a verified email), the Clerk user ID is linked to at most one user, and the user has `oauth_enabled = 1`. Client-supplied emails and Clerk user IDs are never trusted.
+- **Reason:** Google OAuth is an alternative login method, not a separate auth boundary. Trusting client input would allow one Clerk account to claim any member's identity.
+- **Where enforced:** `POST /api/auth/clerk-login`; unique partial index `idx_users_clerk_user_id` on `users(clerk_user_id)`.
+- **How verified:** Send a valid Clerk JWT with another member's email in the body; confirm no token is issued (401). Try logging in with an unlinked Clerk account; confirm 401.
 - **Related business rules:** RULE-AUTH-02.
 - **Current status:** ENFORCED.
 

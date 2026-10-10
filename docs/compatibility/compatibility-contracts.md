@@ -154,7 +154,20 @@ The frontend relies on `VITE_CLERK_PUBLISHABLE_KEY`. The backend relies on `CLER
 A Clerk login is valid only when:
 
 1. The Clerk JWT is valid.
-2. The `users.clerk_user_id` or `users.email` matches the token.
-3. `users.oauth_enabled = 1`.
+2. The Clerk Backend API returns a Clerk-verified email for the Clerk user, and that email matches `users.email` (client-supplied emails are ignored).
+3. `users.clerk_user_id` is empty (link via verified email) or equals the JWT's `sub` and matches a verified email; one Clerk user ID may be linked to at most one user.
+4. `users.oauth_enabled = 1`.
 
-Do not change this logic without updating the frontend linking flow.
+Linking (`POST /api/auth/link-clerk`) requires a valid Clerk JWT (`clerkToken`) in the body; the server links the JWT's `sub` and rejects client-supplied Clerk user IDs. Do not change this logic without updating the frontend linking flow.
+
+## COMP-AUTH-01 Token login contract
+
+- `POST /api/auth/token-login` accepts `{ token }` and validates it against `admin_tokens` (unrevoked + unexpired). Success returns the same profile shape as clerk-login.
+- The frontend must call `/api/auth/token-login`, never `/api/dev-login` (the latter is disabled when `ENVIRONMENT=production`).
+- Invalid/expired tokens return 401; rate limit is 10/min per IP (429).
+
+## COMP-AUTH-02 Auth failure status codes
+
+- 401 = authentication refused: invalid/expired Clerk JWT or admin token, unlinked/unknown member, `oauth_enabled = 0`, no verified email on the Clerk account.
+- 403 = the caller is authenticated but lacks permission (power-level gates).
+- 409 = Clerk user ID already linked to another member.

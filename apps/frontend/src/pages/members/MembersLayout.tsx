@@ -412,22 +412,49 @@ export default function MembersLayout() {
             await new Promise(r => setTimeout(r, 500));
           }
           console.log("[clerk-cb] calling /api/auth/clerk-login", { email: clerkUserEmail, clerkUserId });
-          const res = await fetch(apiUrl("/api/auth/clerk-login"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ clerkToken: clerkJwt, email: clerkUserEmail }),
-          });
-          console.log("[clerk-cb] clerk-login response status:", res.status);
-          const data = await res.json();
-          console.log("[clerk-cb] clerk-login response:", JSON.stringify(data));
+
+          // The session JWT is only valid ~60s and the worker can be slow —
+          // guard with a hard timeout and retry once with a fresh JWT.
+          const runLogin = async (jwt: string, signal: AbortSignal) => {
+            const r = await fetch(apiUrl("/api/auth/clerk-login"), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              signal,
+              body: JSON.stringify({ clerkToken: jwt, email: clerkUserEmail }),
+            });
+            return [r, await r.json().catch(() => ({}))] as const;
+          };
+
+          let res: Response | null = null;
+          let data: any = null;
+          for (let attempt = 0; attempt < 2 && !data?.success; attempt++) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 20000);
+            try {
+              let jwt: string | null = clerkJwt;
+              if (attempt === 1) {
+                console.log("[clerk-cb] retrying with a fresh Clerk JWT");
+                jwt = await getToken();
+              }
+              if (!jwt) break;
+              [res, data] = await runLogin(jwt, controller.signal);
+              if (res.status === 429) break;
+            } catch {
+              data = null; // network error or timeout — loop retries with fresh JWT
+            } finally {
+              clearTimeout(timeoutId);
+            }
+          }
+          console.log("[clerk-cb] clerk-login response status:", res?.status, "data:", JSON.stringify(data));
           setOauthLoading(false);
-          if (data.success) {
+          if (data?.success) {
             console.log("[clerk-cb] login success — calling handleLogin", { token: data.token?.slice(0, 8) + "…", email: data.email, power: data.powerLevel });
             handleLogin(data.token, data.email, data.powerLevel, data.departmentId, data.roleId);
             setOauthStatusMsg(null);
           } else {
-            console.log("[clerk-cb] login failed:", data.error);
-            setOauthStatusMsg(data.error || "Google login failed");
+            const msg = data?.error || (res?.status === 429 ? "Too many login attempts. Try again later." : "Google sign-in failed. Try again.");
+            console.log("[clerk-cb] login failed:", msg);
+            setOauthStatusMsg(msg);
           }
           return;
         } catch (err) {
@@ -444,13 +471,18 @@ export default function MembersLayout() {
         sessionStorage.removeItem("clnk");
         console.log("[clerk-cb] linking flow — calling /api/auth/link-clerk");
         try {
+          const clerkJwt = await getToken();
+          if (!clerkJwt) {
+            setOauthStatusMsg("Google sign-in is taking longer than expected. Try again.");
+            return;
+          }
           const res = await fetch(apiUrl("/api/auth/link-clerk"), {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${authToken}`,
             },
-            body: JSON.stringify({ clerkUserId }),
+            body: JSON.stringify({ clerkToken: clerkJwt }),
           });
           const data = await res.json();
           console.log("[clerk-cb] link-clerk response:", JSON.stringify(data));
