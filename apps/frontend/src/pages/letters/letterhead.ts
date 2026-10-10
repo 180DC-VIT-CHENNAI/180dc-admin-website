@@ -1,4 +1,4 @@
-import { LETTER_VIT_LOGO, LETTER_DC_LOGO } from "./letterAssets";
+import { LETTER_APPOINTMENT_LOGO, LETTER_VIT_LOGO, LETTER_DC_LOGO } from "./letterAssets";
 
 export function escapeHTML(value: unknown): string {
   return String(value == null ? "" : value)
@@ -498,7 +498,7 @@ export function buildLetterHTML(d: LetterData): string {
     <div class="pagecontent">
     <div class="letterhead">
       <div class="logo-col left">
-        ${isMOU ? (d.mouLogo ? `<img class="logoimg mou-party-logo" src="${h(d.mouLogo)}" alt="Other Party logo">` : "") : isAppointment ? `<div class="appointment-brand"><img src="${LETTER_DC_LOGO}" alt="180 Degrees Consulting logo"><div><strong>VITC</strong><span>VIT Chennai Chapter</span></div></div>` : `<img class="logoimg vit-logo" src="${LETTER_VIT_LOGO}" alt="VIT logo">`}
+        ${isMOU ? (d.mouLogo ? `<img class="logoimg mou-party-logo" src="${h(d.mouLogo)}" alt="Other Party logo">` : "") : isAppointment ? `<div class="appointment-brand"><img src="${LETTER_APPOINTMENT_LOGO}" alt="180 Degrees Consulting VITC logo"></div>` : `<img class="logoimg vit-logo" src="${LETTER_VIT_LOGO}" alt="VIT logo">`}
       </div>
       <div class="logo-col right">
         ${isAppointment ? `<div class="appointment-date">${h(d.dateStr)}</div>` : `<img class="logoimg dc-logo" src="${LETTER_DC_LOGO}" alt="180DC logo">`}
@@ -528,10 +528,10 @@ export function buildLetterHTML(d: LetterData): string {
     </tr><tr>
       <td colspan="4"><span class="name">Dr. Balaji J</span>Faculty Coordinator<br>180 Degrees Consulting, VIT Chennai<div class="digisig">Digitally Signed</div></td>
     </tr>` : isAppointment ? `<tr class="four appointment-signatories">
-      <td><span class="name signature-placeholder"></span>Sharan K<br>Chairperson<br>180 Degrees Consulting, VIT Chennai</td>
-      <td><span class="name signature-placeholder"></span>Sanjana Chejeti<br>Vice Chairperson<br>180 Degrees Consulting, VIT Chennai</td>
-      <td><span class="name signature-image general-secretary-signature"><img src="/signatures/general-secretary-signature.jpeg" alt="General Secretary signature"></span>Sonakshi Agarwal<br>General Secretary<br>180 Degrees Consulting, VIT Chennai</td>
-      <td><span class="name signature-image"><img src="/signatures/sanjay-signature.png" alt="Sanjay Sivakumar signature"></span>Sanjay Sivakumar<br>Co-Secretary<br>180 Degrees Consulting, VIT Chennai</td>
+      <td><span class="name signature-image"><img src="/signatures/chair-signature.svg" alt="Chairperson signature"></span>Sharan K<br>Chairperson<br>180 Degrees Consulting, VIT Chennai</td>
+      <td><span class="name signature-image"><img src="/signatures/vice-chair-signature.svg" alt="Vice Chairperson signature"></span>Sanjana Chejeti<br>Vice Chairperson<br>180 Degrees Consulting, VIT Chennai</td>
+      <td><span class="name signature-image"><img src="/signatures/general-secretary-signature-transparent.svg" alt="General Secretary signature"></span>Sonakshi Agarwal<br>General Secretary<br>180 Degrees Consulting, VIT Chennai</td>
+      <td><span class="name signature-image"><img src="/signatures/sanjay-signature-transparent.svg" alt="Secretary signature"></span>Sanjay Sivakumar<br>Co-Secretary<br>180 Degrees Consulting, VIT Chennai</td>
     </tr>` : `<tr class="four">
       <td><span class="name">Sharan K</span>Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
       <td><span class="name">Sanjana Chejeti</span>Vice Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>

@@ -318,20 +318,21 @@ export const LETTERHEAD_CSS = String.raw`
     min-height: 297mm;
     height: 297mm;
     background: #ffffff;
-    color: #1a1a1a;
+    color: #24342c;
     padding: 10mm 20mm 9mm;
     box-shadow: 0 1px 6px rgba(0,0,0,0.25);
-    font-family: "Times New Roman", Times, serif;
-    font-size: 12pt;
-    line-height: 1.5;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11pt;
+    line-height: 1.45;
     position: relative;
     overflow: hidden;
   }
   .appointment-page {
     padding: 12mm 14mm 11mm;
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 8.2pt;
-    line-height: 1.28;
+    font-size: 11pt;
+    line-height: 1.45;
+    color: #24342c;
   }
   .appointment-page::before,
   .appointment-page::after {
@@ -344,20 +345,21 @@ export const LETTERHEAD_CSS = String.raw`
   }
   .appointment-page::before {
     top: 0;
-    height: 25mm;
+    height: 23mm;
     background:
-      linear-gradient(14deg, transparent 0 41%, rgba(112, 232, 53, .95) 42% 72%, transparent 73%),
-      linear-gradient(8deg, transparent 0 58%, #00df20 59% 100%);
-    clip-path: polygon(0 0, 100% 0, 100% 58%, 74% 49%, 45% 70%, 20% 54%, 0 62%);
+      linear-gradient(180deg, #087f4f 0 42%, transparent 42%),
+      linear-gradient(172deg, transparent 0 52%, #56b83f 53% 66%, transparent 67%),
+      linear-gradient(168deg, transparent 0 65%, #b7dc68 66% 76%, transparent 77%);
+    clip-path: polygon(0 0, 100% 0, 100% 62%, 77% 53%, 51% 70%, 25% 57%, 0 66%);
   }
   .appointment-page::after {
     bottom: 0;
-    height: 29mm;
+    height: 18mm;
     background:
-      linear-gradient(165deg, transparent 0 39%, #a7f65f 40% 60%, transparent 61%),
-      linear-gradient(172deg, transparent 0 51%, #65ed38 52% 75%, transparent 76%),
-      #00df20;
-    clip-path: polygon(0 43%, 19% 55%, 42% 40%, 65% 59%, 83% 42%, 100% 17%, 100% 100%, 0 100%);
+      radial-gradient(ellipse 78% 85% at 8% 100%, transparent 0 62%, #a7f65f 63% 76%, transparent 77%),
+      radial-gradient(ellipse 88% 100% at 54% 110%, transparent 0 57%, #65ed38 58% 72%, transparent 73%),
+      linear-gradient(#00df20, #00df20);
+    clip-path: ellipse(92% 92% at 50% 108%);
   }
   .appointment-page .watermark {
     display: block;
@@ -366,10 +368,10 @@ export const LETTERHEAD_CSS = String.raw`
     width: 72%;
     height: 38%;
     transform: translate(-50%, -50%);
-    background-size: 105mm auto;
+    background-size: 128mm auto;
     background-position: center;
     background-repeat: no-repeat;
-    opacity: .065;
+    opacity: .12;
     z-index: 0;
   }
   .appointment-page .pagecontent {
@@ -383,16 +385,16 @@ export const LETTERHEAD_CSS = String.raw`
     min-height: 20mm;
     align-items: flex-start;
     position: relative;
+    z-index: 2;
   }
   .appointment-page .appointment-brand {
     display: flex;
-    align-items: center;
-    gap: 3mm;
-    color: #183b2c;
+    align-items: flex-start;
+    color: #0a6f47;
   }
   .appointment-page .appointment-brand img {
-    width: 37mm;
-    height: 14mm;
+    width: 48mm;
+    height: 17mm;
     object-fit: contain;
     object-position: left center;
   }
@@ -404,23 +406,24 @@ export const LETTERHEAD_CSS = String.raw`
     color: #0a6f47;
   }
   .appointment-page .appointment-brand span {
-    display: block;
-    margin-top: 1.5mm;
-    color: #65766c;
-    font-size: 6.5pt;
-    letter-spacing: .08em;
-    text-transform: uppercase;
+    display: none;
   }
   .appointment-page .appointment-dc-logo {
     width: 40mm;
     height: auto;
   }
   .appointment-page .appointment-date {
-    padding-top: 1mm;
-    color: #30352f;
-    font-size: 6.5pt;
+    margin-top: 1mm;
+    padding: 1.2mm 2.4mm;
+    border-radius: 1mm;
+    background: rgba(247, 252, 248, .72);
+    border: .4pt solid rgba(10, 111, 71, .35);
+    color: #24342c;
+    font-size: 9pt;
     font-weight: 700;
     white-space: nowrap;
+    position: relative;
+    z-index: 3;
   }
   .appointment-page .hr1 {
     border-top: .6pt solid #333;
@@ -428,13 +431,14 @@ export const LETTERHEAD_CSS = String.raw`
   }
   .appointment-page .lettertitle { margin-bottom: 3pt; }
   .appointment-page .lettertitle .main {
-    font-size: 10pt;
+    font-size: 14pt;
     letter-spacing: .01em;
+    color: #24342c;
   }
   .appointment-page .lettertitle .sub { display: none; }
   .appointment-page .hr2 { display: none; }
   .appointment-page .datebar { display: none; }
-  .appointment-page .body p { margin: 0 0 4.5pt; text-align: left; }
+  .appointment-page .body p { margin: 0 0 7pt; text-align: left; color: #24342c; }
   .appointment-page .appointment-responsibilities {
     margin: 0 0 6pt 14pt;
     padding: 0;
@@ -444,24 +448,28 @@ export const LETTERHEAD_CSS = String.raw`
     padding-left: 1pt;
   }
   .appointment-page table.particulars {
-    font-size: 8.2pt;
+    font-size: 11pt;
     margin: 4pt 0 6pt;
   }
   .appointment-page table.particulars td { padding: 1pt 0; }
   .appointment-page table.particulars td.k { padding-right: 8pt; }
   .appointment-page table.particulars td.sep { padding-right: 6pt; }
   .appointment-page .sig {
-    margin-top: auto;
-    padding-top: 8pt;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 20mm;
+    margin: 0;
+    padding: 7pt 0 0;
     border-top: 0;
-    font-size: 7.4pt;
-    position: relative;
+    font-size: 9.5pt;
     z-index: 2;
+    background: transparent;
   }
   .appointment-page .sig td {
     vertical-align: top;
     padding: 0 14pt 0 0;
-    border-top: .6pt solid rgba(24, 51, 42, .55);
+    border-top: .6pt solid rgba(36, 52, 44, .42);
   }
   .appointment-page .sig tr.appointment-signatories td { width: 25%; }
   .appointment-page .sig tr.appointment-signatories td:last-child { padding-right: 0; }
@@ -471,6 +479,7 @@ export const LETTERHEAD_CSS = String.raw`
     padding-top: 1mm;
     font-weight: 700;
     line-height: 1.15;
+    color: #24342c;
   }
   .appointment-page .sig .signature-placeholder::after {
     content: "Authorised signature";
@@ -482,26 +491,23 @@ export const LETTERHEAD_CSS = String.raw`
   .appointment-page .sig .signature-image {
     display: flex;
     align-items: flex-end;
+    justify-content: flex-start;
     min-height: 13mm;
   }
   .appointment-page .sig .signature-image img {
     display: block;
-    width: 32mm;
-    height: 11mm;
+    width: 30mm;
+    height: 10mm;
     object-fit: contain;
-    object-position: left bottom;
-    filter: grayscale(1) brightness(.42) contrast(1.6);
+    object-position: center bottom;
+    mix-blend-mode: multiply;
   }
-  .appointment-page .sig .general-secretary-signature img {
-    width: 22mm;
-    height: 12mm;
-    transform: rotate(35deg) scale(1.25);
-  }
-  .appointment-page .digisig { font-size: 6.5pt; }
+  .appointment-page .digisig { font-size: 8.5pt; color: #52645a; }
   .appointment-page .footer {
     margin-top: 7pt;
     padding-top: 3pt;
-    font-size: 6.8pt;
+    font-size: 8.5pt;
+    color: #52645a;
     letter-spacing: .02em;
     position: relative;
     z-index: 2;
@@ -523,10 +529,10 @@ export const LETTERHEAD_CSS = String.raw`
     margin-top: 10pt;
     padding-top: 8pt;
     text-align: center;
-    font-size: 9.5pt;
-    color: #333;
+    font-size: 8.5pt;
+    color: #52645a;
   }
-  .footer a { color: #1a1a1a; text-decoration: none; }
+  .footer a { color: #52645a; text-decoration: none; }
   .pagecontent {
     position: relative;
     z-index: 1;
@@ -579,23 +585,23 @@ export const LETTERHEAD_CSS = String.raw`
     height: 18mm;
     width: auto;
   }
-  .hr1 { border: none; border-top: 1.2pt solid #1a1a1a; margin: 5pt 0 7pt; }
-  .hr2 { border: none; border-top: 0.6pt solid #1a1a1a; margin: 5pt 0; }
+  .hr1 { border: none; border-top: 1.2pt solid #52645a; margin: 5pt 0 7pt; }
+  .hr2 { border: none; border-top: 0.6pt solid #9aaca2; margin: 5pt 0; }
   .lettertitle { text-align: center; margin-bottom: 6pt; }
-  .lettertitle .main { font-weight: bold; font-size: 15pt; }
-  .lettertitle .sub { font-size: 10pt; color: #444; }
-  .datebar { text-align: right; font-size: 11pt; margin-bottom: 3pt; }
-  .datebar .docnum { font-size: 10pt; font-style: italic; margin-top: 2pt; }
+  .lettertitle .main { font-weight: bold; font-size: 14pt; color: #24342c; }
+  .lettertitle .sub { font-size: 9pt; color: #52645a; }
+  .datebar { text-align: right; font-size: 10pt; margin-bottom: 3pt; color: #52645a; }
+  .datebar .docnum { font-size: 9pt; font-style: italic; margin-top: 2pt; }
   .body p { margin: 0 0 8pt; text-align: justify; }
-  table.particulars { border-collapse: collapse; font-size: 12pt; margin: 6pt 0 9pt; }
+  table.particulars { border-collapse: collapse; font-size: 11pt; margin: 6pt 0 9pt; }
   table.particulars td { padding: 2pt 0; vertical-align: top; }
   table.particulars td.k { font-weight: bold; padding-right: 14pt; }
   table.particulars td.sep { padding-right: 10pt; }
-  .sig { margin-top: auto; padding-top: 12pt; width: 100%; border-collapse: collapse; font-size: 12pt; }
+  .sig { margin-top: auto; padding-top: 12pt; width: 100%; border-collapse: collapse; font-size: 9.5pt; color: #24342c; }
   .sig td { width: 33.3%; vertical-align: top; padding-right: 10pt; }
   .sig tr.four td { width: 25%; }
   .sig .name { font-weight: bold; display: block; min-height: 2.3em; line-height: 1.15em; }
-  .digisig { font-size: 10pt; font-style: italic; margin-top: 2pt; }
+  .digisig { font-size: 8.5pt; font-style: italic; margin-top: 2pt; color: #52645a; }
 
   .announcement-tone-preview{margin:8px 0 12px;padding:9px 10px;border:1px solid #d7e7df;border-radius:8px;background:#f7fbf9;display:grid;gap:7px}.announcement-tone-preview>div{display:flex;gap:8px;align-items:flex-start}.announcement-tone-preview span{flex:0 0 62px;color:#8aa097;font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding-top:2px}.announcement-tone-preview strong{color:#356b57;font-size:10px;line-height:1.35;font-weight:650}.announcement-event-card{margin:8px 0 6px;padding:10px 11px;border:1px solid #cfe1d8;border-radius:9px;background:#f7fbf9}.announcement-event-grid{display:grid;grid-template-columns:1fr 1fr;gap:5pt 16pt;margin:4pt 0}.announcement-event-grid .event-wide{grid-column:1/-1}.announcement-event-grid div{break-inside:avoid}.announcement-event-label{font-size:9pt;font-weight:bold}.announcement-attachment{margin-top:7pt;padding:7pt 9pt;border:0.6pt solid #d8d8d8;border-radius:5pt}.announcement-sign{margin-top:12pt}.announcement-sign .sig-name{font-weight:bold}.announcement-sign .digisig{margin-top:3pt}
   .report-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:6pt 18pt;margin:4pt 0 10pt;padding:8pt 10pt;border:0.6pt solid #d8e4dd;background:#f7fbf9;border-radius:5pt}.report-meta-grid div{break-inside:avoid}.report-meta-label{font-size:9pt;font-weight:bold;color:#356b57;text-transform:uppercase;letter-spacing:.04em}.report-section{margin:0 0 10pt;break-inside:avoid}.report-section h3{font-size:12.5pt;margin:0 0 4pt;padding-bottom:2pt;border-bottom:.7pt solid #cfe1d8}.report-section p{margin:0 0 5pt}.report-list{margin:3pt 0 0 17pt;padding:0}.report-list li{margin:0 0 4pt;padding-left:2pt}.report-table{width:100%;border-collapse:collapse;margin:4pt 0 0;font-size:11pt}.report-table th,.report-table td{border:.6pt solid #cfe1d8;padding:5pt 6pt;text-align:left;vertical-align:top}.report-table th{background:#f0f7f3;font-weight:bold}.report-table .status-active{font-weight:bold}.report-table .status-inactive{color:#666}.report-sign{margin-top:16pt}.report-sign .name{font-weight:bold}.report-sign .digisig{margin-top:3pt}

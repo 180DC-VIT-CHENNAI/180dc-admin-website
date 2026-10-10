@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 1037" preserveAspectRatio="xMidYMid meet">
+  <filter id="remove-white" color-interpolation-filters="sRGB">
+    <feColorMatrix values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 -0.333 -0.333 -0.333 0 1"/>
+  </filter>
+  <image href="/signatures/sanjay-signature.png" width="2000" height="1037" preserveAspectRatio="xMidYMid meet" filter="url(#remove-white)"/>
+</svg>
