@@ -165,7 +165,7 @@ Invariants are properties that must never become false while the system is runni
 
 ### INV-QUOTA-04: Queue campaigns are delivered exactly once and survive crashes
 
-- **Statement:** An `email_queue` campaign advances its `cursor` by delivered+failed recipients and retries up to 5 times; a campaign stuck in `processing` for 10 minutes is reclaimable. For single-recipient campaigns each outcome is written to `email_deliveries` right after the send, and recipients already `sent`/`skipped` are never sent again (on reclaim or on `retry-failed`).
+- **Statement:** An `email_queue` campaign advances its `cursor` by delivered+failed recipients and is marked `failed` after 5 consecutive claims that made no progress (`attempts` resets to 0 whenever a run advances the cursor, so long per-recipient campaigns spanning many cron runs are not cut off); a campaign stuck in `processing` for 10 minutes is reclaimable. For single-recipient campaigns each outcome is written to `email_deliveries` right after the send, and recipients already `sent`/`skipped` are never sent again (on reclaim or on `retry-failed`).
 - **Reason:** A Worker request or cron invocation may die mid-send; recipients must not be lost or spammed repeatedly.
 - **Where enforced:** `drainEmailQueue()` claim/stale logic in `apps/admin-api/index.ts`.
 - **How verified:** Insert a campaign, kill the Worker mid-drain if possible, wait >10 minutes, confirm the next cron reclaims it from `cursor` and completes.

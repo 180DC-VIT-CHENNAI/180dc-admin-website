@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { apiUrl } from "../lib/api";
 import { useTheme } from "../context/ThemeContext";
@@ -8,6 +8,7 @@ export default function UnsubscribePage() {
   const { token } = useParams();
   const emailParam = searchParams.get("email") || "";
   const [resolvedEmail, setResolvedEmail] = useState("");
+  const tokenRequested = useRef("");
   const { isDark, toggle: toggleTheme } = useTheme();
 
   const [inputEmail, setInputEmail] = useState(emailParam);
@@ -15,7 +16,12 @@ export default function UnsubscribePage() {
 
   useEffect(() => {
     if (token) {
-      unsubscribeWithToken(token);
+      // Run once per token: StrictMode re-runs effects, and a second POST
+      // would report "already unsubscribed".
+      if (tokenRequested.current !== token) {
+        tokenRequested.current = token;
+        unsubscribeWithToken(token);
+      }
       return;
     }
     if (emailParam && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailParam)) {

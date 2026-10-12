@@ -1664,7 +1664,9 @@ async function drainEmailQueue(env: any): Promise<{
 
   const done = cursor >= recipients.length;
   await env.DB.prepare(
-    "UPDATE email_queue SET cursor=?, sent=?, failed=?, status=?, last_error=?, updated_at=CURRENT_TIMESTAMP, finished_at=? WHERE id=?",
+    // attempts counts consecutive claims without progress: a long campaign
+    // spans many cron runs and must not hit QUEUE_MAX_ATTEMPTS while moving.
+    "UPDATE email_queue SET cursor=?, sent=?, failed=?, status=?, last_error=?, attempts = CASE WHEN ? THEN 0 ELSE attempts END, updated_at=CURRENT_TIMESTAMP, finished_at=? WHERE id=?",
   )
     .bind(
       cursor,
@@ -1672,6 +1674,7 @@ async function drainEmailQueue(env: any): Promise<{
       failed,
       done ? "done" : "pending",
       lastError,
+      cursor > (campaign.cursor || 0) ? 1 : 0,
       done ? new Date().toISOString().replace("T", " ").slice(0, 19) : null,
       campaign.id,
     )
