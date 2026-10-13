@@ -406,7 +406,7 @@ export default function LetterStudioPage() {
   }
 
   // ---- PDF generation ----
-  async function generatePdfBlob(): Promise<Blob> {
+  async function renderPdfBlob(scale: number): Promise<Blob> {
     const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
     const stack = liveRef.current;
     if (!stack) throw new Error("Preview not ready");
@@ -417,19 +417,28 @@ export default function LetterStudioPage() {
       const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
       for (let i = 0; i < pages.length; i++) {
         const canvas = await html2canvas(pages[i], {
-          scale: 3,
+          scale,
           backgroundColor: "#ffffff",
           useCORS: true,
           logging: false,
         });
-        const img = canvas.toDataURL("image/png");
+        const img = canvas.toDataURL("image/jpeg", 0.92);
         if (i > 0) pdf.addPage();
-        pdf.addImage(img, "PNG", 0, 0, 210, 297);
+        pdf.addImage(img, "JPEG", 0, 0, 210, 297);
       }
       return pdf.output("blob");
     } finally {
       stack.style.transform = prevTransform;
     }
+  }
+
+  // Start at 3x for crisp output, then step down only if the upload would exceed the 20 MB cap.
+  async function generatePdfBlob(): Promise<Blob> {
+    const MAX_BYTES = 18 * 1024 * 1024;
+    let blob = await renderPdfBlob(3);
+    if (blob.size > MAX_BYTES) blob = await renderPdfBlob(2);
+    if (blob.size > MAX_BYTES) blob = await renderPdfBlob(1.5);
+    return blob;
   }
 
   // ---- Upload generated PDF to R2 ----
