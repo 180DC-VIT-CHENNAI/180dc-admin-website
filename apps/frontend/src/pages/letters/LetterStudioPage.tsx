@@ -406,7 +406,7 @@ export default function LetterStudioPage() {
   }
 
   // ---- PDF generation ----
-  async function renderPdfBlob(scale: number): Promise<Blob> {
+  async function renderPdfBlob(scale: number, jpegQuality: number | null): Promise<Blob> {
     const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
     const stack = liveRef.current;
     if (!stack) throw new Error("Preview not ready");
@@ -422,9 +422,9 @@ export default function LetterStudioPage() {
           useCORS: true,
           logging: false,
         });
-        const img = canvas.toDataURL("image/jpeg", 0.92);
+        const img = jpegQuality == null ? canvas.toDataURL("image/png") : canvas.toDataURL("image/jpeg", jpegQuality);
         if (i > 0) pdf.addPage();
-        pdf.addImage(img, "JPEG", 0, 0, 210, 297);
+        pdf.addImage(img, jpegQuality == null ? "PNG" : "JPEG", 0, 0, 210, 297);
       }
       return pdf.output("blob");
     } finally {
@@ -432,12 +432,13 @@ export default function LetterStudioPage() {
     }
   }
 
-  // Start at 3x for crisp output, then step down only if the upload would exceed the 20 MB cap.
+  // Lossless PNG at 3x keeps text and artwork crisp (~2.5 MB/page); step down only if a
+  // long document would exceed the 20 MB upload cap.
   async function generatePdfBlob(): Promise<Blob> {
     const MAX_BYTES = 18 * 1024 * 1024;
-    let blob = await renderPdfBlob(3);
-    if (blob.size > MAX_BYTES) blob = await renderPdfBlob(2);
-    if (blob.size > MAX_BYTES) blob = await renderPdfBlob(1.5);
+    let blob = await renderPdfBlob(3, null);
+    if (blob.size > MAX_BYTES) blob = await renderPdfBlob(3, 0.95);
+    if (blob.size > MAX_BYTES) blob = await renderPdfBlob(2, 0.92);
     return blob;
   }
 
