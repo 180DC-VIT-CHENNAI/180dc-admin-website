@@ -240,40 +240,10 @@ function appointmentResponsibilitiesHTML(team: string): string {
   return `<ol class="appt-resp">${items.map((item) => `<li>${escapeHTML(item)}</li>`).join("")}</ol>`;
 }
 
-const APPOINTMENT_SIGNATORIES = [
-  { name: "Sharan K", title: "Chairperson" },
-  { name: "Sanjana Chejeti", title: "Vice Chairperson" },
-  { name: "Sonakshi Agarwal", title: "General Secretary" },
-  { name: "Sanjay Sivakumar", title: "Co-Secretary" },
-];
-
-const APPT_ICON_GLOBE =
-  '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.9 2.6 15.1 0 18M12 3c-2.6 2.9-2.6 15.1 0 18"/></svg>';
-const APPT_ICON_INSTAGRAM =
-  '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1.05" fill="currentColor" stroke="none"/></svg>';
-const APPT_ICON_MAIL =
-  '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3.6 7l8.4 6 8.4-6"/></svg>';
-
 function buildAppointmentLetterHTML(d: LetterData): string {
   const h = escapeHTML;
-  const signatories = APPOINTMENT_SIGNATORIES.map(
-    (s) => `<div class="appt-sign-col">
-        <span class="appt-sign-rule"></span>
-        <span class="appt-sign-name">${h(s.name)}</span>
-        <span class="appt-sign-title">${h(s.title)}</span>
-        <span class="appt-sign-org">180 Degrees Consulting, VIT Chennai</span>
-      </div>`,
-  ).join("");
   return `
-    <div class="pagecontent">
-      <header class="appt-head">
-        <div class="appt-head-copy">
-          <div class="appt-title">Letter of Appointment</div>
-          <div class="appt-org">180 Degrees Consulting, VIT Chennai Chapter</div>
-          <div class="appt-contact">vitc@180dc.org | 180dcvitc.org</div>
-        </div>
-        <div class="appt-head-logo"><img src="${LETTER_APPOINTMENT_LOGO}" alt="180 Degrees Consulting, VIT Chennai"></div>
-      </header>
+    <div class="appt-body">
       <div class="appt-date">${h(d.dateStr)}</div>
       <div class="appt-subject">Subject: Appointment as ${h(d.position)} &ndash; ${h(d.team)}</div>
       <div class="body">
@@ -285,16 +255,10 @@ function buildAppointmentLetterHTML(d: LetterData): string {
         <p class="appt-heading">Professional Conduct</p>
         <p>You are expected to uphold the organisation&rsquo;s values, maintain confidentiality where required, and comply with all applicable directions issued by the Board and departmental leadership.</p>
         <p>We welcome you to the team and look forward to your contribution to the chapter&rsquo;s impact and growth.</p>
+      </div>
+      <div class="appt-close">
         <p><em>This letter is issued and authenticated by the undersigned on behalf of the Organisation.</em></p>
         <p>Warm regards,</p>
-      </div>
-      <div class="appt-sign">${signatories}</div>
-      <div class="appt-footer">
-        <span class="appt-footer-item">${APPT_ICON_GLOBE}<span>180dcvitc.org</span></span>
-        <span class="appt-foot-sep"></span>
-        <span class="appt-footer-item">${APPT_ICON_INSTAGRAM}<span>@180dc.vitc</span></span>
-        <span class="appt-foot-sep"></span>
-        <span class="appt-footer-item">${APPT_ICON_MAIL}<span>vitc@180dc.org</span></span>
       </div>
     </div>`;
 }

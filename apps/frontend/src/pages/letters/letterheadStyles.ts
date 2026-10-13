@@ -327,107 +327,27 @@ export const LETTERHEAD_CSS = String.raw`
     position: relative;
     overflow: hidden;
   }
-  /* ---- Appointment letter (matches the printed stationery template) ---- */
+  /* ---- Appointment letter: dynamic text drawn over the printed letterhead ---- */
   .appointment-page {
-    padding: 12mm 16mm 10mm;
+    padding: 54mm 15mm 62mm;
     font-family: "Times New Roman", Times, Georgia, serif;
     font-size: 11.5pt;
     line-height: 1.5;
     color: #111111;
+    background-image: url("/images/letterhead-bottom.png"), url("/images/letterhead-top.png");
+    background-origin: border-box;
+    background-position: bottom center, top center;
+    background-repeat: no-repeat, no-repeat;
+    background-size: 100% auto, 100% auto;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
-  /* Green decoration: a swoop behind the logo and mirrored shapes at the base. */
-  .appointment-page::before,
-  .appointment-page::after {
-    content: "";
-    position: absolute;
-    width: 100%;
-    pointer-events: none;
-    z-index: 0;
-  }
-  .appointment-page::before {
-    top: 0;
-    right: 0;
-    left: auto;
-    width: 46%;
-    height: 15mm;
-    background: linear-gradient(
-      180deg,
-      #52842c 0 34%,
-      #4f832a 35% 55%,
-      #9ac66e 56% 72%,
-      #d1e8ba 73% 100%
-    );
-    clip-path: polygon(
-      30% 0,
-      100% 0,
-      100% 100%,
-      6% 100%,
-      0 62%,
-      24% 40%,
-      8% 16%
-    );
-  }
-  .appointment-page::after {
-    bottom: 0;
-    left: 0;
-    height: 20mm;
-    background:
-      radial-gradient(
-        ellipse 34% 150% at 0% 112%,
-        transparent 0 50%,
-        #4f832a 51% 66%,
-        transparent 67%
-      ),
-      radial-gradient(
-        ellipse 30% 135% at 100% 114%,
-        transparent 0 52%,
-        #b9d494 53% 68%,
-        transparent 69%
-      );
-    clip-path: polygon(0 22%, 100% 10%, 100% 100%, 0 100%);
-  }
-  .appointment-page .pagecontent {
-    min-height: calc(297mm - 22mm);
-    position: relative;
-    z-index: 1;
+  .appointment-page .appt-body {
     display: flex;
     flex-direction: column;
-  }
-  .appointment-page .appt-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 8mm;
-  }
-  .appointment-page .appt-title {
-    font-size: 21pt;
-    font-weight: 700;
-    line-height: 1.05;
-    letter-spacing: -.01em;
-    color: #111111;
-  }
-  .appointment-page .appt-org {
-    margin-top: 2.4mm;
-    font-size: 11.5pt;
-    color: #1c1c1c;
-  }
-  .appointment-page .appt-contact {
-    margin-top: .6mm;
-    font-size: 11pt;
-    color: #1c1c1c;
-  }
-  .appointment-page .appt-head-logo {
-    flex: 0 0 auto;
-    position: relative;
-    z-index: 1;
-  }
-  .appointment-page .appt-head-logo img {
-    display: block;
-    width: 46mm;
-    height: auto;
+    min-height: 181mm;
   }
   .appointment-page .appt-date {
-    margin-top: 9mm;
     font-size: 11.5pt;
     color: #111111;
   }
@@ -460,61 +380,8 @@ export const LETTERHEAD_CSS = String.raw`
     color: #4f832a;
     font-weight: 700;
   }
-  .appointment-page .appt-sign {
-    margin-top: auto;
-    display: flex;
-    align-items: flex-start;
-    padding-top: 4mm;
-  }
-  .appointment-page .appt-sign-col {
-    flex: 1 1 0;
-    padding: 0 4mm;
-    border-left: .5pt solid #c2cfc7;
-    font-size: 10pt;
-    line-height: 1.3;
-  }
-  .appointment-page .appt-sign-col:first-child {
-    padding-left: 0;
-    border-left: 0;
-  }
-  .appointment-page .appt-sign-rule {
-    display: block;
-    width: 15mm;
-    border-top: 1.4pt solid #4f832a;
-    margin-bottom: 2.2mm;
-  }
-  .appointment-page .appt-sign-name {
-    display: block;
-    font-weight: 700;
-    color: #111111;
-  }
-  .appointment-page .appt-sign-title,
-  .appointment-page .appt-sign-org {
-    display: block;
-  }
-  .appointment-page .appt-sign-org { color: #333333; }
-  .appointment-page .appt-footer {
-    margin-top: 6mm;
-    padding-top: 2.6mm;
-    border-top: 1pt solid #4f832a;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8mm;
-    font-size: 10pt;
-    color: #3f4b45;
-  }
-  .appointment-page .appt-footer-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 2mm;
-  }
-  .appointment-page .appt-footer-item svg { color: #4f832a; }
-  .appointment-page .appt-foot-sep {
-    width: .5pt;
-    height: 4mm;
-    background: #c2cfc7;
-  }
+  .appointment-page .appt-close { margin-top: auto; }
+  .appointment-page .appt-close p { margin: 0 0 4.6mm; }
   .watermark {
     position: absolute;
     top: -50%;
@@ -627,7 +494,7 @@ export const LETTERHEAD_CSS = String.raw`
       margin: 0;
       padding: 10mm 20mm 9mm;
     }
-    .page.appointment-page { padding: 12mm 16mm 10mm; }
+    .page.appointment-page { padding: 54mm 15mm 62mm; }
     @page { size: A4; margin: 0; }
   }
   #printArea { display: none; }
