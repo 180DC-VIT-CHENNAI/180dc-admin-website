@@ -342,6 +342,9 @@ export const LETTERHEAD_CSS = String.raw`
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+  .appointment-page.letterhead-vector {
+    background-image: url("/images/letterhead-bottom.svg"), url("/images/letterhead-top.svg");
+  }
   .appointment-page .appt-body {
     display: flex;
     flex-direction: column;

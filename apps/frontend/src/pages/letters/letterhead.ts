@@ -713,11 +713,14 @@ export function buildMouPagesHTML(d: LetterData): string {
   return buildPaginatedDocumentPagesHTML(d, { minPages: 1 });
 }
 
-export function buildPagesHTML(d: LetterData): string {
+export function buildPagesHTML(d: LetterData, options: { vectorLetterhead?: boolean } = {}): string {
   if (d.type === "mou") return buildMouPagesHTML(d);
   if (d.type === "department-report") return buildDepartmentReportPagesHTML(d);
   if (d.type === "ldi") return buildLDIPagesHTML(d);
-  return `<div class="page${d.type === "appointment" ? " appointment-page" : ""}">${buildLetterHTML(d)}</div>`;
+  if (d.type === "appointment") {
+    return `<div class="page appointment-page${options.vectorLetterhead ? " letterhead-vector" : ""}">${buildLetterHTML(d)}</div>`;
+  }
+  return `<div class="page">${buildLetterHTML(d)}</div>`;
 }
 
 function fnv1a32(str: string): number {

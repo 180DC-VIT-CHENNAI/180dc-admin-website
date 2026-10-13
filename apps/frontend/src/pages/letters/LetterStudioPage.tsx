@@ -71,6 +71,7 @@ export default function LetterStudioPage() {
   const [announcementFileName, setAnnouncementFileName] = useState("");
   const [pagesHtml, setPagesHtml] = useState("");
   const [previewZoom, setPreviewZoom] = useState(1);
+  const [letterheadQuality, setLetterheadQuality] = useState<"standard" | "vector">("standard");
   const [busy, setBusy] = useState<"" | "pdf" | "send">("");
   const [logCount, setLogCount] = useState(0);
   const [recentLetters, setRecentLetters] = useState<LogEntry[]>([]);
@@ -206,10 +207,10 @@ export default function LetterStudioPage() {
   }
 
   useLayoutEffect(() => {
-    const html = buildPagesHTML(currentData);
+    const html = buildPagesHTML(currentData, { vectorLetterhead: letterheadQuality === "vector" });
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPagesHtml(html);
-  }, [currentData]);
+  }, [currentData, letterheadQuality]);
 
   useLayoutEffect(() => {
     if (!pagesHtml) return;
@@ -416,14 +417,14 @@ export default function LetterStudioPage() {
       const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
       for (let i = 0; i < pages.length; i++) {
         const canvas = await html2canvas(pages[i], {
-          scale: 2,
+          scale: 3,
           backgroundColor: "#ffffff",
           useCORS: true,
           logging: false,
         });
-        const img = canvas.toDataURL("image/jpeg", 0.95);
+        const img = canvas.toDataURL("image/png");
         if (i > 0) pdf.addPage();
-        pdf.addImage(img, "JPEG", 0, 0, 210, 297);
+        pdf.addImage(img, "PNG", 0, 0, 210, 297);
       }
       return pdf.output("blob");
     } finally {
@@ -1119,6 +1120,17 @@ export default function LetterStudioPage() {
                 <div className="preview-meta">A4 · {Math.round(previewZoom * 100)}%</div>
               </div>
               <div className="preview-actions">
+                {type === "appointment" && (
+                  <select
+                    value={letterheadQuality}
+                    onChange={(e) => setLetterheadQuality(e.target.value as "standard" | "vector")}
+                    title="Letterhead rendering quality"
+                    style={{ flex: "0 0 auto", width: "auto", padding: "5px 8px", fontSize: 11, borderRadius: 7, border: "1px solid var(--border-light)", background: "var(--bg-primary)", color: "var(--text-primary)", cursor: "pointer" }}
+                  >
+                    <option value="standard">Letterhead: Standard</option>
+                    <option value="vector">Letterhead: High (vector)</option>
+                  </select>
+                )}
                 <button onClick={() => setPreviewZoom((z) => Math.max(0.75, z - 0.05))}>−</button>
                 <output>{Math.round(previewZoom * 100)}%</output>
                 <button onClick={() => setPreviewZoom((z) => Math.min(1.15, z + 0.05))}>+</button>
