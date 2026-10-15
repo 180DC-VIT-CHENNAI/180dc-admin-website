@@ -1,4 +1,4 @@
-import { LETTER_VIT_LOGO, LETTER_DC_LOGO } from "./letterAssets";
+import { LETTER_APPOINTMENT_LOGO, LETTER_VIT_LOGO, LETTER_DC_LOGO } from "./letterAssets";
 
 export function escapeHTML(value: unknown): string {
   return String(value == null ? "" : value)
@@ -178,6 +178,91 @@ const ANNOUNCEMENT_TONE_COPY: Record<string, { intro: string; end: string }> = {
   happy: { intro: "We are delighted to share the following update with you.", end: "We look forward to your participation and continued support." },
 };
 
+const APPOINTMENT_RESPONSIBILITIES: Record<string, string[]> = {
+  "Business Strategy": [
+    "Support consulting engagements by framing client problems, structuring analyses, and preparing practical recommendations.",
+    "Contribute to strategy documents, presentations, and review material aligned with project timelines and quality expectations.",
+    "Coordinate with cross-functional teams to ensure recommendations are actionable and deliver measurable outcomes.",
+  ],
+  Technical: [
+    "Develop and maintain reliable digital solutions, platforms, and automation workflows that support chapter operations and client work.",
+    "Contribute to the organisation's technical infrastructure, including websites, applications, and associated systems.",
+    "Collaborate with technical leads and consultants to deliver scalable, secure, and impact-oriented implementations.",
+  ],
+  CRM: [
+    "Maintain professional relationships with external stakeholders, including NGOs, startups, and social enterprises.",
+    "Support client onboarding, communication follow-ups, and continuity across active consulting engagements.",
+    "Track stakeholder requirements and feedback to strengthen long-term partnership quality and outcomes.",
+  ],
+  Operations: [
+    "Coordinate internal workflows, meetings, and event logistics to ensure smooth day-to-day execution.",
+    "Maintain timely communication and operational documentation across departments and initiatives.",
+    "Support process discipline and follow-through for chapter priorities, deliverables, and governance requirements.",
+  ],
+  Marketing: [
+    "Create and execute communication initiatives that strengthen the chapter's brand presence on campus and online.",
+    "Develop content assets and campaign support material for outreach, recruitment, and project visibility.",
+    "Coordinate with other departments to communicate impact stories with consistency and clarity.",
+  ],
+  "Finance and Legal": [
+    "Support budget tracking, documentation, and responsible allocation of chapter resources.",
+    "Maintain basic financial records and assist with compliance-oriented documentation and approvals.",
+    "Contribute to sustainable funding and sponsorship workflows in alignment with organisational policies.",
+  ],
+  HR: [
+    "Support recruitment, onboarding, and engagement initiatives for members across departments.",
+    "Maintain member records, communication discipline, and process clarity for people-related activities.",
+    "Contribute to a professional and inclusive work culture through structured team support practices.",
+  ],
+  "R&D": [
+    "Identify and evaluate new ideas, frameworks, and best practices relevant to consulting and chapter growth.",
+    "Document experiments, findings, and recommendations for practical adoption by relevant teams.",
+    "Collaborate across departments to convert research outcomes into implementable initiatives.",
+  ],
+  DevOps: [
+    "Maintain deployment workflows, environments, and operational reliability for chapter-managed technical systems.",
+    "Support monitoring, release coordination, and incident-response practices with technical stakeholders.",
+    "Improve automation and process efficiency for build, deployment, and infrastructure management tasks.",
+  ],
+  ML: [
+    "Support data-driven and machine learning initiatives that align with consulting and operational priorities.",
+    "Assist in model experimentation, validation, and reporting of outcomes with clear documentation.",
+    "Collaborate with technical and strategy teams to translate analytical insights into practical actions.",
+  ],
+};
+
+function appointmentResponsibilitiesHTML(team: string): string {
+  const items = APPOINTMENT_RESPONSIBILITIES[team] || [
+    "Execute assigned responsibilities in accordance with organisational standards, timelines, and reporting expectations.",
+    "Collaborate professionally with relevant department members and leadership to support chapter objectives.",
+    "Maintain confidentiality, accountability, and communication discipline in all assigned work.",
+  ];
+  return `<ol class="appt-resp">${items.map((item) => `<li>${escapeHTML(item)}</li>`).join("")}</ol>`;
+}
+
+function buildAppointmentLetterHTML(d: LetterData): string {
+  const h = escapeHTML;
+  return `
+    <div class="appt-body">
+      <div class="appt-date">${h(d.dateStr)}</div>
+      <div class="appt-subject">Subject: Appointment as ${h(d.position)} &ndash; ${h(d.team)}</div>
+      <div class="body">
+        <p>Dear ${h(d.name)},</p>
+        <p>We are pleased to appoint you as <strong>${h(d.position)}</strong> in the <strong>${h(d.team)}</strong> department of 180 Degrees Consulting, VIT Chennai Chapter, for the 2026&ndash;27 tenure, effective <strong>${h(d.dateStr)}</strong>.</p>
+        <p class="appt-heading">Role Responsibilities</p>
+        <p>In this role, you will be expected to:</p>
+        ${appointmentResponsibilitiesHTML(d.team)}
+        <p class="appt-heading">Professional Conduct</p>
+        <p>You are expected to uphold the organisation&rsquo;s values, maintain confidentiality where required, and comply with all applicable directions issued by the Board and departmental leadership.</p>
+        <p>We welcome you to the team and look forward to your contribution to the chapter&rsquo;s impact and growth.</p>
+      </div>
+      <div class="appt-close">
+        <p><em>This letter is issued and authenticated by the undersigned on behalf of the Organisation.</em></p>
+        <p>Warm regards,</p>
+      </div>
+    </div>`;
+}
+
 export function buildLetterHTML(d: LetterData): string {
   const h = escapeHTML;
   const type = d.type;
@@ -194,6 +279,7 @@ export function buildLetterHTML(d: LetterData): string {
   const isDepartmentReport = type === "department-report";
   const isLDI = type === "ldi";
   const isAppointment = type === "appointment";
+  if (isAppointment) return buildAppointmentLetterHTML(d);
   const title = isLDI
     ? "LDI FORM"
     : isDepartmentReport
@@ -232,7 +318,7 @@ export function buildLetterHTML(d: LetterData): string {
             : `This Letter of Appointment (&ldquo;<strong>Letter</strong>&rdquo;) is issued by 180 Degrees Consulting, VIT Chennai Chapter (the &ldquo;<strong>Organisation</strong>&rdquo;) in favour of the appointee named herein, for the tenure 2026-27.`;
   const particulars = `
         <tr><td class="k">Name</td><td class="sep">:</td><td>${h(d.name)}</td></tr>
-        <tr><td class="k">Registration Number</td><td class="sep">:</td><td>${h(d.reg)}</td></tr>
+        ${!isAppointment ? `<tr><td class="k">Registration Number</td><td class="sep">:</td><td>${h(d.reg)}</td></tr>` : ""}
         <tr><td class="k">Department</td><td class="sep">:</td><td>${h(isTransfer ? d.teamFrom : d.team)}</td></tr>
         ${d.team === "Technical" && d.techTrack && d.techTrack !== "General" ? `<tr><td class="k">Technical Track</td><td class="sep">:</td><td>${h(d.techTrack)}</td></tr>` : ""}
         <tr><td class="k">Position</td><td class="sep">:</td><td>${h(isPromotion ? d.positionTo : d.position)}</td></tr>`;
@@ -422,22 +508,21 @@ export function buildLetterHTML(d: LetterData): string {
       <p>Warm regards,</p>`
                           : `
       <p><strong>Dear ${h(d.name)},</strong></p>
-      <p>${intro}</p>
-      <p>The particulars of this appointment are recorded below for reference:</p>
+      <p>We are pleased to appoint you as <strong>${h(d.position)}</strong> in the <strong>${h(d.team)}</strong> department of 180 Degrees Consulting, VIT Chennai Chapter for the 2026-27 tenure, effective from <strong>${h(d.dateStr)}</strong>.</p>
+      <p>The particulars of this appointment are recorded below for official reference:</p>
       <table class="particulars">${particulars}</table>
-      <p><strong>Appointment.</strong> The appointee is appointed as <strong>${h(d.position)}</strong> of the Organisation for the 2026-27 tenure, effective from the date of this Letter.</p>
-      <p><strong>Duties.</strong> The appointee shall discharge the duties of ${h(d.position)} in the ${h(d.team)} department, as directed by the Board.</p>
-      <p><strong>Conduct.</strong> The appointee shall maintain professional and confidential standards, and follow the Board's directives.</p>
-      <p><strong>Termination.</strong> This appointment may be reviewed, modified, or withdrawn by the Board at its discretion, subject to the appointee's good standing and conduct.</p>
-      <p>We look forward to your contribution. Congratulations on your appointment.</p>
-      <p><em>In witness whereof, this Letter is issued and authenticated by the undersigned on behalf of the Organisation.</em></p>
+      <p><strong>Role Responsibilities.</strong> In this position, you are expected to:</p>
+      ${appointmentResponsibilitiesHTML(d.team)}
+      <p><strong>Professional Conduct.</strong> You are expected to uphold the organisation's values, maintain confidentiality where required, and comply with all applicable directions issued by the Board and departmental leadership.</p>
+      <p>We welcome you to this role and look forward to your contribution to the chapter's impact and growth.</p>
+      <p><em>This letter is issued and authenticated by the undersigned on behalf of the Organisation.</em></p>
       <p>Warm regards,</p>`;
   return `
     <div class="watermark"></div>
     <div class="pagecontent">
     <div class="letterhead">
       <div class="logo-col left">
-        ${isMOU ? (d.mouLogo ? `<img class="logoimg mou-party-logo" src="${h(d.mouLogo)}" alt="Other Party logo">` : "") : isAppointment ? `<img class="logoimg appointment-dc-logo" src="${LETTER_DC_LOGO}" alt="180 Degrees Consulting logo">` : `<img class="logoimg vit-logo" src="${LETTER_VIT_LOGO}" alt="VIT logo">`}
+        ${isMOU ? (d.mouLogo ? `<img class="logoimg mou-party-logo" src="${h(d.mouLogo)}" alt="Other Party logo">` : "") : isAppointment ? `<div class="appointment-brand"><img src="${LETTER_APPOINTMENT_LOGO}" alt="180 Degrees Consulting VITC logo"></div>` : `<img class="logoimg vit-logo" src="${LETTER_VIT_LOGO}" alt="VIT logo">`}
       </div>
       <div class="logo-col right">
         ${isAppointment ? `<div class="appointment-date">${h(d.dateStr)}</div>` : `<img class="logoimg dc-logo" src="${LETTER_DC_LOGO}" alt="180DC logo">`}
@@ -466,13 +551,17 @@ export function buildLetterHTML(d: LetterData): string {
       <td><span class="name">Sanjay Sivakumar</span>Secretary<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
     </tr><tr>
       <td colspan="4"><span class="name">Dr. Balaji J</span>Faculty Coordinator<br>180 Degrees Consulting, VIT Chennai<div class="digisig">Digitally Signed</div></td>
+    </tr>` : isAppointment ? `<tr class="four appointment-signatories">
+      <td><span class="name signature-image"><img src="/signatures/chair-signature.svg" alt="Chairperson signature"></span>Sharan K<br>Chairperson<br>180 Degrees Consulting, VIT Chennai</td>
+      <td><span class="name signature-image"><img src="/signatures/vice-chair-signature.svg" alt="Vice Chairperson signature"></span>Sanjana Chejeti<br>Vice Chairperson<br>180 Degrees Consulting, VIT Chennai</td>
+      <td><span class="name signature-image"><img src="/signatures/general-secretary-signature-transparent.svg" alt="General Secretary signature"></span>Sonakshi Agarwal<br>General Secretary<br>180 Degrees Consulting, VIT Chennai</td>
+      <td><span class="name signature-image"><img src="/signatures/sanjay-signature-transparent.svg" alt="Secretary signature"></span>Sanjay Sivakumar<br>Co-Secretary<br>180 Degrees Consulting, VIT Chennai</td>
     </tr>` : `<tr class="four">
       <td><span class="name">Sharan K</span>Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
       <td><span class="name">Sanjana Chejeti</span>Vice Chairperson<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
       <td><span class="name">Sonakshi Agarwal</span>Gen Secretary<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
       <td><span class="name">Sanjay Sivakumar</span>Secretary<br>180 Degrees Consulting<div class="digisig">Digitally Signed</div></td>
     </tr>`}</table>
-    <div class="footer"><a href="https://vitc-180dc.org/" target="_blank" rel="noopener">vitc-180dc.org</a><span style="display:inline-block; width:36pt;"></span><a href="mailto:events.vitc@180dc.org">events.vitc@180dc.org</a></div>
     </div>`;
 }
 
@@ -624,11 +713,14 @@ export function buildMouPagesHTML(d: LetterData): string {
   return buildPaginatedDocumentPagesHTML(d, { minPages: 1 });
 }
 
-export function buildPagesHTML(d: LetterData): string {
+export function buildPagesHTML(d: LetterData, options: { vectorLetterhead?: boolean } = {}): string {
   if (d.type === "mou") return buildMouPagesHTML(d);
   if (d.type === "department-report") return buildDepartmentReportPagesHTML(d);
   if (d.type === "ldi") return buildLDIPagesHTML(d);
-  return `<div class="page${d.type === "appointment" ? " appointment-page" : ""}">${buildLetterHTML(d)}</div>`;
+  if (d.type === "appointment") {
+    return `<div class="page appointment-page${options.vectorLetterhead ? " letterhead-vector" : ""}">${buildLetterHTML(d)}</div>`;
+  }
+  return `<div class="page">${buildLetterHTML(d)}</div>`;
 }
 
 function fnv1a32(str: string): number {

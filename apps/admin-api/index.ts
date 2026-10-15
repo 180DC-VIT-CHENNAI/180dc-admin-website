@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { csrf } from "hono/csrf";
-import { verifyToken } from "@clerk/backend";
+import { createClerkClient, verifyToken } from "@clerk/backend";
+import { TokenVerificationError } from "@clerk/backend/errors";
 import { connect } from "cloudflare:sockets";
 
 type Bindings = {
@@ -37,7 +38,11 @@ const MAX_MSG_LEN = 2000;
 const MAX_PROJECT_DESC_LEN = 5000;
 
 function isPublicRoute(pathname: string, method: string): boolean {
-  const LOGIN_ROUTES = ["/api/dev-login", "/api/auth/clerk-login"];
+  const LOGIN_ROUTES = [
+    "/api/dev-login",
+    "/api/auth/clerk-login",
+    "/api/auth/token-login",
+  ];
   if (LOGIN_ROUTES.includes(pathname)) return true;
 
   const PUBLIC_ROUTES: [string, string?, string?][] = [
@@ -1433,6 +1438,9 @@ async function finalizeQueuedCampaign(
   }
 }
 
+const EMAIL_DELIVERIES_DDL =
+  "CREATE TABLE IF NOT EXISTS email_deliveries (campaign_id TEXT NOT NULL, recipient TEXT NOT NULL, status TEXT NOT NULL, error TEXT, attempts INTEGER DEFAULT 0, sent_at DATETIME, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (campaign_id, recipient));";
+
 async function loadSettledRecipients(
   db: any,
   campaignId: string,
@@ -1480,14 +1488,19 @@ async function recordDelivery(
     .run();
 }
 
-async function drainEmailQueue(env: any): Promise<{
+async function drainEmailQueue(
+  env: any,
+  ensureSchema = true,
+): Promise<{
   sent: number;
   failed: number;
   campaignId?: string;
   done?: boolean;
   skippedByQuota?: boolean;
 }> {
-  await ensureDbReady(env.DB, env);
+  if (ensureSchema) await ensureDbReady(env.DB, env);
+  // The cron path skips ensureDbReady, so create the table it depends on here.
+  await env.DB.exec(EMAIL_DELIVERIES_DDL);
   await migrateLegacyPendingEmails(env);
   await env.DB.prepare(
     "DELETE FROM email_queue WHERE status IN ('done','failed') AND finished_at < datetime('now', '-30 days')",
@@ -1550,10 +1563,9 @@ async function drainEmailQueue(env: any): Promise<{
   let lastError = campaign.last_error || null;
   let stoppedByQuota = false;
 
-  // Meet notices go to members in BCC batches. Every other campaign is sent
-  // one message per recipient and tracked in email_deliveries, so a reclaimed
-  // or retried campaign never sends twice to the same address.
-  const batchMode = campaign.kind === "meet";
+  // Every campaign is sent one message per recipient and tracked in
+  // email_deliveries, so a reclaimed or retried campaign never sends twice to
+  // the same address.
   const toSubscribers =
     campaign.kind === "newsletter" || campaign.kind === "event";
   const isTest = (() => {
@@ -1563,48 +1575,13 @@ async function drainEmailQueue(env: any): Promise<{
       return false;
     }
   })();
-  const settled = batchMode
-    ? new Set<string>()
-    : await loadSettledRecipients(env.DB, campaign.id);
+  const settled = await loadSettledRecipients(env.DB, campaign.id);
   const subscribers = toSubscribers
     ? await loadSubscriberTokens(env)
     : new Map<string, { token: string | null; active: boolean }>();
   let sentThisRun = 0;
 
   while (budget > 0 && cursor < recipients.length) {
-    if (batchMode) {
-      const batch = recipients.slice(cursor, cursor + SMTP_BATCH_SIZE);
-      const result = await sendEmail(
-        { env },
-        {
-          from: campaign.from_address,
-          to: batch,
-          subject: campaign.subject,
-          html: campaign.html,
-          attachments,
-          batchRecipients: true,
-        },
-      );
-      sent += result.sent;
-      if (result.error && /subrequest/i.test(result.error)) {
-        lastError = result.error;
-        cursor += result.sent;
-        stoppedByQuota = true;
-        break;
-      }
-      failed += result.failed;
-      if (result.error) lastError = result.error;
-      const processed = result.sent + result.failed;
-      cursor += processed;
-      budget--;
-      if (result.skipped > 0) {
-        stoppedByQuota = true;
-        break;
-      }
-      if (processed === 0) break;
-      continue;
-    }
-
     const recipient = recipients[cursor];
     if (settled.has(recipient)) {
       cursor++;
@@ -1993,7 +1970,11 @@ async function verifyPassword(
 // One-time (per isolate) DB init — running ensureTables/seedData on every
 // request cost 50-100+ D1 round trips per API call. Cached after first run;
 // reset on failure so the next request retries.
+// A hanging D1 op must not block an isolate forever: every awaiter races
+// against a timeout so requests fail fast while the init continues in the
+// background and caches itself when it eventually completes.
 let dbReadyPromise: Promise<void> | null = null;
+const DB_INIT_TIMEOUT_MS = 15000;
 function ensureDbReady(db: any, env?: any): Promise<void> {
   if (!dbReadyPromise) {
     dbReadyPromise = (async () => {
@@ -2004,7 +1985,15 @@ function ensureDbReady(db: any, env?: any): Promise<void> {
       throw e;
     });
   }
-  return dbReadyPromise;
+  return Promise.race([
+    dbReadyPromise,
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error("DB init timed out")),
+        DB_INIT_TIMEOUT_MS,
+      ),
+    ),
+  ]);
 }
 
 function newsletterDb(c: any): any {
@@ -2108,7 +2097,7 @@ async function ensureTables(db: any) {
     CREATE TABLE IF NOT EXISTS resend_daily_count (date TEXT PRIMARY KEY, count INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS pending_emails (id TEXT PRIMARY KEY, meet_id TEXT NOT NULL, meet_type TEXT NOT NULL, recipient_email TEXT NOT NULL, recipient_name TEXT NOT NULL, meet_title TEXT NOT NULL, meet_description TEXT, meet_link TEXT, scheduled_at TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS email_queue (id TEXT PRIMARY KEY, kind TEXT NOT NULL, from_address TEXT NOT NULL, subject TEXT NOT NULL, html TEXT NOT NULL, attachments TEXT, recipients TEXT NOT NULL, cursor INTEGER DEFAULT 0, total INTEGER NOT NULL, sent INTEGER DEFAULT 0, failed INTEGER DEFAULT 0, attempts INTEGER DEFAULT 0, status TEXT DEFAULT 'pending', last_error TEXT, meta TEXT, created_by TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, finished_at DATETIME);
-    CREATE TABLE IF NOT EXISTS email_deliveries (campaign_id TEXT NOT NULL, recipient TEXT NOT NULL, status TEXT NOT NULL, error TEXT, attempts INTEGER DEFAULT 0, sent_at DATETIME, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (campaign_id, recipient));
+    ${EMAIL_DELIVERIES_DDL}
     CREATE TABLE IF NOT EXISTS consulting_requests (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, role_in_org TEXT, requirement TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS consulting_responses (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, email_subject TEXT NOT NULL, email_body TEXT NOT NULL, sent_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (request_id) REFERENCES consulting_requests(id));
     CREATE TABLE IF NOT EXISTS maintenance_mode (id INTEGER PRIMARY KEY DEFAULT 1, enabled INTEGER DEFAULT 0, message TEXT DEFAULT 'Site is under maintenance. Please check back later.', updated_by TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
@@ -2239,6 +2228,15 @@ async function runMigrations(db: any) {
     );
   } catch {
     console.warn("Migration: oauth_enabled may already exist");
+  }
+  try {
+    await db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_clerk_user_id ON users(clerk_user_id) WHERE clerk_user_id IS NOT NULL AND clerk_user_id != ''",
+    );
+  } catch (e: any) {
+    console.warn(
+      "Migration: could not create unique index on users.clerk_user_id; duplicate Clerk links may exist and need manual cleanup",
+    );
   }
   try {
     await db.exec("ALTER TABLE newsletters ADD COLUMN email_subject TEXT");
@@ -5292,6 +5290,90 @@ app.post("/api/members", async (c) => {
 });
 
 // ---------------------------------------------------------
+// TOKEN LOGIN (public @ production-safe token login)
+// Maps an admin token -> email -> user. Not gated by ENVIRONMENT.
+// ---------------------------------------------------------
+app.post("/api/auth/token-login", async (c) => {
+  try {
+    await ensureDbReady(c.env.DB, c.env);
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "Invalid request body" }, 400);
+    }
+
+    const rl = await checkLoginRateLimit(c, "token_login", 10, 60);
+    if (!rl.allowed) {
+      return c.json(
+        {
+          error: "Too many login attempts. Try again later.",
+          retryAfter: rl.retryAfter,
+        },
+        429,
+      );
+    }
+
+    const token = sanitizeStr(body.token, MAX_STR_LEN * 4);
+    if (!token) {
+      await incrementLoginRateLimit(c, "token_login");
+      return c.json({ error: "Missing token" }, 400);
+    }
+
+    const entry: any = await c.env.DB.prepare(
+      "SELECT token, email, name, role_id, revoked_at, expires_at FROM admin_tokens WHERE token = ?",
+    )
+      .bind(token)
+      .first();
+
+    if (
+      !entry ||
+      entry.revoked_at ||
+      (entry.expires_at && new Date(entry.expires_at + "Z") <= new Date())
+    ) {
+      await incrementLoginRateLimit(c, "token_login");
+      return c.json({ error: "Invalid token" }, 401);
+    }
+
+    const existing: any = await c.env.DB.prepare(
+      "SELECT id FROM users WHERE email = ?",
+    )
+      .bind(entry.email)
+      .first();
+    if (!existing) {
+      const roleId = entry.role_id || "member";
+      await c.env.DB.prepare(
+        "INSERT INTO users (id, name, email, role_id) VALUES (lower(hex(randomblob(16))), ?, ?, ?)",
+      )
+        .bind(entry.name || entry.email.split("@")[0], entry.email, roleId)
+        .run();
+    }
+
+    const user: any = await c.env.DB.prepare(
+      "SELECT u.email, u.name, u.role_id, u.department_id, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
+    )
+      .bind(entry.email)
+      .first();
+
+    if (!user) {
+      return c.json({ error: "User role misconfigured: role not found" }, 500);
+    }
+
+    await resetLoginRateLimit(c, "token_login");
+
+    return c.json({
+      success: true,
+      email: entry.email,
+      name: user.name || entry.name,
+      roleId: user.role_id || entry.role_id || "member",
+      roleName: user.role_name || null,
+      powerLevel: user.power_level ?? 10,
+      departmentId: user.department_id || null,
+    });
+  } catch (e: any) {
+    return errorResponse(c, e.message, 500);
+  }
+});
+
+// ---------------------------------------------------------
 // Developer token login (dev only) - maps token -> email via ADMIN_TOKENS
 // ADMIN_TOKENS example: { "token123": { "email": "admin@vitstudent.ac.in", "roleId": "chairperson", "name": "Admin" } }
 // This returns the mapped email so the frontend can use it as the dev identity.
@@ -5469,12 +5551,42 @@ app.post("/api/auth/clerk-login", async (c) => {
       return c.json({ error: "Clerk not configured on server" }, 500);
     }
 
-    const jwtPayload = await verifyToken(clerkToken, {
-      secretKey: clerkSecret,
-    });
+    let jwtPayload: any;
+    try {
+      jwtPayload = await verifyToken(clerkToken, {
+        secretKey: clerkSecret,
+      });
+    } catch (e: any) {
+      if (e instanceof TokenVerificationError) {
+        return c.json({ error: "Invalid or expired Clerk token" }, 401);
+      }
+      logError("Clerk JWT verification failed", e, c);
+      return c.json({ error: "Invalid or expired Clerk token" }, 401);
+    }
     const clerkUserId = jwtPayload.sub;
     if (!clerkUserId) {
       return c.json({ error: "Invalid Clerk token: missing user ID" }, 401);
+    }
+
+    // Never trust client-supplied emails. Resolve the account's email from
+    // Clerk itself and only accept addresses Clerk has verified (e.g. Google OAuth).
+    let verifiedEmails: string[] = [];
+    try {
+      const clerkUser = await createClerkClient({
+        secretKey: clerkSecret,
+      }).users.getUser(clerkUserId);
+      verifiedEmails = (clerkUser.emailAddresses || [])
+        .filter((e: any) => e.verification?.status === "verified")
+        .map((e: any) => e.emailAddress.toLowerCase());
+    } catch (e: any) {
+      logError("Clerk user lookup failed", e, c);
+      return c.json({ error: "Unable to verify Clerk account" }, 401);
+    }
+    if (verifiedEmails.length === 0) {
+      return c.json(
+        { error: "Clerk account has no verified email address" },
+        401,
+      );
     }
 
     // Try lookup by clerk_user_id first (already linked)
@@ -5484,24 +5596,62 @@ app.post("/api/auth/clerk-login", async (c) => {
       .bind(clerkUserId)
       .first();
 
-    // If not found by clerk_user_id, try by email (auto-link)
-    if (!user) {
-      const email = sanitizeStr(body.email, 255);
-      if (email) {
-        user = await c.env.DB.prepare(
-          "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE u.email = ?",
-        )
-          .bind(email)
-          .first();
+    // A stored link that does not match any verified email on this Clerk
+    // account is stale or was tampered with — ignore it.
+    if (user && !verifiedEmails.includes(String(user.email).toLowerCase())) {
+      console.warn(
+        `[clerk-login] Ignoring stale clerk link for ${user.email} (clerk_user_id=${clerkUserId})`,
+      );
+      user = null;
+    }
 
-        if (user) {
-          await c.env.DB.prepare(
-            "UPDATE users SET clerk_user_id = ?, oauth_enabled = 1 WHERE id = ?",
-          )
-            .bind(clerkUserId, user.id)
-            .run();
-          user.oauth_enabled = 1;
+    // If not linked, match only against the verified emails returned by Clerk.
+    if (!user) {
+      const requestedEmail = validateEmail(body.email)?.toLowerCase();
+      const candidates: string[] = [];
+      if (requestedEmail && verifiedEmails.includes(requestedEmail)) {
+        candidates.push(requestedEmail);
+      }
+      for (const email of verifiedEmails) {
+        if (!candidates.includes(email)) candidates.push(email);
+      }
+      for (const candidate of candidates) {
+        user = await c.env.DB.prepare(
+          "SELECT u.*, r.power_level, r.name as role_name FROM users u JOIN roles r ON u.role_id = r.id WHERE lower(u.email) = ?",
+        )
+          .bind(candidate)
+          .first();
+        if (user) break;
+      }
+
+      if (user) {
+        const otherLink: any = await c.env.DB.prepare(
+          "SELECT id FROM users WHERE clerk_user_id = ? AND id != ?",
+        )
+          .bind(clerkUserId, user.id)
+          .first();
+        if (otherLink) {
+          return c.json(
+            {
+              error:
+                "This Google account is already linked to another member. Contact a board member.",
+            },
+            409,
+          );
         }
+        await c.env.DB.prepare(
+          "UPDATE users SET clerk_user_id = ?, oauth_enabled = 1 WHERE id = ?",
+        )
+          .bind(clerkUserId, user.id)
+          .run();
+        user.oauth_enabled = 1;
+        await addAuditLog(
+          c,
+          "clerk_linked",
+          "user",
+          user.id,
+          "Clerk account linked via verified email for " + user.email,
+        );
       }
     }
 
@@ -5511,7 +5661,7 @@ app.post("/api/auth/clerk-login", async (c) => {
           error:
             "Google login not linked to any 180DC member. Log in with a token first and enable Google login in your profile settings.",
         },
-        403,
+        401,
       );
     }
 
@@ -5521,7 +5671,7 @@ app.post("/api/auth/clerk-login", async (c) => {
           error:
             "Google login is disabled for this account. Enable it in your profile settings.",
         },
-        403,
+        401,
       );
     }
 
@@ -5555,7 +5705,7 @@ app.post("/api/auth/clerk-login", async (c) => {
       departmentId: user.department_id || null,
     });
   } catch (e: any) {
-    if (e.message?.includes("JWT") || e.message?.includes("token")) {
+    if (e instanceof TokenVerificationError) {
       return c.json({ error: "Invalid or expired Clerk token" }, 401);
     }
     return errorResponse(c, e.message, 500);
@@ -5586,9 +5736,39 @@ app.post("/api/auth/link-clerk", async (c) => {
     if (!body || typeof body !== "object") {
       return c.json({ error: "Invalid request body" }, 400);
     }
-    const clerkUserId = sanitizeStr(body.clerkUserId);
+    const clerkToken = sanitizeStr(body.clerkToken, MAX_CLERK_TOKEN_LEN);
+    if (!clerkToken) {
+      return c.json({ error: "Missing clerkToken" }, 400);
+    }
+    const clerkSecret = c.env.CLERK_SECRET_KEY;
+    if (!clerkSecret) {
+      return c.json({ error: "Clerk not configured on server" }, 500);
+    }
+    let clerkUserId: string | undefined;
+    try {
+      const payload = await verifyToken(clerkToken, {
+        secretKey: clerkSecret,
+      });
+      clerkUserId = payload.sub;
+    } catch {
+      return c.json({ error: "Invalid or expired Clerk token" }, 401);
+    }
     if (!clerkUserId) {
-      return c.json({ error: "Missing clerkUserId" }, 400);
+      return c.json({ error: "Invalid Clerk token: missing user ID" }, 401);
+    }
+
+    const otherLink: any = await c.env.DB.prepare(
+      "SELECT id FROM users WHERE clerk_user_id = ? AND id != ?",
+    )
+      .bind(clerkUserId, user.id)
+      .first();
+    if (otherLink) {
+      return c.json(
+        {
+          error: "This Google account is already linked to another member.",
+        },
+        409,
+      );
     }
 
     await c.env.DB.prepare(
@@ -11610,8 +11790,7 @@ app.get("/api/admin/email-queue/:id/deliveries", async (c) => {
 
 // Re-runs a finished campaign: email_deliveries makes the drain skip every
 // recipient already sent (or skipped as unsubscribed), so only failures go
-// out again. BCC-batched meet campaigns have no per-recipient record and
-// cannot be retried this way.
+// out again.
 app.post("/api/admin/email-queue/:id/retry-failed", async (c) => {
   try {
     await ensureDbReady(c.env.DB, c.env);
@@ -11622,16 +11801,11 @@ app.post("/api/admin/email-queue/:id/retry-failed", async (c) => {
   try {
     const id = c.req.param("id");
     const campaign: any = await c.env.DB.prepare(
-      "SELECT id, kind, status, sent FROM email_queue WHERE id = ?",
+      "SELECT id, status, sent FROM email_queue WHERE id = ?",
     )
       .bind(id)
       .first();
     if (!campaign) return c.json({ error: "Campaign not found" }, 404);
-    if (campaign.kind === "meet")
-      return c.json(
-        { error: "Meet campaigns are BCC batches and cannot be retried" },
-        400,
-      );
     if (campaign.status !== "done" && campaign.status !== "failed")
       return c.json({ error: "Campaign is still sending" }, 409);
     const tracked: any = await c.env.DB.prepare(
@@ -11665,6 +11839,14 @@ export default {
     return app.fetch(request, env, ctx);
   },
   async scheduled(_event: any, env: any, ctx: any) {
-    ctx.waitUntil(drainEmailQueue(env));
+    try {
+      const schemaOk: any = await env.DB.prepare(
+        "SELECT COUNT(*) as c FROM sqlite_master WHERE type='table' AND name='email_queue'",
+      ).first();
+      if (!schemaOk || schemaOk.c <= 0) return;
+    } catch {
+      return;
+    }
+    ctx.waitUntil(drainEmailQueue(env, false));
   },
 };

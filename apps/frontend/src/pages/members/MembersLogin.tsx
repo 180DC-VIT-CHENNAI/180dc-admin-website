@@ -48,7 +48,7 @@ export default function MembersLogin({ onLogin, oauthLoading, oauthError }: Memb
     if (!t) return alert("Enter token");
     setLoading(true);
     try {
-      const res = await fetch(apiUrl("/api/dev-login"), {
+      const res = await fetch(apiUrl("/api/auth/token-login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: t }),

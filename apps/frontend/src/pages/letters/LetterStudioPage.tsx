@@ -71,6 +71,7 @@ export default function LetterStudioPage() {
   const [announcementFileName, setAnnouncementFileName] = useState("");
   const [pagesHtml, setPagesHtml] = useState("");
   const [previewZoom, setPreviewZoom] = useState(1);
+  const [letterheadQuality, setLetterheadQuality] = useState<"standard" | "vector">("standard");
   const [busy, setBusy] = useState<"" | "pdf" | "send">("");
   const [logCount, setLogCount] = useState(0);
   const [recentLetters, setRecentLetters] = useState<LogEntry[]>([]);
@@ -206,10 +207,10 @@ export default function LetterStudioPage() {
   }
 
   useLayoutEffect(() => {
-    const html = buildPagesHTML(currentData);
+    const html = buildPagesHTML(currentData, { vectorLetterhead: letterheadQuality === "vector" });
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPagesHtml(html);
-  }, [currentData]);
+  }, [currentData, letterheadQuality]);
 
   useLayoutEffect(() => {
     if (!pagesHtml) return;
@@ -346,10 +347,12 @@ export default function LetterStudioPage() {
       alert("Enter the member name.");
       return false;
     }
-    const reg = (form["f-reg"] || "").trim().toUpperCase();
-    if (!REG_PATTERN.test(reg)) {
-      alert("Registration number format must be 2 digits + B/M + 2 letters + 4 digits, with the 4-digit block starting 1-9. Example: 25BCE1234.");
-      return false;
+    if (type !== "appointment") {
+      const reg = (form["f-reg"] || "").trim().toUpperCase();
+      if (!REG_PATTERN.test(reg)) {
+        alert("Registration number format must be 2 digits + B/M + 2 letters + 4 digits, with the 4-digit block starting 1-9. Example: 25BCE1234.");
+        return false;
+      }
     }
     if (type === "showcause" && !(form["f-sc-incident"] || "").trim()) {
       alert("Please enter the incident / absence details.");
@@ -403,7 +406,7 @@ export default function LetterStudioPage() {
   }
 
   // ---- PDF generation ----
-  async function generatePdfBlob(): Promise<Blob> {
+  async function renderPdfBlob(scale: number, jpegQuality: number | null): Promise<Blob> {
     const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
     const stack = liveRef.current;
     if (!stack) throw new Error("Preview not ready");
@@ -414,19 +417,29 @@ export default function LetterStudioPage() {
       const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
       for (let i = 0; i < pages.length; i++) {
         const canvas = await html2canvas(pages[i], {
-          scale: 2,
+          scale,
           backgroundColor: "#ffffff",
           useCORS: true,
           logging: false,
         });
-        const img = canvas.toDataURL("image/jpeg", 0.95);
+        const img = jpegQuality == null ? canvas.toDataURL("image/png") : canvas.toDataURL("image/jpeg", jpegQuality);
         if (i > 0) pdf.addPage();
-        pdf.addImage(img, "JPEG", 0, 0, 210, 297);
+        pdf.addImage(img, jpegQuality == null ? "PNG" : "JPEG", 0, 0, 210, 297);
       }
       return pdf.output("blob");
     } finally {
       stack.style.transform = prevTransform;
     }
+  }
+
+  // Lossless PNG at 3x keeps text and artwork crisp (~2.5 MB/page); step down only if a
+  // long document would exceed the 20 MB upload cap.
+  async function generatePdfBlob(): Promise<Blob> {
+    const MAX_BYTES = 18 * 1024 * 1024;
+    let blob = await renderPdfBlob(3, null);
+    if (blob.size > MAX_BYTES) blob = await renderPdfBlob(3, 0.95);
+    if (blob.size > MAX_BYTES) blob = await renderPdfBlob(2, 0.92);
+    return blob;
   }
 
   // ---- Upload generated PDF to R2 ----
@@ -837,20 +850,24 @@ export default function LetterStudioPage() {
                 <label htmlFor="f-name">Name</label>
                 <input type="text" id="f-name" placeholder="Full name" value={form["f-name"] || ""} onChange={set("f-name")} />
 
-                <label htmlFor="f-reg">Registration number</label>
-                <input
-                  type="text"
-                  id="f-reg"
-                  placeholder="e.g. 25BCE1234"
-                  maxLength={9}
-                  value={form["f-reg"] || ""}
-                  onChange={(e) => set("f-reg")({ ...e, target: { ...e.target, value: e.target.value.toUpperCase().replace(/\s+/g, "").slice(0, 9) } })}
-                  style={form["f-reg"] && !REG_PATTERN.test((form["f-reg"] || "").toUpperCase()) ? { borderColor: "var(--status-error)" } : undefined}
-                />
-                {form["f-reg"] && !REG_PATTERN.test((form["f-reg"] || "").toUpperCase()) && (
-                  <div className="err" style={{ display: "block", color: "var(--status-error)" }}>
-                    Use 2 digits + B/M + 2 letters + 4 digits; the 4-digit block cannot start with 0. Example: 25BCE1234.
-                  </div>
+                {type !== "appointment" && (
+                  <>
+                    <label htmlFor="f-reg">Registration number</label>
+                    <input
+                      type="text"
+                      id="f-reg"
+                      placeholder="e.g. 25BCE1234"
+                      maxLength={9}
+                      value={form["f-reg"] || ""}
+                      onChange={(e) => set("f-reg")({ ...e, target: { ...e.target, value: e.target.value.toUpperCase().replace(/\s+/g, "").slice(0, 9) } })}
+                      style={form["f-reg"] && !REG_PATTERN.test((form["f-reg"] || "").toUpperCase()) ? { borderColor: "var(--status-error)" } : undefined}
+                    />
+                    {form["f-reg"] && !REG_PATTERN.test((form["f-reg"] || "").toUpperCase()) && (
+                      <div className="err" style={{ display: "block", color: "var(--status-error)" }}>
+                        Use 2 digits + B/M + 2 letters + 4 digits; the 4-digit block cannot start with 0. Example: 25BCE1234.
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {vis.positionSingle && (
@@ -1113,6 +1130,17 @@ export default function LetterStudioPage() {
                 <div className="preview-meta">A4 · {Math.round(previewZoom * 100)}%</div>
               </div>
               <div className="preview-actions">
+                {type === "appointment" && (
+                  <select
+                    value={letterheadQuality}
+                    onChange={(e) => setLetterheadQuality(e.target.value as "standard" | "vector")}
+                    title="Letterhead rendering quality"
+                    style={{ flex: "0 0 auto", width: "auto", padding: "5px 8px", fontSize: 11, borderRadius: 7, border: "1px solid var(--border-light)", background: "var(--bg-primary)", color: "var(--text-primary)", cursor: "pointer" }}
+                  >
+                    <option value="standard">Letterhead: Standard</option>
+                    <option value="vector">Letterhead: High (vector)</option>
+                  </select>
+                )}
                 <button onClick={() => setPreviewZoom((z) => Math.max(0.75, z - 0.05))}>−</button>
                 <output>{Math.round(previewZoom * 100)}%</output>
                 <button onClick={() => setPreviewZoom((z) => Math.min(1.15, z + 0.05))}>+</button>

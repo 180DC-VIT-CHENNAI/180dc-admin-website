@@ -23,12 +23,15 @@ function addSecurityHeaders(headers: Headers) {
   headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), interest-cohort=()");
 }
 
-const API_BASE = "https://admin-api.technical-vitc.workers.dev";
+// workers.dev host for admin-api is currently broken (error 1042); override
+// via the Pages env var API_PROXY_BASE (e.g. "https://180dcvitc.org") if needed.
+const DEFAULT_API_BASE = "https://admin-api.technical-vitc.workers.dev";
 
 export async function onRequest(context: any) {
   const { request, next, env } = context;
   const url = new URL(request.url);
   const path = url.pathname;
+  const API_BASE = (env?.API_PROXY_BASE as string) || DEFAULT_API_BASE;
 
   // Proxy API requests to the admin-api worker
   if (path.startsWith("/api/")) {

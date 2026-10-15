@@ -167,8 +167,8 @@ one-click `List-Unsubscribe` headers. Per-recipient mail avoids the
 `undisclosed-recipients` BCC pattern and makes one-click unsubscribe possible. At
 500 messages/hour, the list can reach several hundred before a send spans more than an
 hour. Beyond that, move only the transport behind `sendEmail()` (e.g. to Amazon SES);
-the queue, templates, and unsubscribe flow stay as they are. Meet notices to members
-still use BCC batches of 50.
+the queue, templates, and unsubscribe flow stay as they are. Meet notifications are
+also one SMTP message per recipient, so no queued campaign uses BCC batches.
 
 ## Backend migration plan: Resend → Spacemail SMTP
 

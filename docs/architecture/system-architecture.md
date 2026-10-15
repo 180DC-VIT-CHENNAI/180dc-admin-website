@@ -44,7 +44,7 @@ External: Spacemail SMTP, Resend, Clerk, Google Fonts/CDN
 - **Runtime:** Cloudflare Worker using `hono`.
 - **Entry point:** `index.ts` (single 5000+ line file).
 - **Database:** D1 (`DB` binding) for members/projects/meets/email infra; separate D1 `NEWSLETTER_DB` (`newsletter-db`) for newsletter data.
-- **Cron:** `* * * * *` trigger drains the `email_queue` with adaptive pacing (up to 15 messages/minute, under the 500/hour Spacemail cap); newsletter/event mail is one personalized message per subscriber, meet notices are BCC batches of ≤50.
+- **Cron:** `* * * * *` trigger drains the `email_queue` with adaptive pacing (up to 15 messages/minute, under the 500/hour Spacemail cap); every campaign is one message per recipient (newsletter/event mail personalized per subscriber).
 - **Storage:** R2 buckets `CLUB_FILES`, `BLOG_IMAGES`, `CASE_STUDIES`.
 - **Cache/session:** KV `AUTH_SESSIONS` (bound but not used in `main`).
 - **Queue:** `QUEUE` producer binding (bound but not used in `main`).
@@ -104,10 +104,11 @@ External: Spacemail SMTP, Resend, Clerk, Google Fonts/CDN
 1. User clicks "Sign in with Google".
 2. Clerk redirects to Google OAuth.
 3. On return, `MembersLayout.tsx` obtains a Clerk JWT from `getToken()`.
-4. Frontend posts `POST /api/auth/clerk-login` with `clerkToken` and optional `email`.
+4. Frontend posts `POST /api/auth/clerk-login` with `clerkToken`.
 5. `admin-api` verifies the Clerk JWT using `CLERK_SECRET_KEY`.
-6. If `clerk_user_id` is linked to a user and `oauth_enabled = 1`, an `admin_tokens` row is created or reused.
-7. Frontend stores the returned token and profile.
+6. `admin-api` fetches the Clerk user via the Clerk Backend API and only trusts Clerk-verified emails (never the request body).
+7. If `clerk_user_id` is linked to a user (and matches a verified email) and `oauth_enabled = 1`, an `admin_tokens` row is created or reused; otherwise the user is matched by a verified email and linked.
+8. Frontend stores the returned token and profile.
 
 ### Authenticated API call
 

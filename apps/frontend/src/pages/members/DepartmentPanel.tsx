@@ -126,7 +126,10 @@ export default function DepartmentPanel({ authToken, departmentId, departmentNam
                     const res = await fetch(apiUrl(`/api/meets/department_meet/${m.id}/send-notification`), { method: "POST", headers });
                     const data = await res.json();
                     setSendingEmail(null);
-                    if (data.success) alert(`Email sent.`);
+                    if (data.success) {
+                      const count = (data.emailsSent || 0) + (data.emailsQueued || 0);
+                      alert(count > 0 ? `Notifications queued or sent to ${count} member(s).` : "No members found to notify.");
+                    }
                     else alert(data.error);
                   }} disabled={sendingEmail === m.id}><span className="material-symbols-outlined">mail</span></button>
                   <button className="header-action-btn" style={{ color: "var(--status-error)" }} onClick={async () => {

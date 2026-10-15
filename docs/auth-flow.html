@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>180DC Admin — Authentication &amp; Authorization Flow</title>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --ink: #1a202c;
+    --muted: #5b6472;
+    --accent: #2f6fed;
+    --danger: #c53030;
+    --ok: #2f855a;
+    --warn: #b7791f;
+    --border: #e2e8f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1420;
+      --card: #171d2b;
+      --ink: #e6ebf4;
+      --muted: #98a2b3;
+      --accent: #5b8def;
+      --danger: #f56565;
+      --ok: #48bb78;
+      --warn: #ecc94b;
+      --border: #26314a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 2rem 1.2rem 5rem; }
+  header.hero {
+    background: linear-gradient(135deg, #1d4ed8 0%, #0f766e 100%);
+    color: #fff;
+    border-radius: 20px;
+    padding: 2.2rem 2.4rem;
+    margin-bottom: 2.2rem;
+  }
+  header.hero h1 { margin: 0 0 .35rem; font-size: 1.8rem; }
+  header.hero p { margin: .25rem 0 0; opacity: .92; max-width: 70ch; }
+  h2 {
+    margin: 3rem 0 1rem;
+    font-size: 1.35rem;
+    padding-bottom: .4rem;
+    border-bottom: 2px solid var(--border);
+  }
+  h3 { margin: 1.6rem 0 .6rem; font-size: 1.05rem; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.1rem 1.3rem;
+    margin: 1rem 0;
+  }
+  .diagram {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1rem;
+    overflow-x: auto;
+    margin: 1rem 0;
+  }
+  .diagram .mermaid { display: flex; justify-content: center; }
+  table { width: 100%; border-collapse: collapse; margin: .8rem 0; font-size: .92rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+  code {
+    background: rgba(127,139,163,.15);
+    padding: .12em .38em;
+    border-radius: 5px;
+    font-family: Consolas, "Cascadia Code", monospace;
+    font-size: .86em;
+  }
+  .pill { display: inline-block; font-size: .75rem; font-weight: 700; padding: .15rem .6rem; border-radius: 999px; margin-right: .35rem; }
+  .pill-ok { background: rgba(47,133,90,.15); color: var(--ok); }
+  .pill-warn { background: rgba(183,121,31,.15); color: var(--warn); }
+  .pill-err { background: rgba(197,48,48,.15); color: var(--danger); }
+  .callout { border-left: 4px solid var(--accent); background: rgba(47,109,237,.08); padding: .9rem 1.1rem; border-radius: 0 10px 10px 0; margin: 1.2rem 0; }
+  .callout.bad { border-left-color: var(--danger); background: rgba(197,48,48,.07); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+  nav.toc { column-count: 2; column-gap: 2rem; font-size: .92rem; }
+  nav.toc a { color: var(--accent); text-decoration: none; display: inline-block; margin: .18rem 0; }
+  nav.toc a:hover { text-decoration: underline; }
+  footer { margin-top: 3rem; color: var(--muted); font-size: .85rem; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>180 Degrees Consulting · VIT Chennai</h1>
+  <p>Member portal authentication &amp; authorization — full flow from account request to every authenticated API call. Backend source of truth: <code>apps/admin-api/index.ts</code>.</p>
+</header>
+
+<h2>Contents</h2>
+<nav class="toc">
+  <a href="#s1">1 · Account onboarding (request → approve)</a>
+  <a href="#s2">2 · Google sign-in (Clerk)</a>
+  <a href="#s3">3 · Token login</a>
+  <a href="#s4">4 · Authenticated request (middleware)</a>
+  <a href="#s5">5 · Token rotation / Clerk link / unlink</a>
+  <a href="#power">Power levels &amp; guards</a>
+  <a href="#status">Status codes</a>
+  <a href="#endpoints">Endpoint map</a>
+  <a href="#security">Security notes &amp; the fixed exploit</a>
+</nav>
+
+<!-- ============ S1 ============ -->
+<h2 id="s1">1 · Account onboarding</h2>
+<p>Anyone can request an account. A board member (power ≥ 100) approves it. Approval creates the <code>users</code> row, a long-lived <code>admin_tokens</code> row, and emails the token to the member's inbox — <em>possession of the inbox is the proof of identity</em> (magic-link model).</p>
+
+<div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor U as New member (public)
+    actor B as Board member
+    participant F as Frontend SPA
+    participant A as Admin API (Worker)
+    participant D as D1 (180dc-db)
+    participant M as Spacemail/Resend
+
+    U->>F: Fill /request-account form
+    F->>A: POST /api/signup-requests (public route)
+    Note over A: rate limit 5/hr
+    A->>D: INSERT signup_requests (status=pending)
+    A-->>U: 200 success
+
+    B->>A: GET /api/signup-requests (Bearer token)
+    A->>A: requireBoard (power_level >= 100)
+    A->>D: SELECT pending requests
+    A-->>B: pending list
+
+    B->>A: POST /api/signup-requests/:id/approve
+    A->>A: requireBoard (power_level >= 100)
+    A->>D: INSERT users (role_id='member')
+    A->>D: DELETE old token for email
+    A->>D: INSERT admin_tokens (random UUID token)
+    A->>D: UPDATE signup_requests status='approved'
+    A->>D: INSERT audit_log (signup_approved)
+    A->>M: sendTokenEmail(token) to member inbox
+    A-->>B: 200 + token (visible only to board)
+</pre>
+</div>
+
+<div class="callout">
+  <strong>One active token per email.</strong> Every issuance path (<code>admin-tokens</code>, <code>board-users</code>, <code>advisory-members</code>, signup approval, rotate) first <code>DELETEs</code> the prior row — <code>admin_tokens.email</code> is UNIQUE.
+</div>
+
+<!-- ============ S2 ============ -->
+<h2 id="s2">2 · Google sign-in (Clerk)</h2>
+<p>Two different tokens exist and should not be confused:</p>
+<ul>
+  <li><strong>Clerk JWT (~60 s)</strong> — minted by Google/Clerk; proves <em>“you own this Google account”</em>. Rendered client-side by <code>getToken()</code>.</li>
+  <li><strong>Admin Bearer token</strong> — long-lived (no server expiry); the credential that unlocks the portal API.</li>
+</ul>
+<p>After the security fix, <code>clerk-login</code> never trusts a client-supplied email. It resolves the account via Clerk's Backend API and only accepts Clerk-<strong>verified</strong> email addresses.</p>
+
+<div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor U as Member
+    participant G as Google OAuth
+    participant CK as Clerk
+    participant F as Frontend SPA
+    participant A as Admin API (Worker)
+    participant D as D1 (180dc-db)
+
+    U->>F: Click "Sign in with Google"
+    F->>CK: clerk.redirectToSignIn()
+    CK->>G: Google consent
+    G-->>CK: auth code
+    CK-->>F: redirect back to /members
+    F->>CK: getToken() → 60s Clerk JWT
+    F->>A: POST /api/auth/clerk-login {clerkToken, email}
+
+    A->>A: verifyToken(JWT) — signature + expiry
+    Note over A: invalid/expired JWT → 401
+
+    A->>CK: users.getUser(sub) ← Backend API
+    A->>A: verifiedEmails = Clerk-verified addresses only
+    Note over A: body.email used ONLY if it appears in verifiedEmails
+    Note over A: no verified email → 403
+
+    alt clerk_user_id already linked
+        A->>D: SELECT user WHERE clerk_user_id = ?
+        Note over A: link must match a verified email,<br/>else treated as stale → ignored
+    else not linked
+        A->>D: SELECT user WHERE lower(email) = verifiedEmail
+        alt user found (auto-link)
+            A->>D: check clerk_user_id not used by another user
+            Note over A: already linked elsewhere → 409
+            A->>D: UPDATE users SET clerk_user_id, oauth_enabled=1
+        end
+    end
+
+    alt user not found / oauth_enabled = 0
+        A-->>U: 403 "not linked / disabled"
+    else
+        A->>D: reuse or create admin_tokens row for email
+        A-->>F: 200 {token, email, role, powerLevel}
+        F-->>U: session starts (e.g. power 100)
+    end
+</pre>
+</div>
+
+<!-- ============ S3 ============ -->
+<h2 id="s3">3 · Token login</h2>
+<p>The portal's “Continue with Token” button posts to <code>/api/auth/token-login</code> — production-safe. The legacy <code>/api/dev-login</code> route is development-only (403 when <code>ENVIRONMENT=production</code>).</p>
+
+<div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor U as Member
+    participant F as Frontend SPA
+    participant A as Admin API (Worker)
+    participant D as D1 (180dc-db)
+
+    U->>F: Paste token from email
+    F->>A: POST /api/auth/token-login {token}
+
+    A->>D: SELECT admin_tokens WHERE token = ?
+    Note over A: missing / revoked / expired → 401
+    alt users row missing
+        A->>D: INSERT users from token payload
+    end
+    A-->>F: 200 {email, name, role, powerLevel}
+</pre>
+</div>
+
+<p>Forgot your token? <code>POST /api/auth/forgot-token</code> (rate-limited 3/hr) re-emails the <em>existing</em> token to the registered inbox and always returns the same success message to prevent email enumeration.</p>
+
+<!-- ============ S4 ============ -->
+<h2 id="s4">4 · Authenticated request — middleware pipeline</h2>
+<p>Every non-public request passes the Bearer-token middleware before the route handler's own <code>power_level</code> checks.</p>
+
+<div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant F as Frontend SPA
+    participant A as Admin API (Worker)
+    participant D as D1 (180dc-db)
+
+    F->>A: GET /api/dashboard (Authorization: Bearer &lt;token&gt;)
+    A->>A: ensureDbReady + isPublicRoute? → no
+    A->>D: SELECT admin_tokens WHERE token = ?
+    Note over A: revoked (revoked_at) or expired (expires_at) → 401
+    A->>D: SELECT users JOIN roles (email = token email)
+    Note over A: email not registered → 401
+    Note over A: power_level = roles.power_level
+    A->>D: SELECT maintenance_mode
+    alt maintenance enabled AND power_level < 100
+        A-->>F: 503 maintenance
+    else
+        A->>A: c.set("user", user)
+        Note over A: handler checks thresholds:<br/>requireMember ≥10, requireBoard ≥100, misc ≥50
+        A-->>F: 200 response data
+    end
+</pre>
+</div>
+
+<!-- ============ S5 ============ -->
+<h2 id="s5">5 · Token rotation / Clerk link / unlink</h2>
+
+<div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor U as Authenticated member
+    participant A as Admin API (Worker)
+    participant D as D1 (180dc-db)
+    participant M as Email
+
+    %% rotate
+    U->>A: POST /api/auth/rotate-token (Bearer, 3/hr)
+    A->>D: DELETE admin_tokens (email)
+    A->>D: INSERT new random token
+    A->>M: email new token to member
+    A-->>U: 200 {token}
+    Note over U: old token copies die immediately
+
+    %% link
+    U->>A: POST /api/auth/link-clerk {clerkToken} (Bearer)
+    A->>A: verifyToken(JWT) → sub
+    Note over A: client-supplied clerkUserId is NOT accepted
+    A->>D: another user already holds this sub? → 409
+    A->>D: UPDATE users SET clerk_user_id=sub, oauth_enabled=1
+    A-->>U: 200 "Google login enabled"
+
+    %% unlink
+    U->>A: POST /api/auth/unlink-clerk (Bearer)
+    A->>D: UPDATE users SET clerk_user_id=NULL, oauth_enabled=0
+    A-->>U: 200 "Google login disabled"
+</pre>
+</div>
+
+<!-- ============ POWER ============ -->
+<h2 id="power">Power levels &amp; guards</h2>
+<div class="card">
+<table>
+  <tr><th>Role</th><th>Power</th><th>Typical gates</th></tr>
+  <tr><td>Board (chair, vice-chair, secretary, co-secretary)</td><td><code>100</code></td><td><code>requireBoard</code> — signup approvals, admin-tokens, board-users, advisory, role changes, maintenance toggle, consulting, admin console</td></tr>
+  <tr><td>Directors</td><td><code>50</code></td><td>own-department panels, send-mail; <code>&gt;=50</code> checks in many queries</td></tr>
+  <tr><td>Advisory</td><td><code>30</code></td><td>dashboard + profile only; excluded from some lists</td></tr>
+  <tr><td>General member</td><td><code>10</code></td><td><code>requireMember</code> — base access, club files, projects, meets</td></tr>
+</table>
+</div>
+
+<!-- ============ STATUS ============ -->
+<h2 id="status">Status code semantics (as implemented)</h2>
+<div class="card">
+<table>
+  <tr><th>Code</th><th>Meaning here</th><th>Examples</th></tr>
+  <tr><td><span class="pill pill-err">401</span></td><td>Authentication refused</td><td>Missing/invalid/expired Bearer token; bad or expired Clerk JWT; unlinked or unknown member; “OAuth disabled”; account has no Clerk-verified email</td></tr>
+  <tr><td><span class="pill pill-warn">403</span></td><td>Authenticated but not allowed</td><td>Power below threshold; dev-login in production</td></tr>
+  <tr><td><span class="pill pill-warn">409</span></td><td>Identity conflict</td><td>Clerk account already linked to another member</td></tr>
+  <tr><td><span class="pill pill-ok">503</span></td><td>Maintenance mode</td><td><code>power_level &lt; 100</code> while maintenance is on</td></tr>
+  <tr><td><span class="pill pill-warn">429</span></td><td>Rate limited</td><td>Login (20/min), signup (5/hr), rotate (3/hr), forgot (3/hr), email caps (8/min, 500/hr SMTP, 100/day Resend)</td></tr>
+</table>
+</div>
+
+<!-- ============ ENDPOINTS ============ -->
+<h2 id="endpoints">Endpoint map</h2>
+<div class="card">
+<table>
+  <tr><th>Endpoint</th><th>Auth</th><th>Purpose</th></tr>
+  <tr><td><code>POST /api/signup-requests</code></td><td>public</td><td>Request an account</td></tr>
+  <tr><td><code>GET /api/signup-requests</code></td><td>board ≥100</td><td>List pending requests</td></tr>
+  <tr><td><code>POST /api/signup-requests/:id/approve</code></td><td>board ≥100</td><td>Create user + token, email it</td></tr>
+  <tr><td><code>POST /api/signup-requests/:id/reject</code></td><td>board ≥100</td><td>Reject request</td></tr>
+  <tr><td><code>POST /api/auth/clerk-login</code></td><td>public</td><td>Google login (Clerk-verified email only)</td></tr>
+  <tr><td><code>POST /api/auth/token-login</code></td><td>public</td><td>Token login, production-safe</td></tr>
+  <tr><td><code>POST /api/auth/link-clerk</code></td><td>Bearer</td><td>Link own account to a verified Clerk JWT</td></tr>
+  <tr><td><code>POST /api/auth/unlink-clerk</code></td><td>Bearer</td><td>Disconnect Google</td></tr>
+  <tr><td><code>POST /api/auth/rotate-token</code></td><td>Bearer</td><td>Revoke + reissue own token (3/hr)</td></tr>
+  <tr><td><code>POST /api/auth/forgot-token</code></td><td>public</td><td>Re-email token (3/hr, anti-enumeration)</td></tr>
+  <tr><td><code>POST /api/dev-login</code></td><td>public</td><td>Token login — dev only, 403 when <code>ENVIRONMENT=production</code></td></tr>
+  <tr><td><code>POST /api/admin-tokens</code></td><td>board ≥100</td><td>Issue token for any email/role</td></tr>
+  <tr><td><code>POST /api/board-users</code></td><td>board ≥100</td><td>Create director+ user + token</td></tr>
+  <tr><td><code>POST /api/advisory-members</code></td><td>board ≥100</td><td>Create advisory user + token</td></tr>
+</table>
+</div>
+
+<!-- ============ SECURITY ============ -->
+<h2 id="security">Security notes &amp; the fixed exploit</h2>
+
+<div class="callout bad">
+  <strong>The vulnerability (fixed):</strong> <code>POST /api/auth/clerk-login</code> previously auto-linked by a <em>client-supplied</em> <code>email</code> in the request body. A valid Clerk JWT (60 s) + any member's email returned that member's long-lived admin token — a power-10 friend could log in as a power-100 board member without ever touching their inbox.
+</div>
+
+<div class="callout">
+  <strong>The fix (deployed in <code>apps/admin-api/index.ts</code>):</strong>
+  <ol style="margin:.4rem 0 0; padding-left:1.2rem;">
+    <li>Email is resolved from Clerk's Backend API only; client email is ignored unless it is a Clerk-verified address.</li>
+    <li>Stored <code>clerk_user_id</code> links that don't match a verified email are ignored (kills already-taken-over accounts).</li>
+    <li>One Clerk user ID ↔ at most one member (409 + unique partial index <code>idx_users_clerk_user_id</code>).</li>
+    <li><code>link-clerk</code> now requires a verified <code>clerkToken</code> JWT; client-supplied <code>clerkUserId</code> was removed.</li>
+    <li>Audit entry (<code>clerk_linked</code>) is written on every new link.</li>
+  </ol>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:.2rem">Reminders</h3>
+  <ul>
+    <li>Admin tokens never expire server-side; they are only killed by <strong>rotation</strong> or <strong>revocation</strong>. Compromised token → rotate immediately.</li>
+    <li>After a takeover incident: rotate the token, unlink/re-link Google, and inspect <code>audit_log</code> (<code>clerk_linked</code>) to identify the attacker's Clerk ID.</li>
+    <li>If <code>ENVIRONMENT</code> is unset on the deployed worker, <code>dev-login</code> opens and a chairperson token for <code>admin@vitstudent.ac.in</code> gets seeded on every run — verify the var is <code>production</code> in the dashboard.</li>
+    <li>Token login runs through the production-safe <code>/api/auth/token-login</code>; <code>dev-login</code> stays dev-only. Both are rate-limited per IP.</li>
+  </ul>
+</div>
+
+<footer>Generated from <code>apps/admin-api/index.ts</code> · 180DC VIT Chennai · Cloudflare Workers + D1 + Clerk</footer>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: dark ? "dark" : "default",
+    securityLevel: "loose",
+    sequence: { mirrorActors: false, actorMargin: 50, messageMargin: 40, boxMargin: 8 },
+  });
+</script>
+</body>
+</html>

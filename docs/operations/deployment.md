@@ -122,13 +122,16 @@ binding = "QUEUE"
 queue = "jobs-queue"
 
 [triggers]
-# Drains email_queue (up to 15 messages/minute, one per subscriber; meet notices in BCC batches of ≤50)
+# Drains email_queue (up to 15 messages/minute, one message per recipient)
 crons = ["* * * * *"]
 
 [vars]
 ENVIRONMENT = "production"
 # Empty until the ADR-004 newsletter site is deployed; newsletters then link to {url}/newsletter/{id}
 NEWSLETTER_SITE_URL = ""
+
+# Note: ENVIRONMENT now ships via wrangler.toml [vars]. Local dev overrides it
+# back to development: `pnpm dev` runs `wrangler dev --var ENVIRONMENT:development`.
 
 # Secrets must be set via `wrangler secret put`
 # RESEND_API_KEY          (fallback sender — keep while Spacemail is rolled out)

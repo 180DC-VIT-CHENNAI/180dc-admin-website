@@ -78,7 +78,7 @@ Seeded departments: `tech`, `finance`, `crm`, `operations`, `business_strategy`,
 | department_id | TEXT | | FK to `departments.id` |
 | secondary_role_id | TEXT | | Added by migration; currently set to NULL |
 | ex_title | TEXT | | Added by migration; advisory/legacy title |
-| clerk_user_id | TEXT | | Added by migration; Clerk user ID |
+| clerk_user_id | TEXT | UNIQUE (partial, non-empty) | Added by migration; Clerk user ID. Enforced by `idx_users_clerk_user_id` (`WHERE clerk_user_id IS NOT NULL AND clerk_user_id != ''`) |
 | oauth_enabled | INTEGER | DEFAULT 0 | Added by migration; 1 if Clerk login enabled |
 | created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | |
 
@@ -393,8 +393,8 @@ migrated automatically by the cron drain and can also be flushed via
 
 Bulk-email campaigns. One row per campaign (newsletter, event, meet notification, or Send
 Mail list); the `* * * * *` cron drains it with adaptive pacing (up to 15 messages/minute).
-`meet` campaigns go out as BCC batches of up to 50; every other kind is sent one message per
-recipient, 1.5 s apart, and tracked in `email_deliveries`. Newsletter/event `html` contains
+Every kind is sent one message per recipient, 1.5 s apart, and tracked in
+`email_deliveries`. Newsletter/event `html` contains
 the `%%UNSUBSCRIBE_URL%%` marker, replaced per recipient with their tokenized link.
 
 | Column | Type | Constraints | Notes |
@@ -584,6 +584,7 @@ campaign never mails the same address twice. Rows are purged with their campaign
 - Adds `email_subject` to `newsletters`.
 - Adds `min_members` to `instance_teams`.
 - Adds `secondary_role_id`, `ex_title`, `clerk_user_id`, `oauth_enabled` to `users`.
+- Creates partial unique index `idx_users_clerk_user_id` on `users(clerk_user_id)` where non-empty.
 - Deletes old seed case studies that lack content.
 - Clears stale rate-limit rows for removed endpoints.
 - Drops recruitment tables if they still exist.

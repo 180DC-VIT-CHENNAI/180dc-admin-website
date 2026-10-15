@@ -318,96 +318,73 @@ export const LETTERHEAD_CSS = String.raw`
     min-height: 297mm;
     height: 297mm;
     background: #ffffff;
-    color: #1a1a1a;
+    color: #24342c;
     padding: 10mm 20mm 9mm;
     box-shadow: 0 1px 6px rgba(0,0,0,0.25);
-    font-family: "Times New Roman", Times, serif;
-    font-size: 12pt;
-    line-height: 1.5;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11pt;
+    line-height: 1.45;
     position: relative;
     overflow: hidden;
   }
+  /* ---- Appointment letter: dynamic text drawn over the printed letterhead ---- */
   .appointment-page {
-    padding: 12mm 14mm 11mm;
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 8.2pt;
-    line-height: 1.28;
+    padding: 54mm 15mm 62mm;
+    font-family: "Times New Roman", Times, Georgia, serif;
+    font-size: 11.5pt;
+    line-height: 1.5;
+    color: #111111;
+    background-image: url("/images/letterhead-bottom.png"), url("/images/letterhead-top.png");
+    background-origin: border-box;
+    background-position: bottom center, top center;
+    background-repeat: no-repeat, no-repeat;
+    background-size: 100% auto, 100% auto;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
-  .appointment-page::before,
-  .appointment-page::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    width: 100%;
-    pointer-events: none;
-    z-index: 0;
+  .appointment-page.letterhead-vector {
+    background-image: url("/images/letterhead-bottom.svg"), url("/images/letterhead-top.svg");
   }
-  .appointment-page::before {
-    top: 0;
-    height: 25mm;
-    background:
-      linear-gradient(14deg, transparent 0 41%, rgba(112, 232, 53, .95) 42% 72%, transparent 73%),
-      linear-gradient(8deg, transparent 0 58%, #00df20 59% 100%);
-    clip-path: polygon(0 0, 100% 0, 100% 58%, 74% 49%, 45% 70%, 20% 54%, 0 62%);
+  .appointment-page .appt-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 181mm;
   }
-  .appointment-page::after {
-    bottom: 0;
-    height: 34mm;
-    background:
-      linear-gradient(165deg, transparent 0 39%, #a7f65f 40% 60%, transparent 61%),
-      linear-gradient(172deg, transparent 0 51%, #65ed38 52% 75%, transparent 76%),
-      #00df20;
-    clip-path: polygon(0 43%, 19% 55%, 42% 40%, 65% 59%, 83% 42%, 100% 17%, 100% 100%, 0 100%);
+  .appointment-page .appt-date {
+    font-size: 11.5pt;
+    color: #111111;
   }
-  .appointment-page .watermark { display: none; }
-  .appointment-page .pagecontent { min-height: calc(297mm - 23mm); }
-  .appointment-page .letterhead {
-    min-height: 17mm;
-    align-items: flex-start;
-    position: relative;
-  }
-  .appointment-page .appointment-dc-logo {
-    width: 40mm;
-    height: auto;
-  }
-  .appointment-page .appointment-date {
-    padding-top: 1mm;
-    color: #30352f;
-    font-size: 6.5pt;
+  .appointment-page .appt-subject {
+    margin-top: 5mm;
+    font-size: 11.5pt;
     font-weight: 700;
-    white-space: nowrap;
+    color: #111111;
   }
-  .appointment-page .hr1 {
-    border-top: .6pt solid #333;
-    margin: 2pt 0 4pt;
+  .appointment-page .body { margin-top: 5mm; }
+  .appointment-page .body p {
+    margin: 0 0 4.6mm;
+    text-align: left;
+    color: #111111;
   }
-  .appointment-page .lettertitle { margin-bottom: 3pt; }
-  .appointment-page .lettertitle .main {
-    font-size: 10pt;
-    letter-spacing: .01em;
+  .appointment-page .appt-heading {
+    margin-bottom: 2mm;
+    font-weight: 700;
   }
-  .appointment-page .lettertitle .sub { display: none; }
-  .appointment-page .hr2 { display: none; }
-  .appointment-page .datebar { display: none; }
-  .appointment-page .body p { margin: 0 0 4.5pt; text-align: left; }
-  .appointment-page table.particulars {
-    font-size: 8.2pt;
-    margin: 4pt 0 6pt;
+  .appointment-page .appt-resp {
+    margin: 0 0 4.6mm;
+    padding-left: 8mm;
+    list-style: decimal;
   }
-  .appointment-page table.particulars td { padding: 1pt 0; }
-  .appointment-page table.particulars td.k { padding-right: 8pt; }
-  .appointment-page table.particulars td.sep { padding-right: 6pt; }
-  .appointment-page .sig {
-    padding-top: 8pt;
-    font-size: 7.2pt;
+  .appointment-page .appt-resp li {
+    margin: 0 0 1.8mm;
+    padding-left: 1mm;
   }
-  .appointment-page .sig .name { min-height: 1.8em; }
-  .appointment-page .digisig { font-size: 6.5pt; }
-  .appointment-page .footer {
-    margin-top: 5pt;
-    padding-top: 4pt;
-    font-size: 6.5pt;
+  .appointment-page .appt-resp li::marker {
+    color: #4f832a;
+    font-weight: 700;
   }
+  .appointment-page .appt-close { margin-top: auto; }
+  .appointment-page .appt-close p { margin: 0 0 4.6mm; }
   .watermark {
     position: absolute;
     top: -50%;
@@ -425,10 +402,10 @@ export const LETTERHEAD_CSS = String.raw`
     margin-top: 10pt;
     padding-top: 8pt;
     text-align: center;
-    font-size: 9.5pt;
-    color: #333;
+    font-size: 8.5pt;
+    color: #52645a;
   }
-  .footer a { color: #1a1a1a; text-decoration: none; }
+  .footer a { color: #52645a; text-decoration: none; }
   .pagecontent {
     position: relative;
     z-index: 1;
@@ -481,23 +458,23 @@ export const LETTERHEAD_CSS = String.raw`
     height: 18mm;
     width: auto;
   }
-  .hr1 { border: none; border-top: 1.2pt solid #1a1a1a; margin: 5pt 0 7pt; }
-  .hr2 { border: none; border-top: 0.6pt solid #1a1a1a; margin: 5pt 0; }
+  .hr1 { border: none; border-top: 1.2pt solid #52645a; margin: 5pt 0 7pt; }
+  .hr2 { border: none; border-top: 0.6pt solid #9aaca2; margin: 5pt 0; }
   .lettertitle { text-align: center; margin-bottom: 6pt; }
-  .lettertitle .main { font-weight: bold; font-size: 15pt; }
-  .lettertitle .sub { font-size: 10pt; color: #444; }
-  .datebar { text-align: right; font-size: 11pt; margin-bottom: 3pt; }
-  .datebar .docnum { font-size: 10pt; font-style: italic; margin-top: 2pt; }
+  .lettertitle .main { font-weight: bold; font-size: 14pt; color: #24342c; }
+  .lettertitle .sub { font-size: 9pt; color: #52645a; }
+  .datebar { text-align: right; font-size: 10pt; margin-bottom: 3pt; color: #52645a; }
+  .datebar .docnum { font-size: 9pt; font-style: italic; margin-top: 2pt; }
   .body p { margin: 0 0 8pt; text-align: justify; }
-  table.particulars { border-collapse: collapse; font-size: 12pt; margin: 6pt 0 9pt; }
+  table.particulars { border-collapse: collapse; font-size: 11pt; margin: 6pt 0 9pt; }
   table.particulars td { padding: 2pt 0; vertical-align: top; }
   table.particulars td.k { font-weight: bold; padding-right: 14pt; }
   table.particulars td.sep { padding-right: 10pt; }
-  .sig { margin-top: auto; padding-top: 12pt; width: 100%; border-collapse: collapse; font-size: 12pt; }
+  .sig { margin-top: auto; padding-top: 12pt; width: 100%; border-collapse: collapse; font-size: 9.5pt; color: #24342c; }
   .sig td { width: 33.3%; vertical-align: top; padding-right: 10pt; }
   .sig tr.four td { width: 25%; }
   .sig .name { font-weight: bold; display: block; min-height: 2.3em; line-height: 1.15em; }
-  .digisig { font-size: 10pt; font-style: italic; margin-top: 2pt; }
+  .digisig { font-size: 8.5pt; font-style: italic; margin-top: 2pt; color: #52645a; }
 
   .announcement-tone-preview{margin:8px 0 12px;padding:9px 10px;border:1px solid #d7e7df;border-radius:8px;background:#f7fbf9;display:grid;gap:7px}.announcement-tone-preview>div{display:flex;gap:8px;align-items:flex-start}.announcement-tone-preview span{flex:0 0 62px;color:#8aa097;font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding-top:2px}.announcement-tone-preview strong{color:#356b57;font-size:10px;line-height:1.35;font-weight:650}.announcement-event-card{margin:8px 0 6px;padding:10px 11px;border:1px solid #cfe1d8;border-radius:9px;background:#f7fbf9}.announcement-event-grid{display:grid;grid-template-columns:1fr 1fr;gap:5pt 16pt;margin:4pt 0}.announcement-event-grid .event-wide{grid-column:1/-1}.announcement-event-grid div{break-inside:avoid}.announcement-event-label{font-size:9pt;font-weight:bold}.announcement-attachment{margin-top:7pt;padding:7pt 9pt;border:0.6pt solid #d8d8d8;border-radius:5pt}.announcement-sign{margin-top:12pt}.announcement-sign .sig-name{font-weight:bold}.announcement-sign .digisig{margin-top:3pt}
   .report-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:6pt 18pt;margin:4pt 0 10pt;padding:8pt 10pt;border:0.6pt solid #d8e4dd;background:#f7fbf9;border-radius:5pt}.report-meta-grid div{break-inside:avoid}.report-meta-label{font-size:9pt;font-weight:bold;color:#356b57;text-transform:uppercase;letter-spacing:.04em}.report-section{margin:0 0 10pt;break-inside:avoid}.report-section h3{font-size:12.5pt;margin:0 0 4pt;padding-bottom:2pt;border-bottom:.7pt solid #cfe1d8}.report-section p{margin:0 0 5pt}.report-list{margin:3pt 0 0 17pt;padding:0}.report-list li{margin:0 0 4pt;padding-left:2pt}.report-table{width:100%;border-collapse:collapse;margin:4pt 0 0;font-size:11pt}.report-table th,.report-table td{border:.6pt solid #cfe1d8;padding:5pt 6pt;text-align:left;vertical-align:top}.report-table th{background:#f0f7f3;font-weight:bold}.report-table .status-active{font-weight:bold}.report-table .status-inactive{color:#666}.report-sign{margin-top:16pt}.report-sign .name{font-weight:bold}.report-sign .digisig{margin-top:3pt}
@@ -520,6 +497,7 @@ export const LETTERHEAD_CSS = String.raw`
       margin: 0;
       padding: 10mm 20mm 9mm;
     }
+    .page.appointment-page { padding: 54mm 15mm 62mm; }
     @page { size: A4; margin: 0; }
   }
   #printArea { display: none; }

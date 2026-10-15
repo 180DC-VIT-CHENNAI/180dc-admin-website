@@ -24,10 +24,10 @@ Invariants are properties that must never become false while the system is runni
 
 ### INV-AUTH-03: Google login cannot bypass token auth
 
-- **Statement:** Clerk/Google login only provides a token if the user's `oauth_enabled = 1` and the Clerk user is linked to a `users` row.
-- **Reason:** Google OAuth is an alternative login method, not a separate auth boundary.
-- **Where enforced:** `POST /api/auth/clerk-login`.
-- **How verified:** Try logging in with an unlinked Clerk account; confirm 403.
+- **Statement:** Clerk/Google login only provides a token if the Clerk JWT is valid, the Clerk account has a Clerk-verified email matching a `users` row (`clerk_user_id` links must also match a verified email), the Clerk user ID is linked to at most one user, and the user has `oauth_enabled = 1`. Client-supplied emails and Clerk user IDs are never trusted.
+- **Reason:** Google OAuth is an alternative login method, not a separate auth boundary. Trusting client input would allow one Clerk account to claim any member's identity.
+- **Where enforced:** `POST /api/auth/clerk-login`; unique partial index `idx_users_clerk_user_id` on `users(clerk_user_id)`.
+- **How verified:** Send a valid Clerk JWT with another member's email in the body; confirm no token is issued (401). Try logging in with an unlinked Clerk account; confirm 401.
 - **Related business rules:** RULE-AUTH-02.
 - **Current status:** ENFORCED.
 
@@ -156,7 +156,7 @@ Invariants are properties that must never become false while the system is runni
 
 ### INV-QUOTA-03: Subscriber emails are sent one per recipient with their own unsubscribe link
 
-- **Statement:** Newsletter and event campaigns are sent one message per subscriber, with the `%%UNSUBSCRIBE_URL%%` marker and `List-Unsubscribe` headers filled from that subscriber's `unsubscribe_token`. Only `meet` campaigns use BCC batches, and those bodies carry no per-recipient link.
+- **Statement:** Newsletter and event campaigns are sent one message per subscriber, with the `%%UNSUBSCRIBE_URL%%` marker and `List-Unsubscribe` headers filled from that subscriber's `unsubscribe_token`. Every other queued campaign (meet notices, Send Mail lists) is also one message per recipient; no queued campaign uses BCC batches.
 - **Reason:** A shared body would leak one subscriber's unsubscribe link to others; one-click unsubscribe needs a per-recipient URL.
 - **Where enforced:** `drainEmailQueue()` (`personalizeUnsubscribe()`, `unsubscribeHeaders()`); templates render the marker when called without `subscriberEmail`.
 - **How verified:** Queue a newsletter to two subscribers and confirm each delivered email links to a different `/unsubscribe/<token>` and carries `List-Unsubscribe-Post`.

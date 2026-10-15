@@ -123,7 +123,7 @@ All under `apps/admin-api/index.ts`.
 All sending goes through `sendEmail()` in `apps/admin-api/index.ts`:
 
 - **Primary:** Spacemail SMTP at `mail.spacemail.com:465` (implicit TLS) via `cloudflare:sockets`, AUTH with the mailbox address + password.
-- **Batching:** only meet campaigns chunk recipients into BCC groups of up to 50 per message. Newsletter and event campaigns send one personalized message per subscriber, 1.5 s apart, recording each result in `email_deliveries`; all other sends (Send Mail, project/role notices, OTPs, letters, tokens) are one recipient per message (`batchRecipients: false`).
+- **Batching:** no queued campaign uses BCC. Newsletter and event campaigns send one personalized message per subscriber, 1.5 s apart, recording each result in `email_deliveries`; all other sends (Send Mail, project/role notices, OTPs, letters, tokens) are one recipient per message (`batchRecipients: false`).
 - **Quota:** 500 SMTP messages/hour tracked in `email_hour_count`; Resend fallback capped at 100 recipients/day in `resend_daily_count`.
 - **Bulk queue:** newsletter, event, meet, and Send Mail lists over 10 recipients insert one `email_queue` campaign and return immediately with `queued`/`total`. The `* * * * *` cron drains it with adaptive pacing (up to 15 messages/minute, capped at 500/hour), retries failed campaigns up to 5 times, and writes `sent_at`/`recipient_count` back to the newsletter row.
 - **Provider switch:** `EMAIL_PRIMARY` (secret) forces Resend-first when set to `resend`; default is Spacemail-first. Used as an incident lever (e.g., Spacemail DKIM outage).
