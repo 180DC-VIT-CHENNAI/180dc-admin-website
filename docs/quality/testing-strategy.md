@@ -2,7 +2,7 @@
 
 ## Current state
 
-`tests/` holds an end-to-end suite for the admin-api: about 250 tests covering every route
+`tests/` holds an end-to-end suite for the admin-api: 215 tests covering every route
 (see `tests/README.md` for the feature map and the known bugs it found). Run it after every
 backend change:
 
