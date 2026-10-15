@@ -147,7 +147,7 @@ Invariants are properties that must never become false while the system is runni
 
 ### INV-QUOTA-02: Spacemail is the only email provider
 
-- **Statement:** Every email is sent through Spacemail SMTP; there is no fallback provider. The queue uses at most 90% of each hour's limit so direct sends (OTPs, login tokens, welcome mails) always have room. Temporary SMTP failures leave recipients queued; permanent (5xx) failures mark them failed; a Spacemail "too many messages" rejection marks the hour as used up.
+- **Statement:** Every email is sent through Spacemail SMTP; there is no fallback provider. The queue uses at most 90% of each hour's limit so direct sends (OTPs, login tokens, welcome mails) always have room. Temporary session failures leave recipients queued; rejected recipients and permanent (5xx) session failures mark them failed; a Spacemail "too many messages" rejection marks the hour as used up.
 - **Reason:** One sending identity keeps domain reputation consistent; without a fallback, sign-in mail must not be starved by bulk sends.
 - **Where enforced:** `sendEmail()`, `isTransientSmtpError()`, `saturateHourlyEmailCount()`, `drainEmailQueue()`.
 - **How verified:** Unset `SPACEMAIL_SMTP_PASS`: sends fail with "Email not configured" and no other provider is called. Fill `email_hour_count` to 90% of the limit: the queue pauses while an OTP still sends.

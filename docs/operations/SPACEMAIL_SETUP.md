@@ -174,9 +174,10 @@ Spacemail SMTP is the only provider, so `sendEmail()` sorts every failure:
 
 | Failure | Example | What happens |
 |---------|---------|--------------|
-| Temporary (4xx reply, timeout, dropped connection) | `421 try again later`, `SMTP timeout` | Recipient stays queued; the next cron run retries. After 5 runs in a row with no progress the campaign is marked `failed` and can be retried with `retry-failed`. |
+| Temporary, whole session (timeout, dropped connection, 4xx greeting / AUTH / MAIL FROM) | `421 try again later`, `SMTP timeout` | Recipient stays queued; the next cron run retries. After 5 runs in a row with no progress the campaign is marked `failed` and can be retried with `retry-failed`. |
+| Rejected recipient (4xx or 5xx at `RCPT TO`) | `450 mailbox busy`, `550 no such user` | That recipient is marked `failed` with the reply; the queue moves on to the next one. `retry-failed` tries it again later. |
 | Spacemail hourly limit | `554 ... too many messages from sender in last 60 minutes` | The current hour in `email_hour_count` is set to the limit, so the queue waits for the next hour. |
-| Permanent (5xx) | `535` bad password, `553` sender not owned, `550` content rejected, unknown recipient | Recipient marked `failed` in `email_deliveries` with the SMTP reply as the error. |
+| Permanent, whole session (5xx) | `535` bad password, `553` sender not owned, `550` content rejected | Recipient marked `failed` in `email_deliveries` with the SMTP reply as the error. |
 | Not configured | `SPACEMAIL_SMTP_USER`/`PASS` missing | Every send fails with "Email not configured". |
 
 The queue uses at most 90% of each hour's limit, so OTPs, login tokens and welcome mails

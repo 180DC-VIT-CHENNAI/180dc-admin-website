@@ -1101,8 +1101,9 @@ async function sendEmail(
           await saturateHourlyEmailCount(c.env);
           break;
         }
-        // A temporary rejection leaves those recipients skipped for retry.
-        if (isTransientSmtpError(result.error)) break;
+        // Any other RCPT rejection (4xx greylisting / full mailbox, or 5xx)
+        // is about that address only: fail it so the queue moves on, and
+        // retry-failed can try it again later.
         result.failed += smtp.rejected.length;
       }
       continue;
