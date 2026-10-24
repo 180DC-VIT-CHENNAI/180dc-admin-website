@@ -71,7 +71,7 @@ export default function LetterStudioPage() {
   const [announcementFileName, setAnnouncementFileName] = useState("");
   const [pagesHtml, setPagesHtml] = useState("");
   const [previewZoom, setPreviewZoom] = useState(1);
-  const [letterheadQuality, setLetterheadQuality] = useState<"standard" | "vector">("standard");
+  const [letterheadQuality, setLetterheadQuality] = useState<"standard" | "vector">("vector");
   const [busy, setBusy] = useState<"" | "pdf" | "send">("");
   const [logCount, setLogCount] = useState(0);
   const [recentLetters, setRecentLetters] = useState<LogEntry[]>([]);
@@ -1134,7 +1134,7 @@ export default function LetterStudioPage() {
                   <select
                     value={letterheadQuality}
                     onChange={(e) => setLetterheadQuality(e.target.value as "standard" | "vector")}
-                    title="Letterhead rendering quality"
+                    title="Letterhead rendering quality (applies to preview, downloaded and emailed PDFs)"
                     style={{ flex: "0 0 auto", width: "auto", padding: "5px 8px", fontSize: 11, borderRadius: 7, border: "1px solid var(--border-light)", background: "var(--bg-primary)", color: "var(--text-primary)", cursor: "pointer" }}
                   >
                     <option value="standard">Letterhead: Standard</option>
