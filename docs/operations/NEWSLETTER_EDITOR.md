@@ -127,7 +127,7 @@ All sending goes through `sendEmail()` in `apps/admin-api/index.ts`:
 - **Quota:** 500 SMTP messages/hour tracked in `email_hour_count`; Resend fallback capped at 100 recipients/day in `resend_daily_count`.
 - **Bulk queue:** newsletter, event, meet, and Send Mail lists over 10 recipients insert one `email_queue` campaign and return immediately with `queued`/`total`. The `* * * * *` cron drains it with adaptive pacing (up to 15 messages/minute, capped at 500/hour), retries failed campaigns up to 5 times, and writes `sent_at`/`recipient_count` back to the newsletter row.
 - **Provider switch:** `EMAIL_PRIMARY` (secret) forces Resend-first when set to `resend`; default is Spacemail-first. Used as an incident lever (e.g., Spacemail DKIM outage).
-- **Fallback:** if SMTP fails (auth, connectivity, timeout, or sender rejection), the same content is sent per-recipient through Resend (`RESEND_API_KEY`) so BCC privacy is preserved.
+- **Fallback:** if SMTP fails (auth, connectivity, timeout, or sender rejection), the same content is sent per-recipient through Resend (`RESEND_API_KEY`) so privacy is preserved.
 - **From addresses:** all `technical@180dcvitc.org` — `180DC Newsletter <...>`, `180DC Events <...>`, `180DC Admin <...>`, `180DC Consulting <...>`, `180DC Letter Studio <...>`.
 - **PDF attachments:** referenced from R2 by the queue and built into a multipart MIME message at send time; Resend fallback uses the Resend `attachments` payload.
 - **Visibility:** `GET /api/admin/email-queue` (board token) returns hourly usage and recent campaigns.

@@ -48,7 +48,7 @@ External: Spacemail SMTP, Resend, Clerk, Google Fonts/CDN
 - **Storage:** R2 buckets `CLUB_FILES`, `BLOG_IMAGES`, `CASE_STUDIES`.
 - **Cache/session:** KV `AUTH_SESSIONS` (bound but not used in `main`).
 - **Queue:** `QUEUE` producer binding (bound but not used in `main`).
-- **Email:** Unified `sendEmail()` choke-point — Spacemail SMTP (`mail.spacemail.com:465`, `SPACEMAIL_SMTP_USER`/`SPACEMAIL_SMTP_PASS`) primary, Resend (`RESEND_API_KEY`) automatic fallback. BCC batches of up to 50; quotas tracked in `email_hour_count` (500/hour) and `resend_daily_count` (100/day).
+- **Email:** Unified `sendEmail()` choke-point — Spacemail SMTP (`mail.spacemail.com:465`, `SPACEMAIL_SMTP_USER`/`SPACEMAIL_SMTP_PASS`) primary, Resend (`RESEND_API_KEY`) automatic fallback. One message per recipient; quotas tracked in `email_hour_count` (500/hour) and `resend_daily_count` (100/day).
 - **Clerk:** `@clerk/backend` `verifyToken` used only for Google login linking.
 - **Schema and migrations:** `ensureTables` and `runMigrations` in `index.ts`.
 

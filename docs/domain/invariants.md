@@ -138,7 +138,7 @@ Invariants are properties that must never become false while the system is runni
 
 ### INV-QUOTA-01: Spacemail hourly send cap is 500 messages
 
-- **Statement:** No more than 500 Spacemail SMTP messages may be sent per UTC hour, where one message carries up to 50 BCC recipients. The `email_queue` drain uses adaptive pacing (up to 15 messages per minute) so it never exceeds the hourly cap.
+- **Statement:** No more than 500 Spacemail SMTP messages may be sent per UTC hour. The `email_queue` drain uses adaptive pacing (up to 15 messages per minute) so it never exceeds the hourly cap.
 - **Reason:** Spacemail mailbox limits (500 messages/hour, 50 recipients/message) and deliverability protection.
 - **Where enforced:** `sendEmail()`, `smtpSendMessage()`, `drainEmailQueue()` (cron `* * * * *`), and the `email_hour_count` table.
 - **How verified:** Send more than 500 batches in an hour; confirm the queue stops and resumes next hour, and no further SMTP messages are attempted.
