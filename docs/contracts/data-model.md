@@ -361,7 +361,7 @@ This table is for the public leadership page, not the `users` table.
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | hour | TEXT | PRIMARY KEY | ISO hour `YYYY-MM-DDTHH` (UTC) |
-| count | INTEGER | DEFAULT 0 | Spacemail SMTP messages sent in that hour; capped at 500 |
+| count | INTEGER | DEFAULT 0 | Spacemail SMTP messages (50-recipient BCC batches) sent in that hour; capped at 500 |
 
 ### `resend_daily_count`
 
@@ -410,7 +410,7 @@ the `%%UNSUBSCRIBE_URL%%` marker, replaced per recipient with their tokenized li
 | total | INTEGER | NOT NULL | Recipient count |
 | sent | INTEGER | DEFAULT 0 | Delivered count |
 | failed | INTEGER | DEFAULT 0 | Failed count |
-| attempts | INTEGER | DEFAULT 0 | Consecutive claims without progress (max 5; resets when the cursor advances) |
+| attempts | INTEGER | DEFAULT 0 | Claim attempts (max 5) |
 | status | TEXT | DEFAULT 'pending' | `pending` / `processing` / `done` / `failed` |
 | last_error | TEXT | | Last delivery error |
 | meta | TEXT | | JSON, e.g. `{"newsletter_id":"..."}` or `{"meet_id":"..."}` |
